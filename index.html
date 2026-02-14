@@ -1,0 +1,1873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CBGames Offline Launcher</title>
+<link rel="icon" type="image/png" href="./favicon.png">
+<style>
+  :root {
+    color-scheme: dark;
+    --background-dark: #0d1117;
+    --secondary-color: #161b22;
+    --surface-2: #111822;
+    --surface-3: #0f151d;
+    --hover-color: #223766;
+    --input-background: #21262d;
+    --text-light: #ffffff;
+    --text-muted: #9aa6b2;
+    --border-color: #30363d;
+    --primary-color: #2a4f98;
+    --teal-accent: #1f8a8a;
+    --error-color: #ff4d4f;
+    --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Poppins", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    background: radial-gradient(circle at top, #162238 0%, var(--background-dark) 55%);
+    color: var(--text-light);
+    min-height: 100dvh;
+    position: relative;
+    overflow-x: hidden;
+  }
+  body::before,
+  body::after {
+    content: "";
+    position: fixed;
+    width: 360px;
+    height: 360px;
+    border-radius: 999px;
+    pointer-events: none;
+    filter: blur(60px);
+    z-index: 0;
+    opacity: 0.16;
+  }
+  body::before {
+    background: #3f7cd7;
+    top: -120px;
+    right: -80px;
+  }
+  body::after {
+    background: var(--teal-accent);
+    bottom: -160px;
+    left: -120px;
+  }
+  main {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: clamp(14px, 3vw, 28px);
+    position: relative;
+    z-index: 1;
+  }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: linear-gradient(180deg, rgba(22, 27, 34, 0.92), rgba(18, 24, 33, 0.92));
+    border: 1px solid var(--border-color);
+    backdrop-filter: blur(8px);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-soft);
+  }
+  .brand-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background-color: #13233d;
+    background-image: url("favicon.png");
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+    flex: 0 0 auto;
+  }
+  .brand {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin: 0;
+  }
+  .brand-sub {
+    margin: 0;
+    color: #9fb0c7;
+    font-size: 0.82rem;
+    letter-spacing: 0.01em;
+  }
+  .mode-badge {
+    border: 1px solid #31528d;
+    background: #1c2f56;
+    color: #b6ccf7;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 4px 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .panel {
+    background: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: clamp(14px, 2.2vw, 22px);
+    box-shadow: var(--shadow-soft);
+    position: relative;
+  }
+  .panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(47, 93, 181, 0.35), rgba(31, 138, 138, 0.15) 60%, rgba(255, 255, 255, 0.02));
+    pointer-events: none;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: clamp(1.35rem, 3vw, 2rem);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: 0.01em;
+  }
+  p {
+    margin: 0 0 10px;
+    color: var(--text-muted);
+  }
+  .description {
+    max-width: 90ch;
+    margin-bottom: 12px;
+    font-size: 0.98rem;
+  }
+  .quick-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-bottom: 12px;
+  }
+  .quick-steps span {
+    border: 1px solid #34455f;
+    background: linear-gradient(180deg, #1b2533, #182230);
+    color: #b5c4d7;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 0.83rem;
+    font-weight: 600;
+  }
+  .launcher-shell {
+    border: 1px solid #2c3d53;
+    background: linear-gradient(180deg, var(--surface-2), var(--surface-3));
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  button {
+    border: 1px solid #3a4b64;
+    background: #1b2637;
+    color: var(--text-light);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 0.92rem;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+  }
+  #importZip {
+    background: linear-gradient(180deg, #2e60bd, #2a4f98);
+    border-color: #3a69c3;
+  }
+  button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 7px 16px rgba(1, 7, 16, 0.45);
+    border-color: #4f6485;
+  }
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+  #deleteGame {
+    background: #2a1f23;
+    border-color: #523238;
+    color: #f6c3ca;
+  }
+  .library-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .library-box {
+    border: 1px solid #30445d;
+    border-radius: 10px;
+    background: #101924;
+    padding: 10px;
+    display: grid;
+    gap: 7px;
+  }
+  .library-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #9fb2c9;
+    font-weight: 600;
+    margin: 0;
+  }
+  #gameSelect,
+  #entryFile {
+    width: 100%;
+    border: 1px solid #43536c;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 0.95rem;
+    background: var(--input-background);
+    color: var(--text-light);
+  }
+  .hint {
+    font-size: 0.88rem;
+    color: #c0ccda;
+    background: #121a25;
+    border: 1px solid #2d3b51;
+    padding: 8px 10px;
+    border-radius: 8px;
+    margin: 0;
+  }
+  .hint code {
+    color: #8cc8ff;
+  }
+  .hint-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin: 10px 0 12px;
+  }
+  .metric {
+    display: grid;
+    gap: 3px;
+    background: #101924;
+    border: 1px solid #2f425a;
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .metric-label {
+    font-size: 0.78rem;
+    color: #9fb2c9;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .metric-value {
+    font-size: 0.96rem;
+    color: #dfeaff;
+    font-weight: 700;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+  details.advanced {
+    border: 1px dashed #324558;
+    border-radius: 10px;
+    padding: 8px 10px 10px;
+    margin-bottom: 10px;
+    background: rgba(16, 24, 37, 0.45);
+  }
+  details.advanced summary {
+    cursor: pointer;
+    color: #c3d2e6;
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    user-select: none;
+  }
+  details.advanced[open] summary {
+    margin-bottom: 10px;
+  }
+  label {
+    display: grid;
+    gap: 6px;
+    font-weight: 600;
+    font-size: 0.93rem;
+    color: var(--text-light);
+  }
+  code {
+    background: #0f1a29;
+    border: 1px solid #2b3f59;
+    border-radius: 6px;
+    padding: 0 6px;
+    color: #8cc8ff;
+  }
+  .status-title {
+    margin: 4px 0 8px;
+    font-size: 0.98rem;
+    letter-spacing: 0.01em;
+    color: var(--text-light);
+  }
+  #status {
+    min-height: 120px;
+    max-height: 260px;
+    overflow: auto;
+    white-space: pre-wrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    border: 1px solid #324458;
+    border-radius: 10px;
+    background: #111924;
+    padding: 12px;
+  }
+  #status > div {
+    border-bottom: 1px solid rgba(67, 87, 111, 0.35);
+    padding: 3px 0;
+  }
+  #status > div:last-child {
+    border-bottom: 0;
+  }
+  #status::-webkit-scrollbar {
+    width: 10px;
+  }
+  #status::-webkit-scrollbar-track {
+    background: #0d1420;
+    border-radius: 10px;
+  }
+  #status::-webkit-scrollbar-thumb {
+    background: #2f425a;
+    border-radius: 10px;
+  }
+  #status .error { color: var(--error-color); }
+  @media (max-width: 900px) {
+    .library-row {
+      grid-template-columns: 1fr;
+    }
+    .hint-row {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 640px) {
+    .topbar {
+      position: static;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .brand-sub {
+      font-size: 0.78rem;
+    }
+    .controls {
+      grid-template-columns: 1fr;
+    }
+    button {
+      width: 100%;
+    }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="topbar">
+    <div class="brand-wrap">
+      <div class="brand-mark" aria-hidden="true"></div>
+      <div>
+        <p class="brand">CBGames - Offline Launcher</p>
+        <p class="brand-sub">Tool to load games usually unplayable offline.</p>
+      </div>
+    </div>
+    <div class="mode-badge">Made by LexLeethor</div>
+  </header>
+
+  <section class="panel">
+    <h1>Launcher</h1>
+
+    <div class="quick-steps">
+      <span>1. Import ZIP</span>
+      <span>2. Select Saved Game</span>
+      <span>3. Launch In New Tab</span>
+    </div>
+
+    <div class="launcher-shell">
+      <div class="controls">
+        <button id="importZip">Import ZIP Game</button>
+        <button id="launch">Launch Selected</button>
+        <button id="deleteGame">Delete Selected</button>
+      </div>
+
+      <div class="library-row">
+        <div class="library-box">
+          <p class="library-label">Saved Games</p>
+          <select id="gameSelect"></select>
+          <p class="hint" id="gameMeta">No saved game selected.</p>
+        </div>
+        <div class="library-box">
+          <p class="library-label">Storage Overview</p>
+          <div class="hint-row">
+            <div class="metric">
+              <span class="metric-label">Games</span>
+              <strong id="libraryCount" class="metric-value">0</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Saved Size</span>
+              <strong id="libraryBytes" class="metric-value">0 B</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Browser Usage</span>
+              <strong id="quotaUsage" class="metric-value">Checking...</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <details class="advanced">
+        <summary>Advanced</summary>
+        <label for="entryFile">
+          Startup HTML File
+          <select id="entryFile"></select>
+        </label>
+      </details>
+    </div>
+
+    <h2 class="status-title">Activity Log</h2>
+    <div id="status" aria-live="polite"></div>
+  </section>
+</main>
+
+<input id="zipInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
+
+<script>
+(() => {
+  "use strict";
+
+  const DB_NAME = "cbgamesOfflineZipDB";
+  const DB_VERSION = 1;
+  const STORE_GAMES = "games";
+  const STORE_FILES = "files";
+  const STORE_SETTINGS = "settings";
+  const SETTING_SELECTED_GAME = "selectedGameId";
+
+  const VFS_ORIGIN = "https://loader.invalid/";
+  const VFS_ORIGIN_URL = new URL(VFS_ORIGIN).origin;
+
+  const importZipButton = document.getElementById("importZip");
+  const launchButton = document.getElementById("launch");
+  const deleteGameButton = document.getElementById("deleteGame");
+  const gameSelect = document.getElementById("gameSelect");
+  const entrySelect = document.getElementById("entryFile");
+  const zipInput = document.getElementById("zipInput");
+
+  const gameMeta = document.getElementById("gameMeta");
+  const libraryCount = document.getElementById("libraryCount");
+  const libraryBytes = document.getElementById("libraryBytes");
+  const quotaUsage = document.getElementById("quotaUsage");
+
+  const statusBox = document.getElementById("status");
+
+  const state = {
+    db: null,
+    gamesById: new Map(),
+    selectedGameId: null,
+    objectUrls: new Map(),
+    activeEntryPath: null,
+    playerWindow: null
+  };
+
+  function log(message, type = "info") {
+    const line = document.createElement("div");
+    if (type === "error") {
+      line.className = "error";
+    }
+    const timestamp = new Date().toLocaleTimeString();
+    line.textContent = "[" + timestamp + "] " + message;
+    statusBox.append(line);
+    statusBox.scrollTop = statusBox.scrollHeight;
+  }
+
+  function normalizePath(path) {
+    return String(path)
+      .replace(/\\/g, "/")
+      .replace(/^\/+/, "")
+      .replace(/\/+/g, "/");
+  }
+
+  function dirnamePath(path) {
+    const normalized = normalizePath(path);
+    const idx = normalized.lastIndexOf("/");
+    if (idx === -1) {
+      return "";
+    }
+    return normalized.slice(0, idx);
+  }
+
+  function toVirtualUrl(path) {
+    const normalized = normalizePath(path);
+    const encoded = normalized.split("/").map(encodeURIComponent).join("/");
+    return VFS_ORIGIN + encoded;
+  }
+
+  function formatBytes(value) {
+    const bytes = Number(value) || 0;
+    if (bytes === 0) {
+      return "0 B";
+    }
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const scaled = bytes / Math.pow(1024, exponent);
+    return scaled.toFixed(scaled >= 100 || exponent === 0 ? 0 : 1) + " " + units[exponent];
+  }
+
+  function formatDate(ts) {
+    if (!ts) {
+      return "unknown";
+    }
+    return new Date(ts).toLocaleString();
+  }
+
+  function makeId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return "game-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+  }
+
+  function deriveGameName(fileName) {
+    const cleaned = String(fileName || "")
+      .replace(/\.zip$/i, "")
+      .replace(/[_-]+/g, " ")
+      .trim();
+    return cleaned || "Imported Game";
+  }
+
+  function mimeFromPath(path) {
+    const lower = normalizePath(path).toLowerCase();
+    const ext = lower.includes(".") ? lower.slice(lower.lastIndexOf(".")) : "";
+    switch (ext) {
+      case ".html":
+      case ".htm":
+        return "text/html";
+      case ".js":
+      case ".mjs":
+      case ".cjs":
+        return "application/javascript";
+      case ".css":
+        return "text/css";
+      case ".json":
+        return "application/json";
+      case ".wasm":
+        return "application/wasm";
+      case ".png":
+        return "image/png";
+      case ".jpg":
+      case ".jpeg":
+        return "image/jpeg";
+      case ".gif":
+        return "image/gif";
+      case ".svg":
+        return "image/svg+xml";
+      case ".ico":
+        return "image/x-icon";
+      case ".webp":
+        return "image/webp";
+      case ".mp3":
+        return "audio/mpeg";
+      case ".ogg":
+        return "audio/ogg";
+      case ".wav":
+        return "audio/wav";
+      case ".mp4":
+        return "video/mp4";
+      case ".webm":
+        return "video/webm";
+      case ".woff":
+        return "font/woff";
+      case ".woff2":
+        return "font/woff2";
+      case ".ttf":
+        return "font/ttf";
+      case ".otf":
+        return "font/otf";
+      case ".unityweb":
+      case ".data":
+      case ".mem":
+      case ".bin":
+        return "application/octet-stream";
+      default:
+        return "application/octet-stream";
+    }
+  }
+
+  function normalizeResolverBase(baseHref) {
+    if (typeof baseHref === "string" && baseHref) {
+      try {
+        const parsed = new URL(baseHref);
+        if (parsed.origin === VFS_ORIGIN_URL) {
+          return parsed.href;
+        }
+      } catch {
+        // fall through
+      }
+    }
+    if (state.activeEntryPath) {
+      return toVirtualUrl(state.activeEntryPath);
+    }
+    return VFS_ORIGIN;
+  }
+
+  function resolveToPath(rawValue, baseHref) {
+    if (typeof rawValue !== "string") {
+      return null;
+    }
+    const value = rawValue.trim();
+    if (!value || value.startsWith("#")) {
+      return null;
+    }
+    const lower = value.toLowerCase();
+    if (
+      lower.startsWith("data:") ||
+      lower.startsWith("blob:") ||
+      lower.startsWith("javascript:") ||
+      lower.startsWith("mailto:") ||
+      lower.startsWith("tel:")
+    ) {
+      return null;
+    }
+    let resolved;
+    try {
+      resolved = new URL(value, baseHref || VFS_ORIGIN);
+    } catch {
+      return null;
+    }
+    if (resolved.origin !== VFS_ORIGIN_URL) {
+      return null;
+    }
+    const decoded = decodeURIComponent(resolved.pathname.slice(1));
+    const normalized = normalizePath(decoded);
+    return normalized || null;
+  }
+
+  function requestToObjectUrl(rawValue, baseHref) {
+    const raw = String(rawValue);
+    const resolvedBase = normalizeResolverBase(baseHref);
+    const path = resolveToPath(raw, resolvedBase);
+    if (!path) {
+      return null;
+    }
+    const direct = state.objectUrls.get(path);
+    if (direct) {
+      return direct;
+    }
+
+    const trimmed = raw.trim();
+    const isRootLike =
+      trimmed.startsWith("/") ||
+      trimmed.startsWith(VFS_ORIGIN) ||
+      trimmed.startsWith(VFS_ORIGIN_URL + "/");
+    if (!isRootLike) {
+      return null;
+    }
+
+    let probeDir = "";
+    const basePath = resolveToPath(resolvedBase, VFS_ORIGIN);
+    if (basePath) {
+      probeDir = dirnamePath(basePath);
+    } else if (state.activeEntryPath) {
+      probeDir = dirnamePath(state.activeEntryPath);
+    }
+
+    while (probeDir) {
+      const candidate = normalizePath(probeDir + "/" + path);
+      const mapped = state.objectUrls.get(candidate);
+      if (mapped) {
+        return mapped;
+      }
+      probeDir = dirnamePath(probeDir);
+    }
+    return null;
+  }
+
+  window.__loaderResolve = requestToObjectUrl;
+
+  function txDone(tx) {
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("Transaction failed"));
+      tx.onabort = () => reject(tx.error || new Error("Transaction aborted"));
+    });
+  }
+
+  function openDatabase() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+
+        if (!db.objectStoreNames.contains(STORE_GAMES)) {
+          db.createObjectStore(STORE_GAMES, { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains(STORE_FILES)) {
+          const filesStore = db.createObjectStore(STORE_FILES, { keyPath: ["gameId", "path"] });
+          filesStore.createIndex("gameId", "gameId", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORE_SETTINGS)) {
+          db.createObjectStore(STORE_SETTINGS);
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function putSetting(key, value) {
+    const tx = state.db.transaction(STORE_SETTINGS, "readwrite");
+    tx.objectStore(STORE_SETTINGS).put(value, key);
+    return txDone(tx);
+  }
+
+  function getSetting(key) {
+    return new Promise((resolve, reject) => {
+      const tx = state.db.transaction(STORE_SETTINGS, "readonly");
+      const request = tx.objectStore(STORE_SETTINGS).get(key);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function putGame(gameRecord) {
+    const tx = state.db.transaction(STORE_GAMES, "readwrite");
+    tx.objectStore(STORE_GAMES).put(gameRecord);
+    return txDone(tx);
+  }
+
+  function deleteGameRecord(gameId) {
+    const tx = state.db.transaction(STORE_GAMES, "readwrite");
+    tx.objectStore(STORE_GAMES).delete(gameId);
+    return txDone(tx);
+  }
+
+  function getAllGames() {
+    return new Promise((resolve, reject) => {
+      const tx = state.db.transaction(STORE_GAMES, "readonly");
+      const request = tx.objectStore(STORE_GAMES).getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function putFileRecord(record) {
+    const tx = state.db.transaction(STORE_FILES, "readwrite");
+    tx.objectStore(STORE_FILES).put(record);
+    return txDone(tx);
+  }
+
+  function getAllFilesForGame(gameId) {
+    return new Promise((resolve, reject) => {
+      const out = [];
+      const tx = state.db.transaction(STORE_FILES, "readonly");
+      const index = tx.objectStore(STORE_FILES).index("gameId");
+      const request = index.openCursor(IDBKeyRange.only(gameId));
+      request.onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (!cursor) {
+          return;
+        }
+        out.push(cursor.value);
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+      tx.oncomplete = () => resolve(out);
+      tx.onabort = () => reject(tx.error || new Error("Failed to read files"));
+    });
+  }
+
+  function deleteFilesByGameId(gameId) {
+    return new Promise((resolve, reject) => {
+      const tx = state.db.transaction(STORE_FILES, "readwrite");
+      const index = tx.objectStore(STORE_FILES).index("gameId");
+      const request = index.openCursor(IDBKeyRange.only(gameId));
+      request.onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (!cursor) {
+          return;
+        }
+        cursor.delete();
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error || new Error("Failed to delete files"));
+    });
+  }
+
+  function findEocdOffset(bytes) {
+    const minEocdLength = 22;
+    const maxCommentLength = 65535;
+    const start = Math.max(0, bytes.length - minEocdLength - maxCommentLength);
+    for (let i = bytes.length - minEocdLength; i >= start; i -= 1) {
+      if (
+        bytes[i] === 0x50 &&
+        bytes[i + 1] === 0x4b &&
+        bytes[i + 2] === 0x05 &&
+        bytes[i + 3] === 0x06
+      ) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  function parseZipArchive(arrayBuffer) {
+    const bytes = new Uint8Array(arrayBuffer);
+    const view = new DataView(arrayBuffer);
+    const eocdOffset = findEocdOffset(bytes);
+    if (eocdOffset === -1) {
+      throw new Error("Invalid ZIP: end-of-central-directory record not found.");
+    }
+
+    const totalEntries = view.getUint16(eocdOffset + 10, true);
+    const centralDirectorySize = view.getUint32(eocdOffset + 12, true);
+    const centralDirectoryOffset = view.getUint32(eocdOffset + 16, true);
+
+    if (
+      totalEntries === 0xffff ||
+      centralDirectorySize === 0xffffffff ||
+      centralDirectoryOffset === 0xffffffff
+    ) {
+      throw new Error("ZIP64 archives are not supported yet.");
+    }
+
+    const end = centralDirectoryOffset + centralDirectorySize;
+    if (end > bytes.length) {
+      throw new Error("Invalid ZIP: central directory outside file bounds.");
+    }
+
+    const decoder = new TextDecoder("utf-8");
+    const entries = [];
+    let offset = centralDirectoryOffset;
+
+    for (let i = 0; i < totalEntries; i += 1) {
+      if (view.getUint32(offset, true) !== 0x02014b50) {
+        throw new Error("Invalid ZIP: bad central directory header.");
+      }
+
+      const flags = view.getUint16(offset + 8, true);
+      const compressionMethod = view.getUint16(offset + 10, true);
+      const compressedSize = view.getUint32(offset + 20, true);
+      const uncompressedSize = view.getUint32(offset + 24, true);
+      const fileNameLength = view.getUint16(offset + 28, true);
+      const extraLength = view.getUint16(offset + 30, true);
+      const commentLength = view.getUint16(offset + 32, true);
+      const localHeaderOffset = view.getUint32(offset + 42, true);
+
+      const nameStart = offset + 46;
+      const nameEnd = nameStart + fileNameLength;
+      const nameBytes = bytes.subarray(nameStart, nameEnd);
+      const path = normalizePath(decoder.decode(nameBytes));
+
+      offset = nameEnd + extraLength + commentLength;
+
+      if (!path || path.endsWith("/")) {
+        continue;
+      }
+
+      entries.push({
+        path,
+        flags,
+        compressionMethod,
+        compressedSize,
+        uncompressedSize,
+        localHeaderOffset
+      });
+    }
+
+    return { bytes, view, entries };
+  }
+
+  function getCompressedEntrySlice(zip, entry) {
+    const localOffset = entry.localHeaderOffset;
+    if (zip.view.getUint32(localOffset, true) !== 0x04034b50) {
+      throw new Error("Invalid ZIP: bad local header for " + entry.path);
+    }
+
+    const fileNameLength = zip.view.getUint16(localOffset + 26, true);
+    const extraLength = zip.view.getUint16(localOffset + 28, true);
+    const dataOffset = localOffset + 30 + fileNameLength + extraLength;
+    const dataEnd = dataOffset + entry.compressedSize;
+
+    if (dataEnd > zip.bytes.length) {
+      throw new Error("Invalid ZIP: data overflow for " + entry.path);
+    }
+
+    return zip.bytes.subarray(dataOffset, dataEnd);
+  }
+
+  async function inflateDeflateRaw(data) {
+    if (!("DecompressionStream" in window)) {
+      throw new Error("This browser does not support ZIP extraction in file:// mode (missing DecompressionStream).");
+    }
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    const buffer = await new Response(stream).arrayBuffer();
+    return new Uint8Array(buffer);
+  }
+
+  async function extractEntryBytes(zip, entry) {
+    if (entry.flags & 0x1) {
+      throw new Error("Encrypted ZIP entries are not supported: " + entry.path);
+    }
+
+    const compressed = getCompressedEntrySlice(zip, entry);
+
+    if (entry.compressionMethod === 0) {
+      return compressed.slice();
+    }
+    if (entry.compressionMethod === 8) {
+      const decompressed = await inflateDeflateRaw(compressed);
+      return decompressed;
+    }
+
+    throw new Error(
+      "Unsupported ZIP compression method " + entry.compressionMethod + " for " + entry.path
+    );
+  }
+
+  function entryDepth(path) {
+    return normalizePath(path).split("/").length - 1;
+  }
+
+  function scoreEntryPath(path) {
+    const normalized = normalizePath(path).toLowerCase();
+    const base = normalized.split("/").pop() || normalized;
+    let score = 0;
+
+    if (base === "play.html") {
+      score += 340;
+    } else if (base === "index.html") {
+      score += 320;
+    } else if (base === "game.html") {
+      score += 260;
+    } else if (base === "main.html") {
+      score += 230;
+    } else if (base === "start.html") {
+      score += 220;
+    } else if (base === "launch.html") {
+      score += 200;
+    } else {
+      score += 120;
+    }
+
+    if (normalized === "play.html" || normalized === "index.html") {
+      score += 70;
+    }
+
+    if (/\/(assets|scripts|js|vendor|lib|dist|build|docs|examples|tests)\//.test(normalized)) {
+      score -= 95;
+    }
+    if (/(loader|preload|preloader|unityloader|template|embed|frame|privacy|terms)/.test(base)) {
+      score -= 120;
+    }
+
+    score -= entryDepth(normalized) * 3;
+    return score;
+  }
+
+  function chooseBestEntryPath(entries, preferredPath) {
+    if (preferredPath && entries.includes(preferredPath)) {
+      return preferredPath;
+    }
+    const sorted = entries.slice().sort((a, b) => {
+      const scoreDiff = scoreEntryPath(b) - scoreEntryPath(a);
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+      const depthDiff = entryDepth(a) - entryDepth(b);
+      if (depthDiff !== 0) {
+        return depthDiff;
+      }
+      return a.localeCompare(b);
+    });
+    return sorted[0] || "";
+  }
+
+  function setEmptyEntryState(message) {
+    entrySelect.innerHTML = "";
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = message;
+    entrySelect.append(option);
+    entrySelect.disabled = true;
+  }
+
+  function populateEntryOptions(entryPaths, preferredPath) {
+    const entries = (entryPaths || []).slice().sort((a, b) => a.localeCompare(b));
+    if (!entries.length) {
+      setEmptyEntryState("No .html startup file found");
+      return "";
+    }
+
+    entrySelect.disabled = false;
+    entrySelect.innerHTML = "";
+    for (const path of entries) {
+      const option = document.createElement("option");
+      option.value = path;
+      option.textContent = path;
+      entrySelect.append(option);
+    }
+
+    const selected = chooseBestEntryPath(entries, preferredPath);
+    entrySelect.value = selected;
+    return selected;
+  }
+
+  function renderGameOptions(selectedId) {
+    gameSelect.innerHTML = "";
+    const games = Array.from(state.gamesById.values()).sort((a, b) => b.importedAt - a.importedAt);
+
+    if (!games.length) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "No saved games yet";
+      gameSelect.append(option);
+      gameSelect.disabled = true;
+      return "";
+    }
+
+    gameSelect.disabled = false;
+    for (const game of games) {
+      const option = document.createElement("option");
+      option.value = game.id;
+      option.textContent = game.name;
+      gameSelect.append(option);
+    }
+
+    const chosen = selectedId && state.gamesById.has(selectedId)
+      ? selectedId
+      : games[0].id;
+    gameSelect.value = chosen;
+    return chosen;
+  }
+
+  async function refreshStorageSummary() {
+    const games = Array.from(state.gamesById.values());
+    const totalBytes = games.reduce((sum, game) => sum + (Number(game.totalBytes) || 0), 0);
+
+    libraryCount.textContent = String(games.length);
+    libraryBytes.textContent = formatBytes(totalBytes);
+
+    if (navigator.storage && navigator.storage.estimate) {
+      try {
+        const estimate = await navigator.storage.estimate();
+        const hasUsage = estimate && typeof estimate.usage === "number";
+        const hasQuota = estimate && typeof estimate.quota === "number";
+        if (hasUsage && hasQuota) {
+          quotaUsage.textContent = formatBytes(estimate.usage) + " / " + formatBytes(estimate.quota);
+        } else {
+          quotaUsage.textContent = "Unavailable";
+        }
+      } catch {
+        quotaUsage.textContent = "Unavailable";
+      }
+    } else {
+      quotaUsage.textContent = "Unsupported";
+    }
+  }
+
+  function updateSelectedGameInfo(game) {
+    if (!game) {
+      gameMeta.textContent = "No saved game selected.";
+      setEmptyEntryState("Select a saved game");
+      return;
+    }
+
+    gameMeta.textContent =
+      "Imported: " + formatDate(game.importedAt) +
+      " | Files: " + String(game.fileCount || 0) +
+      " | Saved size: " + formatBytes(game.totalBytes || 0) +
+      " | Source: " + (game.zipName || "unknown");
+
+    const chosenEntry = populateEntryOptions(game.htmlEntries || [], game.entryPath || "");
+    if (chosenEntry && chosenEntry !== game.entryPath) {
+      game.entryPath = chosenEntry;
+      state.gamesById.set(game.id, game);
+      putGame(game).catch((error) => {
+        console.error(error);
+        log("Could not persist startup file for " + game.name + ".", "error");
+      });
+    }
+  }
+
+  async function loadLibrary(preferredGameId) {
+    const games = await getAllGames();
+    state.gamesById = new Map(games.map((game) => [game.id, game]));
+
+    const selectedId = renderGameOptions(preferredGameId || state.selectedGameId);
+    state.selectedGameId = selectedId || null;
+
+    if (state.selectedGameId) {
+      await putSetting(SETTING_SELECTED_GAME, state.selectedGameId);
+    }
+
+    updateSelectedGameInfo(state.selectedGameId ? state.gamesById.get(state.selectedGameId) : null);
+    await refreshStorageSummary();
+  }
+
+  async function pickZipFile() {
+    if (window.showOpenFilePicker) {
+      try {
+        const handles = await window.showOpenFilePicker({
+          multiple: false,
+          excludeAcceptAllOption: false,
+          types: [
+            {
+              description: "ZIP archives",
+              accept: {
+                "application/zip": [".zip"],
+                "application/x-zip-compressed": [".zip"]
+              }
+            }
+          ]
+        });
+        if (!handles.length) {
+          return;
+        }
+        const file = await handles[0].getFile();
+        await importZipFile(file);
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          log("ZIP import canceled.");
+          return;
+        }
+        console.error(error);
+        log("Import failed: " + (error.message || String(error)), "error");
+      }
+      return;
+    }
+
+    zipInput.value = "";
+    zipInput.click();
+  }
+
+  async function importZipFile(file) {
+    if (!file) {
+      return;
+    }
+    if (!/\.zip$/i.test(file.name)) {
+      log("Please choose a .zip file.", "error");
+      return;
+    }
+
+    importZipButton.disabled = true;
+    launchButton.disabled = true;
+    deleteGameButton.disabled = true;
+
+    const gameId = makeId();
+
+    try {
+      log("Reading ZIP: " + file.name);
+      const zipBuffer = await file.arrayBuffer();
+      const zip = parseZipArchive(zipBuffer);
+
+      if (!zip.entries.length) {
+        throw new Error("ZIP contains no importable files.");
+      }
+
+      const htmlEntries = zip.entries
+        .map((entry) => entry.path)
+        .filter((path) => /\.html?$/i.test(path))
+        .sort((a, b) => a.localeCompare(b));
+
+      const gameRecord = {
+        id: gameId,
+        name: deriveGameName(file.name),
+        zipName: file.name,
+        importedAt: Date.now(),
+        fileCount: zip.entries.length,
+        totalBytes: 0,
+        htmlEntries,
+        entryPath: chooseBestEntryPath(htmlEntries, "")
+      };
+
+      let processed = 0;
+      let totalBytes = 0;
+
+      for (const entry of zip.entries) {
+        const entryBytes = await extractEntryBytes(zip, entry);
+        const blob = new Blob([entryBytes], { type: mimeFromPath(entry.path) });
+        totalBytes += blob.size;
+
+        await putFileRecord({
+          gameId,
+          path: entry.path,
+          size: blob.size,
+          type: blob.type,
+          blob
+        });
+
+        processed += 1;
+        if (processed % 40 === 0 || processed === zip.entries.length) {
+          log("Imported " + processed + "/" + zip.entries.length + " files...");
+        }
+      }
+
+      gameRecord.totalBytes = totalBytes;
+      await putGame(gameRecord);
+      state.selectedGameId = gameId;
+      await putSetting(SETTING_SELECTED_GAME, gameId);
+
+      await loadLibrary(gameId);
+      log("Saved game \"" + gameRecord.name + "\" (" + formatBytes(totalBytes) + ")");
+    } catch (error) {
+      console.error(error);
+      log("Import failed: " + (error.message || String(error)), "error");
+      try {
+        await deleteFilesByGameId(gameId);
+        await deleteGameRecord(gameId);
+      } catch {
+        // best effort cleanup
+      }
+    } finally {
+      importZipButton.disabled = false;
+      launchButton.disabled = false;
+      deleteGameButton.disabled = false;
+    }
+  }
+
+  function clearObjectUrls() {
+    for (const url of state.objectUrls.values()) {
+      URL.revokeObjectURL(url);
+    }
+    state.objectUrls.clear();
+  }
+
+  function rewriteCssText(cssText, cssPath) {
+    if (typeof cssText !== "string" || !cssText) {
+      return cssText;
+    }
+    const baseHref = toVirtualUrl(cssPath);
+    return cssText.replace(/url\(\s*(['"]?)([^"')]+)\1\s*\)/gi, (full, quote, urlPath) => {
+      const raw = String(urlPath || "").trim();
+      if (!raw) {
+        return full;
+      }
+      const lower = raw.toLowerCase();
+      if (
+        lower.startsWith("data:") ||
+        lower.startsWith("blob:") ||
+        lower.startsWith("about:")
+      ) {
+        return full;
+      }
+      const mapped = requestToObjectUrl(raw, baseHref);
+      if (!mapped) {
+        return full;
+      }
+      const wrapped = quote || "\"";
+      return "url(" + wrapped + mapped + wrapped + ")";
+    });
+  }
+
+  async function buildObjectUrlCacheFromRecords(records) {
+    clearObjectUrls();
+
+    for (const record of records) {
+      state.objectUrls.set(record.path, URL.createObjectURL(record.blob));
+    }
+
+    let rewrittenCount = 0;
+    for (const record of records) {
+      if (!/\.css$/i.test(record.path)) {
+        continue;
+      }
+      try {
+        const originalText = await record.blob.text();
+        const rewrittenText = rewriteCssText(originalText, record.path);
+        if (rewrittenText === originalText) {
+          continue;
+        }
+        const oldUrl = state.objectUrls.get(record.path);
+        const rewrittenUrl = URL.createObjectURL(new Blob([rewrittenText], { type: "text/css" }));
+        state.objectUrls.set(record.path, rewrittenUrl);
+        if (oldUrl) {
+          URL.revokeObjectURL(oldUrl);
+        }
+        rewrittenCount += 1;
+      } catch (error) {
+        console.error(error);
+        log("Failed to rewrite stylesheet " + record.path + ".", "error");
+      }
+    }
+
+    if (rewrittenCount > 0) {
+      log("Rewrote " + rewrittenCount + " stylesheet(s) for local asset URLs.");
+    }
+  }
+
+  function rewriteSrcSet(value, baseHref) {
+    if (typeof value !== "string") {
+      return value;
+    }
+    let changed = false;
+    const items = value.split(",");
+    const rewritten = items.map((item) => {
+      const trimmed = item.trim();
+      if (!trimmed) {
+        return trimmed;
+      }
+      const match = trimmed.match(/^(\S+)(\s+.*)?$/);
+      if (!match) {
+        return trimmed;
+      }
+      const mapped = requestToObjectUrl(match[1], baseHref);
+      if (!mapped) {
+        return trimmed;
+      }
+      changed = true;
+      return mapped + (match[2] || "");
+    });
+    return changed ? rewritten.join(", ") : value;
+  }
+
+  function injectRuntimeBridge(documentNode) {
+    const script = documentNode.createElement("script");
+    script.textContent = `
+(function () {
+  var getResolverHost = function () {
+    try {
+      if (window.parent && window.parent !== window && typeof window.parent.__loaderResolve === "function") {
+        return window.parent;
+      }
+    } catch (_error) {
+      // continue to opener fallback
+    }
+    try {
+      if (window.opener && !window.opener.closed && typeof window.opener.__loaderResolve === "function") {
+        return window.opener;
+      }
+    } catch (_error) {
+      // no resolver host available
+    }
+    return null;
+  };
+
+  var getBaseHref = function () {
+    var baseEl = document.querySelector("base[href]");
+    if (baseEl && baseEl.href) {
+      return baseEl.href;
+    }
+    return document.baseURI;
+  };
+
+  var resolver = function (value) {
+    try {
+      var host = getResolverHost();
+      if (!host) return null;
+      return host.__loaderResolve(String(value), getBaseHref());
+    } catch (_error) {
+      return null;
+    }
+  };
+
+  var mapValue = function (value) {
+    var mapped = resolver(value);
+    return mapped || value;
+  };
+
+  var mapSrcSet = function (value) {
+    if (typeof value !== "string") return value;
+    var changed = false;
+    var rewritten = value.split(",").map(function (item) {
+      var trimmed = item.trim();
+      if (!trimmed) return trimmed;
+      var match = trimmed.match(/^(\\S+)(\\s+.*)?$/);
+      if (!match) return trimmed;
+      var mapped = resolver(match[1]);
+      if (!mapped) return trimmed;
+      changed = true;
+      return mapped + (match[2] || "");
+    });
+    return changed ? rewritten.join(", ") : value;
+  };
+
+  var patchProperty = function (ctor, prop, mapper) {
+    if (!ctor || !ctor.prototype) return;
+    var desc = Object.getOwnPropertyDescriptor(ctor.prototype, prop);
+    if (!desc || typeof desc.get !== "function" || typeof desc.set !== "function") return;
+    var convert = mapper || mapValue;
+    Object.defineProperty(ctor.prototype, prop, {
+      configurable: desc.configurable,
+      enumerable: desc.enumerable,
+      get: function () {
+        return desc.get.call(this);
+      },
+      set: function (value) {
+        desc.set.call(this, convert(value));
+      }
+    });
+  };
+
+  var nativeSetAttribute = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function (name, value) {
+    var attr = String(name || "").toLowerCase();
+    if (attr === "srcset") {
+      value = mapSrcSet(value);
+    } else if (
+      attr === "src" ||
+      attr === "href" ||
+      attr === "data" ||
+      attr === "poster" ||
+      attr === "action"
+    ) {
+      value = mapValue(value);
+    }
+    return nativeSetAttribute.call(this, name, value);
+  };
+
+  if (Element.prototype.setAttributeNS) {
+    var nativeSetAttributeNS = Element.prototype.setAttributeNS;
+    Element.prototype.setAttributeNS = function (namespace, name, value) {
+      var attr = String(name || "").toLowerCase();
+      if (attr === "srcset") {
+        value = mapSrcSet(value);
+      } else if (
+        attr === "src" ||
+        attr === "href" ||
+        attr === "data" ||
+        attr === "poster" ||
+        attr === "action"
+      ) {
+        value = mapValue(value);
+      }
+      return nativeSetAttributeNS.call(this, namespace, name, value);
+    };
+  }
+
+  patchProperty(HTMLScriptElement, "src");
+  patchProperty(HTMLLinkElement, "href");
+  patchProperty(HTMLImageElement, "src");
+  patchProperty(HTMLImageElement, "srcset", mapSrcSet);
+  patchProperty(HTMLIFrameElement, "src");
+  patchProperty(HTMLObjectElement, "data");
+  patchProperty(HTMLEmbedElement, "src");
+  patchProperty(HTMLAnchorElement, "href");
+  patchProperty(HTMLFormElement, "action");
+  patchProperty(HTMLSourceElement, "src");
+  patchProperty(HTMLTrackElement, "src");
+  patchProperty(HTMLInputElement, "src");
+  if (window.HTMLMediaElement) {
+    patchProperty(HTMLMediaElement, "src");
+  }
+
+  var nativeFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    if (typeof input === "string" || input instanceof URL) {
+      return nativeFetch(mapValue(input), init);
+    }
+    if (input instanceof Request) {
+      var mapped = resolver(input.url);
+      if (mapped) {
+        return nativeFetch(new Request(mapped, input), init);
+      }
+    }
+    return nativeFetch(input, init);
+  };
+
+  var nativeOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (method, url) {
+    var rest = Array.prototype.slice.call(arguments, 2);
+    return nativeOpen.apply(this, [method, mapValue(url)].concat(rest));
+  };
+
+  if (window.Worker) {
+    var NativeWorker = window.Worker;
+    window.Worker = function (url, options) {
+      return new NativeWorker(mapValue(url), options);
+    };
+    window.Worker.prototype = NativeWorker.prototype;
+  }
+
+  if (window.SharedWorker) {
+    var NativeSharedWorker = window.SharedWorker;
+    window.SharedWorker = function (url, options) {
+      return new NativeSharedWorker(mapValue(url), options);
+    };
+    window.SharedWorker.prototype = NativeSharedWorker.prototype;
+  }
+
+  if (window.FontFace) {
+    var NativeFontFace = window.FontFace;
+    window.FontFace = function (family, source, descriptors) {
+      var nextSource = source;
+      if (typeof source === "string") {
+        nextSource = source.replace(
+          /url\\(\\s*(['"]?)([^"')]+)\\1\\s*\\)/gi,
+          function (full, quote, urlPath) {
+            var mapped = resolver(urlPath);
+            if (!mapped) {
+              return full;
+            }
+            var wrapped = quote || '"';
+            return "url(" + wrapped + mapped + wrapped + ")";
+          }
+        );
+      }
+      return new NativeFontFace(family, nextSource, descriptors);
+    };
+    window.FontFace.prototype = NativeFontFace.prototype;
+  }
+
+  var ensureVisibleSurface = function () {
+    if (!document.documentElement || !document.body) {
+      return;
+    }
+    if (!document.documentElement.style.height) {
+      document.documentElement.style.height = "100%";
+    }
+    if (!document.body.style.height) {
+      document.body.style.height = "100%";
+    }
+    if (!document.body.style.margin || document.body.style.margin === "8px") {
+      document.body.style.margin = "0";
+    }
+
+    var fixBox = function (element) {
+      if (!element || !element.getBoundingClientRect) return;
+      var rect = element.getBoundingClientRect();
+      var isCanvas = element.tagName === "CANVAS";
+      if (rect.width > 0 && rect.height > 0 && (!isCanvas || (element.width > 0 && element.height > 0))) {
+        return;
+      }
+
+      var widthStyle = element.style.width || "";
+      var heightStyle = element.style.height || "";
+      if (!widthStyle || widthStyle === "100%" || widthStyle === "0px") {
+        element.style.width = "100vw";
+      }
+      if (!heightStyle || heightStyle === "100%" || heightStyle === "0px") {
+        element.style.height = "100vh";
+      }
+      if (!element.style.display) {
+        element.style.display = "block";
+      }
+      if (!element.style.position || element.style.position === "static") {
+        element.style.position = "relative";
+      }
+
+      if (isCanvas) {
+        var viewportWidth = Math.max(window.innerWidth || 0, 1);
+        var viewportHeight = Math.max(window.innerHeight || 0, 1);
+        if (!element.width || element.width === 0) {
+          element.width = viewportWidth;
+        }
+        if (!element.height || element.height === 0) {
+          element.height = viewportHeight;
+        }
+      }
+    };
+
+    var roots = [
+      document.getElementById("gameContainer"),
+      document.getElementById("unityContainer"),
+      document.getElementById("unity-canvas"),
+      document.querySelector(".webgl-content"),
+      document.querySelector("#canvas")
+    ];
+
+    for (var i = 0; i < roots.length; i++) {
+      fixBox(roots[i]);
+    }
+
+    var canvases = document.querySelectorAll("canvas");
+    for (var c = 0; c < canvases.length; c++) {
+      var canvas = canvases[c];
+      fixBox(canvas);
+      if (canvas.parentElement) {
+        fixBox(canvas.parentElement);
+      }
+    }
+  };
+
+  window.addEventListener("load", function () {
+    ensureVisibleSurface();
+    try {
+      window.dispatchEvent(new Event("resize"));
+    } catch (_error) {
+      // ignore
+    }
+  });
+  window.addEventListener("resize", ensureVisibleSurface);
+  document.addEventListener("DOMContentLoaded", ensureVisibleSurface);
+  var surfaceTries = 0;
+  var surfaceTimer = setInterval(function () {
+    ensureVisibleSurface();
+    surfaceTries += 1;
+    if (surfaceTries >= 40) {
+      clearInterval(surfaceTimer);
+    }
+  }, 250);
+
+  window.addEventListener(
+    "error",
+    function (event) {
+      var target = event && event.target;
+      if (!target || target === window) return;
+      var badUrl = target.src || target.href || target.data || "";
+      if (typeof badUrl === "string" && badUrl.indexOf("https://loader.invalid/") === 0) {
+        console.error("Unresolved asset URL:", badUrl);
+      }
+    },
+    true
+  );
+})();
+`;
+    const base = documentNode.head.querySelector("base");
+    if (base && base.nextSibling) {
+      documentNode.head.insertBefore(script, base.nextSibling);
+      return;
+    }
+    if (base) {
+      documentNode.head.append(script);
+      return;
+    }
+    documentNode.head.prepend(script);
+  }
+
+  function rewriteDocumentHtml(htmlText, entryPath) {
+    const parser = new DOMParser();
+    const documentNode = parser.parseFromString(htmlText, "text/html");
+    const baseHref = toVirtualUrl(entryPath);
+
+    let baseElement = documentNode.querySelector("base");
+    if (!baseElement) {
+      baseElement = documentNode.createElement("base");
+      documentNode.head.prepend(baseElement);
+    }
+    baseElement.setAttribute("href", baseHref);
+
+    const targets = [
+      ["script", "src"],
+      ["link", "href"],
+      ["img", "src"],
+      ["audio", "src"],
+      ["video", "src"],
+      ["source", "src"],
+      ["track", "src"],
+      ["object", "data"],
+      ["embed", "src"],
+      ["iframe", "src"]
+    ];
+
+    for (const [selector, attribute] of targets) {
+      const elements = documentNode.querySelectorAll(selector + "[" + attribute + "]");
+      for (const element of elements) {
+        const original = element.getAttribute(attribute);
+        const mapped = requestToObjectUrl(original, baseHref);
+        if (mapped) {
+          element.setAttribute(attribute, mapped);
+        }
+      }
+    }
+
+    for (const element of documentNode.querySelectorAll("[srcset]")) {
+      const rewritten = rewriteSrcSet(element.getAttribute("srcset"), baseHref);
+      element.setAttribute("srcset", rewritten);
+    }
+
+    injectRuntimeBridge(documentNode);
+    return "<!DOCTYPE html>\n" + documentNode.documentElement.outerHTML;
+  }
+
+  async function launchSelectedGame() {
+    const gameId = state.selectedGameId;
+    const game = gameId ? state.gamesById.get(gameId) : null;
+    if (!game) {
+      log("Choose a saved game first.", "error");
+      return;
+    }
+
+    const chosenEntry = entrySelect.value || game.entryPath || chooseBestEntryPath(game.htmlEntries || [], "");
+    if (!chosenEntry) {
+      log("No startup HTML file was found for this game.", "error");
+      return;
+    }
+
+    launchButton.disabled = true;
+    deleteGameButton.disabled = true;
+
+    try {
+      log("Loading \"" + game.name + "\" from IndexedDB...");
+      const files = await getAllFilesForGame(game.id);
+      if (!files.length) {
+        throw new Error("No files were found for this game in IndexedDB.");
+      }
+
+      await buildObjectUrlCacheFromRecords(files);
+      state.activeEntryPath = chosenEntry;
+
+      const fileMap = new Map(files.map((record) => [record.path, record]));
+      let entryPath = chosenEntry;
+      let entryRecord = fileMap.get(entryPath);
+
+      if (!entryRecord) {
+        const htmlEntries = files
+          .map((record) => record.path)
+          .filter((path) => /\.html?$/i.test(path));
+        entryPath = chooseBestEntryPath(htmlEntries, game.entryPath || "");
+        entryRecord = fileMap.get(entryPath);
+      }
+
+      if (!entryRecord) {
+        throw new Error("Startup file is missing from saved data.");
+      }
+
+      const htmlText = await entryRecord.blob.text();
+      const rewrittenHtml = rewriteDocumentHtml(htmlText, entryPath);
+
+      if (!state.playerWindow || state.playerWindow.closed) {
+        state.playerWindow = window.open("about:blank", "cbgamesOfflinePlayer");
+      }
+      if (!state.playerWindow) {
+        throw new Error("Popup blocked. Allow popups for this file page.");
+      }
+
+      state.playerWindow.document.open();
+      state.playerWindow.document.write(rewrittenHtml);
+      state.playerWindow.document.close();
+      state.playerWindow.focus();
+
+      if (game.entryPath !== entryPath) {
+        game.entryPath = entryPath;
+        state.gamesById.set(game.id, game);
+        await putGame(game);
+        updateSelectedGameInfo(game);
+      }
+
+      log("Launched: " + game.name + " (" + entryPath + ")");
+    } catch (error) {
+      console.error(error);
+      log("Launch failed: " + (error.message || String(error)), "error");
+    } finally {
+      launchButton.disabled = false;
+      deleteGameButton.disabled = false;
+    }
+  }
+
+  async function deleteSelectedGame() {
+    const gameId = state.selectedGameId;
+    const game = gameId ? state.gamesById.get(gameId) : null;
+    if (!game) {
+      log("Choose a saved game to delete.", "error");
+      return;
+    }
+
+    const ok = window.confirm("Delete \"" + game.name + "\" from IndexedDB? This cannot be undone.");
+    if (!ok) {
+      return;
+    }
+
+    importZipButton.disabled = true;
+    launchButton.disabled = true;
+    deleteGameButton.disabled = true;
+
+    try {
+      await deleteFilesByGameId(game.id);
+      await deleteGameRecord(game.id);
+      state.gamesById.delete(game.id);
+
+      if (state.selectedGameId === game.id) {
+        state.selectedGameId = null;
+      }
+
+      clearObjectUrls();
+      state.activeEntryPath = null;
+
+      if (state.playerWindow && !state.playerWindow.closed) {
+        state.playerWindow.close();
+      }
+      state.playerWindow = null;
+
+      await putSetting(SETTING_SELECTED_GAME, "");
+      await loadLibrary();
+      log("Deleted game: " + game.name);
+    } catch (error) {
+      console.error(error);
+      log("Delete failed: " + (error.message || String(error)), "error");
+    } finally {
+      importZipButton.disabled = false;
+      launchButton.disabled = false;
+      deleteGameButton.disabled = false;
+    }
+  }
+
+  gameSelect.addEventListener("change", async () => {
+    const nextId = gameSelect.value || null;
+    state.selectedGameId = nextId;
+    await putSetting(SETTING_SELECTED_GAME, nextId || "");
+    updateSelectedGameInfo(nextId ? state.gamesById.get(nextId) : null);
+  });
+
+  entrySelect.addEventListener("change", async () => {
+    const gameId = state.selectedGameId;
+    const game = gameId ? state.gamesById.get(gameId) : null;
+    if (!game || !entrySelect.value) {
+      return;
+    }
+    game.entryPath = entrySelect.value;
+    state.gamesById.set(game.id, game);
+    try {
+      await putGame(game);
+      log("Startup file set to " + game.entryPath);
+    } catch (error) {
+      console.error(error);
+      log("Could not save startup file selection.", "error");
+    }
+  });
+
+  importZipButton.addEventListener("click", pickZipFile);
+  launchButton.addEventListener("click", launchSelectedGame);
+  deleteGameButton.addEventListener("click", deleteSelectedGame);
+
+  zipInput.addEventListener("change", async () => {
+    if (!zipInput.files || !zipInput.files.length) {
+      return;
+    }
+    await importZipFile(zipInput.files[0]);
+  });
+
+  setEmptyEntryState("Loading...");
+
+  (async () => {
+    try {
+      state.db = await openDatabase();
+      const savedGameId = await getSetting(SETTING_SELECTED_GAME);
+      await loadLibrary(savedGameId || "");
+      log("Ready. Import a ZIP game to begin.");
+    } catch (error) {
+      console.error(error);
+      setEmptyEntryState("Initialization failed");
+      log("Initialization failed: " + (error.message || String(error)), "error");
+      importZipButton.disabled = true;
+      launchButton.disabled = true;
+      deleteGameButton.disabled = true;
+    }
+  })();
+})();
+</script>
+
+</body>
+</html>
