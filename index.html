@@ -398,7 +398,7 @@
 
   <section class="panel">
     <h1>Launcher</h1>
-
+    <p>There are performance issues due to the way this tool works. Some games may crash and potentially freeze your device.</p>
     <div class="quick-steps">
       <span>1. Import ZIP</span>
       <span>2. Select Saved Game</span>
@@ -466,6 +466,9 @@
 
   const VFS_ORIGIN = "https://loader.invalid/";
   const VFS_ORIGIN_URL = new URL(VFS_ORIGIN).origin;
+  const UNITY_GPU_SAFE_MODE = true;
+  const UNITY_FORCE_WEBGL1 = true;
+  const UNITY_CLAMP_DEVICE_PIXEL_RATIO = 1;
 
   const importZipButton = document.getElementById("importZip");
   const launchButton = document.getElementById("launch");
@@ -1282,6 +1285,93 @@
     });
   }
 
+  function isUnityWebConfigObject(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return false;
+    }
+    if (typeof value.dataUrl !== "string") {
+      return false;
+    }
+    return (
+      typeof value.asmCodeUrl === "string" ||
+      typeof value.wasmCodeUrl === "string" ||
+      typeof value.asmFrameworkUrl === "string" ||
+      typeof value.frameworkUrl === "string"
+    );
+  }
+
+  function rewriteUnityWebConfigText(jsonText, path) {
+    if (!UNITY_GPU_SAFE_MODE || typeof jsonText !== "string" || !/\.json$/i.test(path)) {
+      return { text: jsonText, changed: false };
+    }
+
+    let config;
+    try {
+      config = JSON.parse(jsonText);
+    } catch {
+      return { text: jsonText, changed: false };
+    }
+
+    if (!isUnityWebConfigObject(config)) {
+      return { text: jsonText, changed: false };
+    }
+
+    let changed = false;
+    if (UNITY_FORCE_WEBGL1) {
+      const currentApis = Array.isArray(config.graphicsAPI)
+        ? config.graphicsAPI.map((api) => String(api))
+        : [];
+      const supportsWebGL1 = currentApis.some((api) => api === "WebGL 1.0");
+      if (supportsWebGL1 || !currentApis.length) {
+        const nextApis = ["WebGL 1.0"];
+        if (
+          currentApis.length !== nextApis.length ||
+          currentApis.some((api, index) => api !== nextApis[index])
+        ) {
+          config.graphicsAPI = nextApis;
+          changed = true;
+        }
+      }
+    }
+
+    const nextContextAttrs = {
+      ...(config.webglContextAttributes && typeof config.webglContextAttributes === "object"
+        ? config.webglContextAttributes
+        : {})
+    };
+    const requiredAttrs = {
+      antialias: false,
+      alpha: false,
+      stencil: false,
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: false,
+      desynchronized: true,
+      powerPreference: "low-power"
+    };
+    for (const [key, value] of Object.entries(requiredAttrs)) {
+      if (nextContextAttrs[key] !== value) {
+        nextContextAttrs[key] = value;
+        changed = true;
+      }
+    }
+    config.webglContextAttributes = nextContextAttrs;
+
+    const forcedDpr = Number(UNITY_CLAMP_DEVICE_PIXEL_RATIO);
+    if (forcedDpr > 0 && Number(config.devicePixelRatio) !== forcedDpr) {
+      config.devicePixelRatio = forcedDpr;
+      changed = true;
+    }
+
+    if (!changed) {
+      return { text: jsonText, changed: false };
+    }
+
+    return {
+      text: JSON.stringify(config),
+      changed: true
+    };
+  }
+
   async function buildObjectUrlCacheFromRecords(records) {
     clearObjectUrls();
 
@@ -1289,32 +1379,57 @@
       state.objectUrls.set(record.path, URL.createObjectURL(record.blob));
     }
 
-    let rewrittenCount = 0;
+    let rewrittenCssCount = 0;
+    let rewrittenUnityConfigCount = 0;
     for (const record of records) {
-      if (!/\.css$/i.test(record.path)) {
-        continue;
-      }
       try {
-        const originalText = await record.blob.text();
-        const rewrittenText = rewriteCssText(originalText, record.path);
-        if (rewrittenText === originalText) {
+        let rewrittenText = "";
+        let rewrittenMime = "";
+
+        if (/\.css$/i.test(record.path)) {
+          const originalText = await record.blob.text();
+          rewrittenText = rewriteCssText(originalText, record.path);
+          if (rewrittenText === originalText) {
+            continue;
+          }
+          rewrittenMime = "text/css";
+          rewrittenCssCount += 1;
+        } else if (/\.json$/i.test(record.path)) {
+          const originalText = await record.blob.text();
+          const rewrite = rewriteUnityWebConfigText(originalText, record.path);
+          if (!rewrite.changed) {
+            continue;
+          }
+          rewrittenText = rewrite.text;
+          rewrittenMime = "application/json";
+          rewrittenUnityConfigCount += 1;
+        } else {
           continue;
         }
+
         const oldUrl = state.objectUrls.get(record.path);
-        const rewrittenUrl = URL.createObjectURL(new Blob([rewrittenText], { type: "text/css" }));
+        const rewrittenBlob = new Blob([rewrittenText], {
+          type: rewrittenMime || record.type || mimeFromPath(record.path)
+        });
+        record.blob = rewrittenBlob;
+        record.size = rewrittenBlob.size;
+        record.type = rewrittenBlob.type;
+        const rewrittenUrl = URL.createObjectURL(rewrittenBlob);
         state.objectUrls.set(record.path, rewrittenUrl);
         if (oldUrl) {
           URL.revokeObjectURL(oldUrl);
         }
-        rewrittenCount += 1;
       } catch (error) {
         console.error(error);
-        log("Failed to rewrite stylesheet " + record.path + ".", "error");
+        log("Failed to rewrite asset " + record.path + ".", "error");
       }
     }
 
-    if (rewrittenCount > 0) {
-      log("Rewrote " + rewrittenCount + " stylesheet(s) for local asset URLs.");
+    if (rewrittenCssCount > 0) {
+      log("Rewrote " + rewrittenCssCount + " stylesheet(s) for local asset URLs.");
+    }
+    if (rewrittenUnityConfigCount > 0) {
+      log("Applied Unity GPU-safe config to " + rewrittenUnityConfigCount + " Web config file(s).");
     }
   }
 
@@ -1347,6 +1462,121 @@
     const script = documentNode.createElement("script");
     script.textContent = `
 (function () {
+  // Mock Kongregate API for offline games
+  if (!window.kongregate) {
+    // Create a proxy that handles any unknown property access
+    const createFallbackProxy = function(target, fallbackName) {
+      return new Proxy(target, {
+        get: function(obj, prop) {
+          if (prop in obj) {
+            return obj[prop];
+          }
+          // Return a fallback function for any unknown property
+          return function(...args) {
+            console.log('[Kongregate Fallback] ' + fallbackName + '.' + prop + ' called with:', args);
+            // For functions that expect callbacks, call them with appropriate mock data
+            if (typeof args[args.length - 1] === 'function') {
+              const callback = args[args.length - 1];
+              if (fallbackName === 'scores' && prop === 'list') {
+                callback([]);
+              } else if (fallbackName === 'sharedContent' && (prop === 'load' || prop === 'save')) {
+                callback({ success: false, content: null });
+              } else {
+                callback(null);
+              }
+            }
+            // Return appropriate default values
+            if (prop.includes('get') || prop.includes('is')) {
+              return prop.includes('Id') ? 'player1' : prop.includes('Guest') ? false : 'Player';
+            }
+            if (prop.includes('JSON')) {
+              return '{}';
+            }
+            return null;
+          };
+        }
+      });
+    };
+
+    window.kongregate = createFallbackProxy({
+      services: createFallbackProxy({
+        getGameInfo: function() { return { id: 'offline-game', name: 'Offline Game' }; },
+        getUsername: function() { return 'Player'; },
+        getUserId: function() { return 'player1'; },
+        getGameAuthToken: function() { return 'offline-token'; },
+        isGuest: function() { return false; },
+        addEventListener: function(event, callback) { 
+          console.log('[Kongregate Services] addEventListener:', event);
+          if (callback) callback();
+        }
+      }, 'services'),
+      stats: createFallbackProxy({
+        submit: function(stat, value) { console.log('Kongregate stat:', stat, value); },
+        submitArray: function(stats) { console.log('Kongregate stats array:', stats); }
+      }, 'stats'),
+      scores: createFallbackProxy({
+        submit: function(score, mode) { console.log('Kongregate score:', score, mode); },
+        list: function(mode, callback) { 
+          callback([]); // Return empty scores list
+        }
+      }, 'scores'),
+      sharedContent: createFallbackProxy({
+        addLoadListener: function(callback) { },
+        addSaveListener: function(callback) { },
+        save: function(content, callback) { 
+          console.log('Kongregate save:', content);
+          if (callback) callback({ success: true });
+        },
+        load: function(callback) { 
+          console.log('Kongregate load requested');
+          if (callback) callback({ success: false, content: null });
+        }
+      }, 'sharedContent'),
+      images: createFallbackProxy({
+        getAvatar: function(username, callback) {
+          if (callback) callback(null);
+        }
+      }, 'images'),
+      mtx: createFallbackProxy({
+        purchaseItems: function(items, callback) {
+          console.log('Kongregate purchase:', items);
+          if (callback) callback({ success: false });
+        },
+        requestUserItemList: function(callback) {
+          if (callback) callback([]);
+        }
+      }, 'mtx'),
+      chat: createFallbackProxy({
+        showTab: function(tab) { console.log('Kongregate chat tab:', tab); },
+        displayTab: function() { console.log('Kongregate display chat'); }
+      }, 'chat'),
+      analytics: createFallbackProxy({
+        addEvent: function(name, data) { console.log('Kongregate analytics:', name, data); },
+        getAutoPropertiesJSON: function() { return '{}'; }
+      }, 'analytics'),
+      // Utility functions
+      Log: {
+        debug: function(...args) { console.log('[Kongregate Debug]', ...args); },
+        info: function(...args) { console.info('[Kongregate Info]', ...args); },
+        warn: function(...args) { console.warn('[Kongregate Warn]', ...args); },
+        error: function(...args) { console.error('[Kongregate Error]', ...args); }
+      },
+      Utils: createFallbackProxy({
+        catchErrors: function(fn, context, fallback) {
+          return function(...args) {
+            try {
+              return fn.apply(context, args);
+            } catch (error) {
+              console.error('[Kongregate Error]', error);
+              return fallback;
+            }
+          };
+        }
+      }, 'Utils')
+    }, 'kongregate');
+    console.log('Mock Kongregate API added for offline play');
+  }
+
   var getResolverHost = function () {
     try {
       if (window.parent && window.parent !== window && typeof window.parent.__loaderResolve === "function") {
@@ -1387,6 +1617,10 @@
     var mapped = resolver(value);
     return mapped || value;
   };
+
+  var UNITY_GPU_SAFE_MODE = true;
+  var UNITY_FORCE_WEBGL1 = true;
+  var UNITY_CLAMP_DEVICE_PIXEL_RATIO = 1;
 
   var mapSrcSet = function (value) {
     if (typeof value !== "string") return value;
@@ -1530,6 +1764,64 @@
     };
     window.FontFace.prototype = NativeFontFace.prototype;
   }
+
+  var installWebGLSafetyPatch = function () {
+    if (!UNITY_GPU_SAFE_MODE || !window.HTMLCanvasElement || !HTMLCanvasElement.prototype) {
+      return;
+    }
+    if (window.__loaderWebglSafetyInstalled) {
+      return;
+    }
+    window.__loaderWebglSafetyInstalled = true;
+
+    var forcedDpr = Number(UNITY_CLAMP_DEVICE_PIXEL_RATIO) || 0;
+    if (forcedDpr > 0) {
+      try {
+        Object.defineProperty(window, "devicePixelRatio", {
+          configurable: true,
+          get: function () {
+            return forcedDpr;
+          }
+        });
+      } catch (_error) {
+        // read-only in some environments
+      }
+    }
+
+    var nativeGetContext = HTMLCanvasElement.prototype.getContext;
+    if (typeof nativeGetContext !== "function") {
+      return;
+    }
+
+    HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+      var kind = String(type || "").toLowerCase();
+      if (UNITY_FORCE_WEBGL1 && kind === "webgl2") {
+        return null;
+      }
+
+      if (
+        kind === "webgl" ||
+        kind === "experimental-webgl" ||
+        kind === "webgl2"
+      ) {
+        var nextAttrs = Object.assign({}, attrs || {}, {
+          antialias: false,
+          alpha: false,
+          stencil: false,
+          premultipliedAlpha: false,
+          preserveDrawingBuffer: false,
+          desynchronized: true,
+          powerPreference: "low-power"
+        });
+        return nativeGetContext.call(this, type, nextAttrs);
+      }
+
+      return nativeGetContext.call(this, type, attrs);
+    };
+
+    console.log("[GPU Safe] WebGL safety mode active (WebGL1 + low-memory context attrs).");
+  };
+  installWebGLSafetyPatch();
 
   var ensureVisibleSurface = function () {
     if (!document.documentElement || !document.body) {
