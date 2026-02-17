@@ -454,6 +454,16 @@
 <input id="zipInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 
 <script>
+  
+window.onload = function(){
+
+  const urlParams = new URLSearchParams(queryString);
+  const game = urlParams.get('load');
+  if (game) {
+    state.selectedGameId = game;
+    launchSelectedGame();
+  };
+};
 (() => {
   "use strict";
 
@@ -1504,7 +1514,7 @@
   };
 
   var UNITY_GPU_SAFE_MODE = true;
-  var UNITY_FORCE_WEBGL1 = true;
+  var UNITY_FORCE_WEBGL1 = false;
   var UNITY_CLAMP_DEVICE_PIXEL_RATIO = 1;
 
   var mapSrcSet = function (value) {
@@ -2051,6 +2061,25 @@
       const savedGameId = await getSetting(SETTING_SELECTED_GAME);
       await loadLibrary(savedGameId || "");
       log("Ready. Import a ZIP game to begin.");
+       const urlParams = new URLSearchParams(window.location.search);
+      const loadParam = urlParams.get('load');
+      if (loadParam) {
+        const lower = loadParam.toLowerCase();
+        const match =
+          state.gamesById.get(loadParam) ||
+          Array.from(state.gamesById.values()).find(
+            g => g.name.toLowerCase() === lower ||
+                 g.name.toLowerCase().replace(/\s+/g, '') === lower.replace(/\s+/g, '')
+          );
+        if (match) {
+          state.selectedGameId = match.id;
+          gameSelect.value = match.id;
+          updateSelectedGameInfo(match);
+          await launchSelectedGame();
+        } else {
+          log('No saved game found matching "' + loadParam + '".', "error");
+        }
+      }
     } catch (error) {
       console.error(error);
       setEmptyEntryState("Initialization failed");
