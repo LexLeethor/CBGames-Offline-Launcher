@@ -575,6 +575,7 @@
     gamesById: new Map(),
     selectedGameId: null,
     objectUrls: new Map(),
+    objectUrlHost: window,
     activeEntryPath: null,
     playerWindow: null,
     searchQuery: "",
@@ -1570,10 +1571,16 @@
   }
 
   function clearObjectUrls() {
+    const host = state.objectUrlHost && state.objectUrlHost.URL ? state.objectUrlHost : window;
     for (const url of state.objectUrls.values()) {
-      URL.revokeObjectURL(url);
+      try {
+        host.URL.revokeObjectURL(url);
+      } catch {
+        URL.revokeObjectURL(url);
+      }
     }
     state.objectUrls.clear();
+    state.objectUrlHost = window;
   }
 
   function rewriteCssText(cssText, cssPath) {
@@ -1601,6 +1608,261 @@
       const wrapped = quote || "\"";
       return "url(" + wrapped + mapped + wrapped + ")";
     });
+  }
+
+  function bytesToBase64(bytes) {
+    if (!(bytes instanceof Uint8Array)) {
+      return "";
+    }
+    const chunkSize = 0x8000;
+    let out = "";
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      const slice = bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length));
+      out += String.fromCharCode.apply(null, slice);
+    }
+    return btoa(out);
+  }
+
+  function textToBase64(text) {
+    return btoa(unescape(encodeURIComponent(String(text || ""))));
+  }
+  function findReferencedWasmPath(scriptText, scriptPath, recordsByPath) {
+    if (typeof scriptText !== "string" || !scriptText) {
+      return null;
+    }
+    const baseHref = toVirtualUrl(scriptPath);
+    const candidates = [];
+    const refMatches = scriptText.matchAll(/(["'])([^"'\\]*?\.wasm(?:\.[^"'\\\/?#]+)?)\1/g);
+    for (const match of refMatches) {
+      const rawRef = match[2];
+      if (rawRef) {
+        candidates.push(rawRef);
+      }
+    }
+    candidates.push(scriptPath.replace(/\.wasm\.js$/i, ".wasm.wasm"));
+    candidates.push(scriptPath.replace(/\.js$/i, ".wasm"));
+    candidates.push(scriptPath.replace(/\.js$/i, ".wasm.wasm"));
+
+    for (const rawRef of candidates) {
+      const resolvedFromBase = resolveToPath(rawRef, baseHref);
+      if (resolvedFromBase && recordsByPath.has(resolvedFromBase)) {
+        return { rawRef, path: resolvedFromBase };
+      }
+      const resolvedFromRoot = resolveToPath(rawRef, VFS_ORIGIN);
+      if (resolvedFromRoot && recordsByPath.has(resolvedFromRoot)) {
+        return { rawRef, path: resolvedFromRoot };
+      }
+      if (resolvedFromRoot) {
+        const basePath = resolveToPath(baseHref, VFS_ORIGIN);
+        let probeDir = basePath ? dirnamePath(basePath) : "";
+        while (probeDir) {
+          const candidate = normalizePath(probeDir + "/" + resolvedFromRoot);
+          if (recordsByPath.has(candidate)) {
+            return { rawRef, path: candidate };
+          }
+          probeDir = dirnamePath(probeDir);
+        }
+      }
+    }
+    return null;
+  }
+
+  function replaceFirstWasmRef(scriptText, rawRef, dataUrl) {
+    if (typeof scriptText !== "string") {
+      return scriptText;
+    }
+    const replacement = JSON.stringify(dataUrl);
+    const doubleQuoted = JSON.stringify(rawRef);
+    if (scriptText.includes(doubleQuoted)) {
+      return scriptText.replace(doubleQuoted, replacement);
+    }
+    const singleQuoted = "'" + String(rawRef).replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'";
+    if (scriptText.includes(singleQuoted)) {
+      return scriptText.replace(singleQuoted, replacement);
+    }
+    return scriptText;
+  }
+
+  async function patchEmscriptenWasmScriptText(scriptText, scriptPath, recordsByPath, dataUrlCache) {
+    if (typeof scriptText !== "string" || !scriptText || !scriptPath) {
+      return scriptText;
+    }
+    const wasmRef = findReferencedWasmPath(scriptText, scriptPath, recordsByPath);
+    if (!wasmRef) {
+      return scriptText;
+    }
+
+    const wasmPath = wasmRef.path;
+    const wasmRecord = recordsByPath.get(wasmPath);
+    if (!wasmRecord) {
+      return scriptText;
+    }
+
+    let wasmDataUrl = dataUrlCache.get(wasmPath) || "";
+    if (!wasmDataUrl) {
+      const wasmBytes = new Uint8Array(await wasmRecord.blob.arrayBuffer());
+      wasmDataUrl = "data:application/wasm;base64," + bytesToBase64(wasmBytes);
+      dataUrlCache.set(wasmPath, wasmDataUrl);
+    }
+
+    const wasmRefRaw = String(wasmRef.rawRef || "");
+    const marker = "if(!F(O=" + JSON.stringify(wasmRefRaw) + ")){var L=O;O=n.locateFile?n.locateFile(L,u):u+L}";
+    const forcedWasmAssign = "O=" + JSON.stringify(wasmDataUrl) + ";";
+    if (scriptText.includes(marker)) {
+      return scriptText.replace(marker, forcedWasmAssign);
+    }
+    return replaceFirstWasmRef(scriptText, wasmRefRaw, wasmDataUrl);
+  }
+
+  async function buildEmscriptenInlineDataUrl(scriptPath, recordsByPath, dataUrlCache) {
+    if (!scriptPath) {
+      return null;
+    }
+    const scriptRecord = recordsByPath.get(scriptPath);
+    if (!scriptRecord) {
+      return null;
+    }
+
+    const scriptText = await scriptRecord.blob.text();
+    const wasmRef = findReferencedWasmPath(scriptText, scriptPath, recordsByPath);
+    if (!wasmRef) {
+      return null;
+    }
+
+    const wasmPath = wasmRef.path;
+    const wasmRecord = recordsByPath.get(wasmPath);
+    if (!wasmRecord) {
+      return null;
+    }
+
+    const cacheKey = "__ems_inline__:" + scriptPath + ":" + wasmPath;
+    if (dataUrlCache.has(cacheKey)) {
+      return dataUrlCache.get(cacheKey);
+    }
+
+    let wasmDataUrl = dataUrlCache.get(wasmPath) || "";
+    if (!wasmDataUrl) {
+      const wasmBytes = new Uint8Array(await wasmRecord.blob.arrayBuffer());
+      wasmDataUrl = "data:application/wasm;base64," + bytesToBase64(wasmBytes);
+      dataUrlCache.set(wasmPath, wasmDataUrl);
+    }
+
+    const wasmRefRaw = String(wasmRef.rawRef || "");
+    const patchedScriptText = await patchEmscriptenWasmScriptText(
+      scriptText,
+      scriptPath,
+      recordsByPath,
+      dataUrlCache
+    );
+
+    const wasmBasename = String(wasmPath).split("/").pop() || "";
+    const loaderKeys = [wasmRefRaw, wasmBasename].filter((value, index, arr) => value && arr.indexOf(value) === index);
+    const prelude =
+      "(function(){var __loaderWasmUrl=" + JSON.stringify(wasmDataUrl) + ";" +
+      "var __loaderWasmKeys=" + JSON.stringify(loaderKeys) + ";" +
+      "function __isLoaderWasmPath(path){if(typeof path!=='string'){return false;}for(var i=0;i<__loaderWasmKeys.length;i++){if(path===__loaderWasmKeys[i]){return true;}}return false;}" +
+      "self.Module=self.Module||{};" +
+      "var __prevLocate=self.Module.locateFile;" +
+      "self.Module.locateFile=function(path,prefix){" +
+      "if(__isLoaderWasmPath(path)){return __loaderWasmUrl;}" +
+      "if(typeof __prevLocate==='function'){return __prevLocate(path,prefix);}" +
+      "return (prefix||'')+path;};" +
+      "if(typeof self.fetch==='function'){var __prevFetch=self.fetch.bind(self);self.fetch=function(input,init){if(__isLoaderWasmPath(input)){input=__loaderWasmUrl;}return __prevFetch(input,init);};}" +
+      "if(typeof XMLHttpRequest==='function'){var __prevOpen=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(method,url){if(__isLoaderWasmPath(url)){url=__loaderWasmUrl;}return __prevOpen.apply(this,[method,url].concat(Array.prototype.slice.call(arguments,2)));};}" +
+      "})();\n";
+    const dataUrl = "data:application/javascript;base64," + textToBase64(prelude + patchedScriptText);
+    dataUrlCache.set(cacheKey, dataUrl);
+    return dataUrl;
+  }
+
+  async function buildInlineScriptDataUrl(scriptPath, recordsByPath, dataUrlCache) {
+    if (!scriptPath) {
+      return null;
+    }
+    const cacheKey = "__js_inline__:" + scriptPath;
+    if (dataUrlCache.has(cacheKey)) {
+      return dataUrlCache.get(cacheKey);
+    }
+    const scriptRecord = recordsByPath.get(scriptPath);
+    if (!scriptRecord) {
+      return null;
+    }
+    const scriptText = await scriptRecord.blob.text();
+    const dataUrl = "data:application/javascript;base64," + textToBase64(scriptText);
+    dataUrlCache.set(cacheKey, dataUrl);
+    return dataUrl;
+  }
+
+  async function rewriteImportScriptsText(scriptText, scriptPath, recordsByPath, dataUrlCache) {
+    if (typeof scriptText !== "string" || !scriptText) {
+      return scriptText;
+    }
+    const baseHref = toVirtualUrl(scriptPath);
+    const matches = Array.from(scriptText.matchAll(/importScripts\(([^)]*)\)/g));
+    if (!matches.length) {
+      return scriptText;
+    }
+
+    let rewritten = "";
+    let cursor = 0;
+    for (const match of matches) {
+      const full = match[0];
+      const argsText = match[1];
+      const start = match.index || 0;
+      const end = start + full.length;
+      rewritten += scriptText.slice(cursor, start);
+      if (!argsText || typeof argsText !== "string") {
+        rewritten += full;
+        cursor = end;
+        continue;
+      }
+
+      let argsOut = "";
+      let argCursor = 0;
+      const argMatches = Array.from(argsText.matchAll(/(['"])([^"'\\]+)\1/g));
+      for (const argMatch of argMatches) {
+        const segment = argMatch[0];
+        const quote = argMatch[1];
+        const rawPath = argMatch[2];
+        const segStart = argMatch.index || 0;
+        const segEnd = segStart + segment.length;
+        argsOut += argsText.slice(argCursor, segStart);
+
+        const resolvedPath = resolveToPath(rawPath, baseHref);
+        let mapped = requestToObjectUrl(rawPath, baseHref);
+        if (resolvedPath && /\.(?:js|mjs|cjs)$/i.test(resolvedPath)) {
+          const emscriptenInlineUrl = await buildEmscriptenInlineDataUrl(
+            resolvedPath,
+            recordsByPath,
+            dataUrlCache
+          );
+          if (emscriptenInlineUrl) {
+            mapped = emscriptenInlineUrl;
+          } else {
+            const inlineScriptUrl = await buildInlineScriptDataUrl(
+              resolvedPath,
+              recordsByPath,
+              dataUrlCache
+            );
+            if (inlineScriptUrl) {
+              mapped = inlineScriptUrl;
+            }
+          }
+        }
+
+        if (!mapped) {
+          argsOut += segment;
+        } else {
+          argsOut += quote + mapped + quote;
+        }
+        argCursor = segEnd;
+      }
+      argsOut += argsText.slice(argCursor);
+      rewritten += "importScripts(" + argsOut + ")";
+      cursor = end;
+    }
+    rewritten += scriptText.slice(cursor);
+    return rewritten;
   }
 
   function isUnityWebConfigObject(value) {
@@ -1690,11 +1952,15 @@
     };
   }
 
-  async function buildObjectUrlCacheFromRecords(records) {
+  async function buildObjectUrlCacheFromRecords(records, hostWindow) {
+    const host = hostWindow && hostWindow.URL ? hostWindow : window;
     clearObjectUrls();
+    state.objectUrlHost = host;
+    const recordsByPath = new Map(records.map((record) => [record.path, record]));
+    const dataUrlCache = new Map();
 
     for (const record of records) {
-      state.objectUrls.set(record.path, URL.createObjectURL(record.blob));
+      state.objectUrls.set(record.path, host.URL.createObjectURL(record.blob));
     }
 
     let rewrittenCssCount = 0;
@@ -1721,6 +1987,24 @@
           rewrittenText = rewrite.text;
           rewrittenMime = "application/json";
           rewrittenUnityConfigCount += 1;
+        } else if (/\.(?:js|mjs|cjs)$/i.test(record.path)) {
+          const originalText = await record.blob.text();
+          const emsPatchedText = await patchEmscriptenWasmScriptText(
+            originalText,
+            record.path,
+            recordsByPath,
+            dataUrlCache
+          );
+          rewrittenText = await rewriteImportScriptsText(
+            emsPatchedText,
+            record.path,
+            recordsByPath,
+            dataUrlCache
+          );
+          if (rewrittenText === originalText) {
+            continue;
+          }
+          rewrittenMime = "application/javascript";
         } else {
           continue;
         }
@@ -1732,10 +2016,10 @@
         record.blob = rewrittenBlob;
         record.size = rewrittenBlob.size;
         record.type = rewrittenBlob.type;
-        const rewrittenUrl = URL.createObjectURL(rewrittenBlob);
+        const rewrittenUrl = host.URL.createObjectURL(rewrittenBlob);
         state.objectUrls.set(record.path, rewrittenUrl);
         if (oldUrl) {
-          URL.revokeObjectURL(oldUrl);
+          host.URL.revokeObjectURL(oldUrl);
         }
       } catch (error) {
         console.error(error);
@@ -1839,6 +2123,66 @@
       return mapped + (match[2] || "");
     });
     return changed ? rewritten.join(", ") : value;
+  };
+
+  var rewriteCssRuntime = function (value) {
+    if (typeof value !== "string" || !value) return value;
+    return value.replace(
+      /url\\(\\s*(['"]?)([^"')]+)\\1\\s*\\)/gi,
+      function (full, quote, urlPath) {
+        var mapped = resolver(urlPath);
+        if (!mapped) return full;
+        var wrapped = quote || '"';
+        return "url(" + wrapped + mapped + wrapped + ")";
+      }
+    );
+  };
+
+  var remapElementTree = function (root) {
+    if (!root) return;
+    var targetAttrs = [
+      "src",
+      "href",
+      "data",
+      "poster",
+      "action"
+    ];
+    var all = [];
+    if (root.nodeType === 1) {
+      all.push(root);
+    }
+    if (root.querySelectorAll) {
+      var nested = root.querySelectorAll("*");
+      for (var n = 0; n < nested.length; n++) {
+        all.push(nested[n]);
+      }
+    }
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      for (var a = 0; a < targetAttrs.length; a++) {
+        var attr = targetAttrs[a];
+        if (!el.hasAttribute(attr)) continue;
+        var current = el.getAttribute(attr);
+        var mapped = mapValue(current);
+        if (mapped !== current) {
+          el.setAttribute(attr, mapped);
+        }
+      }
+      if (el.hasAttribute("srcset")) {
+        var currentSrcSet = el.getAttribute("srcset");
+        var mappedSrcSet = mapSrcSet(currentSrcSet);
+        if (mappedSrcSet !== currentSrcSet) {
+          el.setAttribute("srcset", mappedSrcSet);
+        }
+      }
+      if (el.tagName === "STYLE") {
+        var cssText = el.textContent || "";
+        var cssMapped = rewriteCssRuntime(cssText);
+        if (cssMapped !== cssText) {
+          el.textContent = cssMapped;
+        }
+      }
+    }
   };
 
   var patchProperty = function (ctor, prop, mapper) {
@@ -1966,6 +2310,56 @@
       return new NativeFontFace(family, nextSource, descriptors);
     };
     window.FontFace.prototype = NativeFontFace.prototype;
+  }
+
+  var innerHtmlDesc = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
+  if (innerHtmlDesc && typeof innerHtmlDesc.get === "function" && typeof innerHtmlDesc.set === "function") {
+    Object.defineProperty(Element.prototype, "innerHTML", {
+      configurable: innerHtmlDesc.configurable,
+      enumerable: innerHtmlDesc.enumerable,
+      get: function () {
+        return innerHtmlDesc.get.call(this);
+      },
+      set: function (value) {
+        innerHtmlDesc.set.call(this, value);
+        remapElementTree(this);
+      }
+    });
+  }
+
+  if (window.CSSStyleSheet && CSSStyleSheet.prototype) {
+    var nativeInsertRule = CSSStyleSheet.prototype.insertRule;
+    if (typeof nativeInsertRule === "function") {
+      CSSStyleSheet.prototype.insertRule = function (rule, index) {
+        return nativeInsertRule.call(this, rewriteCssRuntime(String(rule || "")), index);
+      };
+    }
+  }
+
+  if (window.MutationObserver) {
+    var observer = new MutationObserver(function (mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        var mutation = mutations[i];
+        if (mutation.type === "attributes" && mutation.target) {
+          remapElementTree(mutation.target);
+          continue;
+        }
+        if (mutation.type === "childList") {
+          for (var j = 0; j < mutation.addedNodes.length; j++) {
+            var node = mutation.addedNodes[j];
+            if (node && node.nodeType === 1) {
+              remapElementTree(node);
+            }
+          }
+        }
+      }
+    });
+    observer.observe(document.documentElement || document, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["src", "href", "data", "poster", "action", "srcset"]
+    });
   }
 
   var installWebGLSafetyPatch = function () {
@@ -2145,6 +2539,44 @@
     },
     true
   );
+
+  // Suppress popups that mention file:// from bundled games.
+  (function () {
+    var originalAlert = window.alert;
+    var originalConfirm = window.confirm;
+    var originalPrompt = window.prompt;
+    var shouldSuppress = function (message) {
+      var text = String(message || "");
+      return /file:/i.test(text);
+    };
+    if (typeof originalAlert === "function") {
+      window.alert = function (message) {
+        if (shouldSuppress(message)) {
+          console.warn("Suppressed popup containing file://:", String(message || ""));
+          return;
+        }
+        return originalAlert.call(window, message);
+      };
+    }
+    if (typeof originalConfirm === "function") {
+      window.confirm = function (message) {
+        if (shouldSuppress(message)) {
+          console.warn("Suppressed popup containing file://:", String(message || ""));
+          return true;
+        }
+        return originalConfirm.call(window, message);
+      };
+    }
+    if (typeof originalPrompt === "function") {
+      window.prompt = function (message, defaultValue) {
+        if (shouldSuppress(message)) {
+          console.warn("Suppressed popup containing file://:", String(message || ""));
+          return defaultValue == null ? "" : String(defaultValue);
+        }
+        return originalPrompt.call(window, message, defaultValue);
+      };
+    }
+  })();
 })();
 `;
     const base = documentNode.head.querySelector("base");
@@ -2170,6 +2602,10 @@
       documentNode.head.prepend(baseElement);
     }
     baseElement.setAttribute("href", baseHref);
+
+    for (const manifestLink of documentNode.querySelectorAll('link[rel="manifest"]')) {
+      manifestLink.remove();
+    }
 
     const targets = [
       ["script", "src"],
@@ -2223,12 +2659,19 @@
 
     try {
       log("Loading \"" + game.name + "\" from IndexedDB...");
+      if (!state.playerWindow || state.playerWindow.closed) {
+        state.playerWindow = window.open("about:blank", "cbgamesOfflinePlayer");
+      }
+      if (!state.playerWindow) {
+        throw new Error("Popup blocked. Allow popups for this file page.");
+      }
+
       const files = await getAllFilesForGame(game.id);
       if (!files.length) {
         throw new Error("No files were found for this game in IndexedDB.");
       }
 
-      await buildObjectUrlCacheFromRecords(files);
+      await buildObjectUrlCacheFromRecords(files, state.playerWindow);
       state.activeEntryPath = chosenEntry;
 
       const fileMap = new Map(files.map((record) => [record.path, record]));
@@ -2249,13 +2692,6 @@
 
       const htmlText = await entryRecord.blob.text();
       const rewrittenHtml = rewriteDocumentHtml(htmlText, entryPath);
-
-      if (!state.playerWindow || state.playerWindow.closed) {
-        state.playerWindow = window.open("about:blank", "cbgamesOfflinePlayer");
-      }
-      if (!state.playerWindow) {
-        throw new Error("Popup blocked. Allow popups for this file page.");
-      }
 
       state.playerWindow.document.open();
       state.playerWindow.document.write(rewrittenHtml);
