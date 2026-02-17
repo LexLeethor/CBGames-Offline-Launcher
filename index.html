@@ -1678,9 +1678,26 @@
       return;
     }
 
+    var isLikelyUnityPage = function () {
+      try {
+        if (typeof window.createUnityInstance === "function" || typeof window.UnityLoader !== "undefined") {
+          return true;
+        }
+      } catch (_error) {
+        // ignore and continue to DOM checks
+      }
+      try {
+        return !!document.querySelector(
+          'script[src*="UnityLoader"], script[src*="unityloader"], script[src*="/Build/"], script[src*="framework"]'
+        );
+      } catch (_error) {
+        return false;
+      }
+    };
+
     HTMLCanvasElement.prototype.getContext = function (type, attrs) {
       var kind = String(type || "").toLowerCase();
-      if (UNITY_FORCE_WEBGL1 && kind === "webgl2") {
+      if (UNITY_FORCE_WEBGL1 && kind === "webgl2" && isLikelyUnityPage()) {
         return null;
       }
 
@@ -1704,7 +1721,7 @@
       return nativeGetContext.call(this, type, attrs);
     };
 
-    console.log("[GPU Safe] WebGL safety mode active (WebGL1 + low-memory context attrs).");
+    console.log("[GPU Safe] WebGL safety mode active (low-memory attrs; WebGL1 fallback for Unity pages).");
   };
   installWebGLSafetyPatch();
 
