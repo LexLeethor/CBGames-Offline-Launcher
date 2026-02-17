@@ -1683,8 +1683,17 @@
     return scriptText;
   }
 
+  function shouldInlineWasmForScript(scriptPath, scriptText) {
+    const path = String(scriptPath || "");
+    const text = String(scriptText || "");
+    return /(?:^|\/)ammo\.wasm\.js$/i.test(path) || /ammo\.wasm\.wasm/i.test(text);
+  }
+
   async function patchEmscriptenWasmScriptText(scriptText, scriptPath, recordsByPath, dataUrlCache) {
     if (typeof scriptText !== "string" || !scriptText || !scriptPath) {
+      return scriptText;
+    }
+    if (!shouldInlineWasmForScript(scriptPath, scriptText)) {
       return scriptText;
     }
     const wasmRef = findReferencedWasmPath(scriptText, scriptPath, recordsByPath);
@@ -1724,6 +1733,9 @@
     }
 
     const scriptText = await scriptRecord.blob.text();
+    if (!shouldInlineWasmForScript(scriptPath, scriptText)) {
+      return null;
+    }
     const wasmRef = findReferencedWasmPath(scriptText, scriptPath, recordsByPath);
     if (!wasmRef) {
       return null;
@@ -2100,9 +2112,20 @@
     }
   };
 
+  var normalizeVirtualDataUrl = function (value) {
+    var text = String(value || "");
+    var marker = "data:application/";
+    var markerIndex = text.indexOf(marker);
+    if (markerIndex > 0) {
+      return text.slice(markerIndex);
+    }
+    return value;
+  };
+
   var mapValue = function (value) {
-    var mapped = resolver(value);
-    return mapped || value;
+    var normalized = normalizeVirtualDataUrl(value);
+    var mapped = resolver(normalized);
+    return mapped || normalized;
   };
 
   var UNITY_GPU_SAFE_MODE = true;
@@ -2257,12 +2280,25 @@
   var nativeFetch = window.fetch.bind(window);
   window.fetch = function (input, init) {
     if (typeof input === "string" || input instanceof URL) {
-      return nativeFetch(mapValue(input), init);
+      var originalInput = input;
+      var mappedInput = mapValue(input);
+      if (mappedInput === originalInput) {
+        return nativeFetch(originalInput, init);
+      }
+      return nativeFetch(mappedInput, init).catch(function () {
+        return nativeFetch(originalInput, init);
+      });
     }
     if (input instanceof Request) {
       var mapped = resolver(input.url);
       if (mapped) {
-        return nativeFetch(new Request(mapped, input), init);
+        try {
+          return nativeFetch(new Request(mapped, input), init).catch(function () {
+            return nativeFetch(input, init);
+          });
+        } catch (_error) {
+          return nativeFetch(input, init);
+        }
       }
     }
     return nativeFetch(input, init);
