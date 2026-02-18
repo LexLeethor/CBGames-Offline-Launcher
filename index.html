@@ -223,6 +223,49 @@
     display: grid;
     gap: 8px;
   }
+  .work-progress {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+  }
+  .work-progress-circle {
+    --progress-pct: 0;
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: conic-gradient(#73c9ff calc(var(--progress-pct) * 1%), #2a2a2a 0);
+    position: relative;
+    display: grid;
+    place-items: center;
+    transition: background 0.2s ease;
+  }
+  .work-progress-circle::before {
+    content: "";
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: #151515;
+    border: 1px solid #333;
+  }
+  .work-progress-value {
+    position: absolute;
+    font-size: 13px;
+    font-weight: 600;
+    color: #dff0ff;
+  }
+  .work-progress-label {
+    font-size: 12px;
+    color: #d6d6d6;
+    text-align: center;
+  }
+  .work-progress.indeterminate .work-progress-circle {
+    --progress-pct: 25;
+    animation: workProgressSpin 1s linear infinite;
+  }
+  @keyframes workProgressSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
   .selected-stats {
     display: grid;
     gap: 8px;
@@ -445,6 +488,15 @@
 <div class="workspace">
   <aside class="side-panel">
     <section class="panel-block">
+      <h3>Progress</h3>
+      <div id="workProgress" class="work-progress" aria-live="polite">
+        <div id="workProgressCircle" class="work-progress-circle">
+          <div id="workProgressValue" class="work-progress-value">0%</div>
+        </div>
+        <div id="workProgressLabel" class="work-progress-label">Idle...</div>
+      </div>
+    </section>
+    <section class="panel-block">
       <h3>Launcher Controls</h3>
       <div class="control-stack">
         <button id="importZip">Import ZIP Game</button>
@@ -453,8 +505,12 @@
       </div>
     </section>
     <section class="panel-block">
-      <h3>Startup File</h3>
-      <select id="entryFile"></select>
+      <h3>Other stuff</h3>
+      <div class="control-stack">
+        <select id="entryFile"></select>
+        <button id="exportAllGames" type="button">Export All Games</button>
+        <button id="importAllGames" type="button">Import All Games</button>
+      </div>
     </section>
   </aside>
   <div class="games-column">
@@ -501,11 +557,12 @@
 <select id="gameSelect" class="sr-only" aria-hidden="true" tabindex="-1"></select>
 
 <input id="zipInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
+<input id="bundleInput" type="file" accept=".cbgamesbundle,.json,application/json" hidden>
 <input id="thumbInput" type="file" accept="image/*" hidden>
 <div id="thumbModal" class="thumb-modal" aria-hidden="true">
   <div class="thumb-dialog">
     <div class="thumb-head">
-      <h3>Thumbnail Crop (Square)</h3>
+      <h3>Thumbnail Editing</h3>
       <button id="closeThumbModal" class="thumb-close" type="button">Close</button>
     </div>
     <div class="thumb-layout">
@@ -549,6 +606,13 @@
   const emptyLibrary = document.getElementById("emptyLibrary");
   const entrySelect = document.getElementById("entryFile");
   const zipInput = document.getElementById("zipInput");
+  const bundleInput = document.getElementById("bundleInput");
+  const exportAllGamesButton = document.getElementById("exportAllGames");
+  const importAllGamesButton = document.getElementById("importAllGames");
+  const workProgress = document.getElementById("workProgress");
+  const workProgressCircle = document.getElementById("workProgressCircle");
+  const workProgressValue = document.getElementById("workProgressValue");
+  const workProgressLabel = document.getElementById("workProgressLabel");
   const thumbInput = document.getElementById("thumbInput");
   const thumbModal = document.getElementById("thumbModal");
   const closeThumbModalButton = document.getElementById("closeThumbModal");
@@ -1049,6 +1113,17 @@
     });
   }
 
+  async function reopenDatabaseConnection() {
+    if (state.db) {
+      try {
+        state.db.close();
+      } catch {
+        // ignore close errors
+      }
+    }
+    state.db = await openDatabase();
+  }
+
   function putSetting(key, value) {
     const tx = state.db.transaction(STORE_SETTINGS, "readwrite");
     tx.objectStore(STORE_SETTINGS).put(value, key);
@@ -1494,13 +1569,12 @@
       return;
     }
 
-    importZipButton.disabled = true;
-    launchButton.disabled = true;
-    deleteGameButton.disabled = true;
+    setActionButtonsDisabled(true);
 
     const gameId = makeId();
 
     try {
+      setWorkProgress("Reading ZIP", 0, 0);
       log("Reading ZIP: " + file.name);
       const zipBuffer = await file.arrayBuffer();
       const zip = parseZipArchive(zipBuffer);
@@ -1527,6 +1601,7 @@
 
       let processed = 0;
       let totalBytes = 0;
+      setWorkProgress("Importing game files", 0, zip.entries.length);
 
       for (const entry of zip.entries) {
         const entryBytes = await extractEntryBytes(zip, entry);
@@ -1542,6 +1617,9 @@
         });
 
         processed += 1;
+        if (processed % 20 === 0 || processed === zip.entries.length) {
+          setWorkProgress("Importing game files", processed, zip.entries.length);
+        }
         if (processed % 40 === 0 || processed === zip.entries.length) {
           log("Imported " + processed + "/" + zip.entries.length + " files...");
         }
@@ -1564,14 +1642,25 @@
         // best effort cleanup
       }
     } finally {
-      importZipButton.disabled = false;
-      launchButton.disabled = false;
-      deleteGameButton.disabled = false;
+      setActionButtonsDisabled(false);
+      clearWorkProgress();
     }
   }
 
   function clearObjectUrls() {
-    const host = state.objectUrlHost && state.objectUrlHost.URL ? state.objectUrlHost : window;
+    let host = window;
+    try {
+      if (
+        state.objectUrlHost &&
+        state.objectUrlHost.URL &&
+        typeof state.objectUrlHost.URL.createObjectURL === "function" &&
+        typeof state.objectUrlHost.URL.revokeObjectURL === "function"
+      ) {
+        host = state.objectUrlHost;
+      }
+    } catch {
+      host = window;
+    }
     for (const url of state.objectUrls.values()) {
       try {
         host.URL.revokeObjectURL(url);
@@ -1625,6 +1714,57 @@
 
   function textToBase64(text) {
     return btoa(unescape(encodeURIComponent(String(text || ""))));
+  }
+
+  function base64ToBytes(base64Text) {
+    const base64 = String(base64Text || "");
+    const binary = atob(base64);
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      out[i] = binary.charCodeAt(i);
+    }
+    return out;
+  }
+
+  function setActionButtonsDisabled(disabled) {
+    const value = Boolean(disabled);
+    importZipButton.disabled = value;
+    launchButton.disabled = value;
+    deleteGameButton.disabled = value;
+    exportAllGamesButton.disabled = value;
+    importAllGamesButton.disabled = value;
+  }
+
+  function setWorkProgress(label, current, total) {
+    if (!workProgress || !workProgressLabel || !workProgressCircle || !workProgressValue) {
+      return;
+    }
+    const text = String(label || "Working...");
+    const hasTotal = Number.isFinite(total) && total > 0;
+    const safeCurrent = Number.isFinite(current) ? Math.max(0, current) : 0;
+    const safeTotal = hasTotal ? Math.max(1, total) : 0;
+    if (hasTotal) {
+      const pct = Math.max(0, Math.min(100, (safeCurrent / safeTotal) * 100));
+      workProgress.classList.remove("indeterminate");
+      workProgressLabel.textContent = text + " (" + Math.min(safeCurrent, safeTotal) + "/" + safeTotal + ")";
+      workProgressCircle.style.setProperty("--progress-pct", pct.toFixed(1));
+      workProgressValue.textContent = Math.round(pct) + "%";
+      return;
+    }
+    workProgress.classList.add("indeterminate");
+    workProgressLabel.textContent = text;
+    workProgressCircle.style.setProperty("--progress-pct", "25");
+    workProgressValue.textContent = "...";
+  }
+
+  function clearWorkProgress() {
+    if (!workProgress || !workProgressLabel || !workProgressCircle || !workProgressValue) {
+      return;
+    }
+    workProgress.classList.remove("indeterminate");
+    workProgressLabel.textContent = "Idle...";
+    workProgressCircle.style.setProperty("--progress-pct", "0");
+    workProgressValue.textContent = "0%";
   }
   function findReferencedWasmPath(scriptText, scriptPath, recordsByPath) {
     if (typeof scriptText !== "string" || !scriptText) {
@@ -1965,7 +2105,19 @@
   }
 
   async function buildObjectUrlCacheFromRecords(records, hostWindow) {
-    const host = hostWindow && hostWindow.URL ? hostWindow : window;
+    let host = window;
+    try {
+      if (
+        hostWindow &&
+        hostWindow.URL &&
+        typeof hostWindow.URL.createObjectURL === "function" &&
+        typeof hostWindow.URL.revokeObjectURL === "function"
+      ) {
+        host = hostWindow;
+      }
+    } catch {
+      host = window;
+    }
     clearObjectUrls();
     state.objectUrlHost = host;
     const recordsByPath = new Map(records.map((record) => [record.path, record]));
@@ -2694,6 +2846,7 @@
     deleteGameButton.disabled = true;
 
     try {
+      setWorkProgress("Loading game data", 0, 4);
       log("Loading \"" + game.name + "\" from IndexedDB...");
       if (!state.playerWindow || state.playerWindow.closed) {
         state.playerWindow = window.open("about:blank", "cbgamesOfflinePlayer");
@@ -2703,11 +2856,13 @@
       }
 
       const files = await getAllFilesForGame(game.id);
+      setWorkProgress("Preparing game assets", 1, 4);
       if (!files.length) {
         throw new Error("No files were found for this game in IndexedDB.");
       }
 
       await buildObjectUrlCacheFromRecords(files, state.playerWindow);
+      setWorkProgress("Preparing game assets", 2, 4);
       state.activeEntryPath = chosenEntry;
 
       const fileMap = new Map(files.map((record) => [record.path, record]));
@@ -2728,6 +2883,7 @@
 
       const htmlText = await entryRecord.blob.text();
       const rewrittenHtml = rewriteDocumentHtml(htmlText, entryPath);
+      setWorkProgress("Opening player window", 3, 4);
 
       state.playerWindow.document.open();
       state.playerWindow.document.write(rewrittenHtml);
@@ -2741,6 +2897,7 @@
         updateSelectedGameInfo(game);
       }
 
+      setWorkProgress("Launch complete", 4, 4);
       log("Launched: " + game.name + " (" + entryPath + ")");
     } catch (error) {
       console.error(error);
@@ -2748,6 +2905,7 @@
     } finally {
       launchButton.disabled = false;
       deleteGameButton.disabled = false;
+      setTimeout(clearWorkProgress, 350);
     }
   }
 
@@ -2764,9 +2922,7 @@
       return;
     }
 
-    importZipButton.disabled = true;
-    launchButton.disabled = true;
-    deleteGameButton.disabled = true;
+    setActionButtonsDisabled(true);
 
     try {
       await deleteFilesByGameId(game.id);
@@ -2785,6 +2941,9 @@
       }
       state.playerWindow = null;
 
+      // Recycling the DB connection helps some browsers update storage estimates
+      // sooner after large IndexedDB deletions.
+      await reopenDatabaseConnection();
       await putSetting(SETTING_SELECTED_GAME, "");
       await loadLibrary();
       log("Deleted game: " + game.name);
@@ -2792,9 +2951,213 @@
       console.error(error);
       log("Delete failed: " + (error.message || String(error)), "error");
     } finally {
-      importZipButton.disabled = false;
-      launchButton.disabled = false;
-      deleteGameButton.disabled = false;
+      setActionButtonsDisabled(false);
+    }
+  }
+
+  function normalizeBundleGameRecord(record) {
+    const source = record && typeof record === "object" ? record : {};
+    const normalized = {
+      id: typeof source.id === "string" && source.id ? source.id : makeId(),
+      name: typeof source.name === "string" && source.name ? source.name : "Imported Game",
+      zipName: typeof source.zipName === "string" && source.zipName ? source.zipName : "Imported Bundle",
+      importedAt: Number(source.importedAt) || Date.now(),
+      fileCount: Number(source.fileCount) || 0,
+      totalBytes: Number(source.totalBytes) || 0,
+      htmlEntries: Array.isArray(source.htmlEntries) ? source.htmlEntries.map((v) => normalizePath(v)).filter(Boolean) : [],
+      entryPath: typeof source.entryPath === "string" ? normalizePath(source.entryPath) : "",
+      thumbnailDataUrl: typeof source.thumbnailDataUrl === "string" ? source.thumbnailDataUrl : ""
+    };
+    normalized.entryPath = chooseBestEntryPath(normalized.htmlEntries, normalized.entryPath);
+    return normalized;
+  }
+
+  async function exportAllGamesBundle(progressCallback) {
+    const games = await getAllGames();
+    if (!games.length) {
+      throw new Error("No saved games to export.");
+    }
+    const allFiles = [];
+    let processedGames = 0;
+    for (const game of games) {
+      const files = await getAllFilesForGame(game.id);
+      for (const file of files) {
+        const bytes = new Uint8Array(await file.blob.arrayBuffer());
+        allFiles.push({
+          gameId: game.id,
+          path: file.path,
+          type: file.type || mimeFromPath(file.path),
+          size: Number(file.size) || bytes.byteLength,
+          dataBase64: bytesToBase64(bytes)
+        });
+      }
+      processedGames += 1;
+      if (typeof progressCallback === "function") {
+        progressCallback(processedGames, games.length);
+      }
+    }
+    return {
+      format: "cbgames-bundle-v1",
+      createdAt: Date.now(),
+      games: games.map((game) => ({ ...game })),
+      files: allFiles
+    };
+  }
+
+  async function downloadAllGamesBundle() {
+    setActionButtonsDisabled(true);
+    try {
+      setWorkProgress("Preparing backup bundle", 0, 0);
+      log("Preparing backup bundle...");
+      const bundle = await exportAllGamesBundle((current, total) => {
+        setWorkProgress("Reading saved games", current, total);
+      });
+      setWorkProgress("Writing bundle file", 1, 1);
+      const payload = JSON.stringify(bundle);
+      const blob = new Blob([payload], { type: "application/json" });
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = "cbgames-backup-" + stamp + ".cbgamesbundle";
+      const url = URL.createObjectURL(blob);
+      try {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.append(anchor);
+        anchor.click();
+        anchor.remove();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+      log("Exported " + bundle.games.length + " games to " + filename + ".");
+    } finally {
+      setActionButtonsDisabled(false);
+      clearWorkProgress();
+    }
+  }
+
+  async function pickBundleFile() {
+    if (window.showOpenFilePicker) {
+      try {
+        const handles = await window.showOpenFilePicker({
+          multiple: false,
+          excludeAcceptAllOption: false,
+          types: [
+            {
+              description: "CBGames bundle",
+              accept: {
+                "application/json": [".cbgamesbundle", ".json"]
+              }
+            }
+          ]
+        });
+        if (!handles.length) {
+          return;
+        }
+        const file = await handles[0].getFile();
+        await importBundleFile(file);
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          log("Bundle import canceled.");
+          return;
+        }
+        console.error(error);
+        log("Bundle import failed: " + (error.message || String(error)), "error");
+      }
+      return;
+    }
+
+    bundleInput.value = "";
+    bundleInput.click();
+  }
+
+  async function importBundleFile(file) {
+    if (!file) {
+      return;
+    }
+    setActionButtonsDisabled(true);
+    try {
+      setWorkProgress("Reading bundle", 0, 0);
+      log("Reading bundle: " + file.name);
+      const text = await file.text();
+      let bundle;
+      try {
+        bundle = JSON.parse(text);
+      } catch {
+        throw new Error("Invalid backup file (not JSON).");
+      }
+      if (!bundle || bundle.format !== "cbgames-bundle-v1" || !Array.isArray(bundle.games) || !Array.isArray(bundle.files)) {
+        throw new Error("Unsupported backup format.");
+      }
+
+      const idMap = new Map();
+      for (const rawGame of bundle.games) {
+        const game = normalizeBundleGameRecord(rawGame);
+        if (state.gamesById.has(game.id) || idMap.has(game.id)) {
+          idMap.set(game.id, makeId());
+        } else {
+          idMap.set(game.id, game.id);
+        }
+      }
+
+      let importedGames = 0;
+      setWorkProgress("Importing game metadata", 0, bundle.games.length || 1);
+      for (const rawGame of bundle.games) {
+        const game = normalizeBundleGameRecord(rawGame);
+        game.id = idMap.get(game.id) || makeId();
+        await putGame(game);
+        state.gamesById.set(game.id, game);
+        importedGames += 1;
+        if (importedGames % 5 === 0 || importedGames === bundle.games.length) {
+          setWorkProgress("Importing game metadata", importedGames, bundle.games.length || 1);
+        }
+      }
+
+      let importedFiles = 0;
+      setWorkProgress("Importing game files", 0, bundle.files.length || 1);
+      for (const rawFile of bundle.files) {
+        if (!rawFile || typeof rawFile !== "object") {
+          continue;
+        }
+        const sourceGameId = typeof rawFile.gameId === "string" ? rawFile.gameId : "";
+        const mappedGameId = idMap.get(sourceGameId);
+        if (!mappedGameId) {
+          continue;
+        }
+        const path = normalizePath(rawFile.path || "");
+        if (!path) {
+          continue;
+        }
+        const data = base64ToBytes(rawFile.dataBase64 || "");
+        const type = typeof rawFile.type === "string" && rawFile.type ? rawFile.type : mimeFromPath(path);
+        const blob = new Blob([data], { type });
+        await putFileRecord({
+          gameId: mappedGameId,
+          path,
+          size: blob.size,
+          type: blob.type,
+          blob
+        });
+        importedFiles += 1;
+        if (importedFiles % 25 === 0 || importedFiles === bundle.files.length) {
+          setWorkProgress("Importing game files", importedFiles, bundle.files.length || 1);
+        }
+      }
+
+      setWorkProgress("Refreshing library", 0, 0);
+      const preferredSelected = state.selectedGameId && state.gamesById.has(state.selectedGameId)
+        ? state.selectedGameId
+        : (bundle.games[0] && idMap.get(bundle.games[0].id)) || "";
+      await loadLibrary(preferredSelected);
+      if (preferredSelected) {
+        await putSetting(SETTING_SELECTED_GAME, preferredSelected);
+      }
+      log("Imported bundle: " + importedGames + " games and " + importedFiles + " files.");
+    } catch (error) {
+      console.error(error);
+      log("Bundle import failed: " + (error.message || String(error)), "error");
+    } finally {
+      setActionButtonsDisabled(false);
+      clearWorkProgress();
     }
   }
 
@@ -2822,6 +3185,15 @@
   });
 
   importZipButton.addEventListener("click", pickZipFile);
+  exportAllGamesButton.addEventListener("click", async () => {
+    try {
+      await downloadAllGamesBundle();
+    } catch (error) {
+      console.error(error);
+      log("Bundle export failed: " + (error.message || String(error)), "error");
+    }
+  });
+  importAllGamesButton.addEventListener("click", pickBundleFile);
   launchButton.addEventListener("click", launchSelectedGame);
   deleteGameButton.addEventListener("click", deleteSelectedGame);
   gameSearch.addEventListener("input", () => {
@@ -2915,6 +3287,12 @@
     }
     await importZipFile(zipInput.files[0]);
   });
+  bundleInput.addEventListener("change", async () => {
+    if (!bundleInput.files || !bundleInput.files.length) {
+      return;
+    }
+    await importBundleFile(bundleInput.files[0]);
+  });
 
   setEmptyEntryState("Loading...");
 
@@ -2945,9 +3323,7 @@
       console.error(error);
       setEmptyEntryState("Initialization failed");
       log("Initialization failed: " + (error.message || String(error)), "error");
-      importZipButton.disabled = true;
-      launchButton.disabled = true;
-      deleteGameButton.disabled = true;
+      setActionButtonsDisabled(true);
     }
   })();
 })();
