@@ -6,7 +6,7 @@
 <title>CBGames Offline Launcher</title>
 <link rel="icon" type="image/png" href="./favicon.png">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css">
+<link rel="stylesheet" href="./lib/cropper.min.css">
 <style>
   :root {
     --error-color: #ff4d4f;
@@ -189,6 +189,9 @@
     min-width: 0;
     position: relative;
     z-index: 0;
+  }
+  .game-item.is-drag-source {
+    opacity: 0.2;
   }
   .game-item:hover {
     background-color: #1e1e1e;
@@ -647,6 +650,67 @@
     background: #343434;
   }
   #removeGameEditImage { color: #ffd7bc; }
+  .drag-gap {
+    width: 100%;
+    border-radius: 12px;
+    border: 2px dashed #5f7ec8;
+    background: rgba(63, 93, 165, 0.18);
+    min-height: 120px;
+  }
+  .reorder-ghost {
+    position: fixed;
+    z-index: 7000;
+    pointer-events: none;
+    opacity: 0.95;
+    transform-origin: top left;
+    box-shadow: 0 28px 52px rgba(0, 0, 0, 0.5);
+  }
+  .game-item.row-wrap-down {
+    animation: rowWrapDown 230ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .game-item.row-wrap-up {
+    animation: rowWrapUp 230ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes rowWrapDown {
+    0% { transform: translateX(44px); opacity: 0.2; }
+    55% { opacity: 0.7; }
+    100% { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes rowWrapUp {
+    0% { transform: translateX(-44px); opacity: 0.2; }
+    55% { opacity: 0.7; }
+    100% { transform: translateX(0); opacity: 1; }
+  }
+  .drag-drop-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(5, 7, 12, 0.76);
+    backdrop-filter: blur(2px);
+    z-index: 5000;
+    pointer-events: none;
+  }
+  .drag-drop-overlay.open {
+    display: flex;
+  }
+  .drag-drop-overlay-card {
+    width: min(92vw, 640px);
+    border: 2px dashed #6c88c9;
+    border-radius: 18px;
+    background: rgba(17, 21, 31, 0.93);
+    padding: 28px 24px;
+    text-align: center;
+    color: #f3f6ff;
+    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.45);
+  }
+  .drag-drop-overlay-card p {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
   @media (max-width: 980px) {
     body {
       overflow: auto;
@@ -753,6 +817,11 @@
 <header>
   <div class="logo">CBGames</div>
 </header>
+<div id="dragDropOverlay" class="drag-drop-overlay" aria-hidden="true">
+  <div class="drag-drop-overlay-card">
+    <p id="dragDropOverlayText">Drop ZIP files to import</p>
+  </div>
+</div>
 
 <div class="search-bar">
   <input id="gameSearch" type="search" placeholder="Search for games...">
@@ -783,6 +852,7 @@
         <select id="entryFile"></select>
         <button id="exportAllGames" type="button">Export All Games</button>
         <button id="importAllGames" type="button">Import All Games</button>
+        <button id="exportErrorLogs" type="button">Export Error Logs</button>
       </div>
     </section>
   </aside>
@@ -872,16 +942,17 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
+<script src="./lib/cropper.min.js"></script>
 <script>
 (() => {
   "use strict";
 
   const DB_NAME = "cbgamesOfflineZipDB";
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const STORE_GAMES = "games";
   const STORE_FILES = "files";
   const STORE_SETTINGS = "settings";
+  const STORE_ERROR_LOGS = "errorLogs";
   const SETTING_SELECTED_GAME = "selectedGameId";
 
   const VFS_ORIGIN = "https://loader.invalid/";
@@ -902,10 +973,13 @@
   const bundleInput = document.getElementById("bundleInput");
   const exportAllGamesButton = document.getElementById("exportAllGames");
   const importAllGamesButton = document.getElementById("importAllGames");
+  const exportErrorLogsButton = document.getElementById("exportErrorLogs");
   const workProgress = document.getElementById("workProgress");
   const workProgressCircle = document.getElementById("workProgressCircle");
   const workProgressValue = document.getElementById("workProgressValue");
   const workProgressLabel = document.getElementById("workProgressLabel");
+  const dragDropOverlay = document.getElementById("dragDropOverlay");
+  const dragDropOverlayText = document.getElementById("dragDropOverlayText");
   const gameEditImageInput = document.getElementById("gameEditImageInput");
   const gameEditModal = document.getElementById("gameEditModal");
   const closeGameEditModalButton = document.getElementById("closeGameEditModal");
@@ -929,6 +1003,7 @@
   const quotaUsage = document.getElementById("quotaUsage");
 
   const statusBox = document.getElementById("status");
+  const reorderAnimations = new WeakMap();
 
   const state = {
     db: null,
@@ -938,7 +1013,26 @@
     objectUrlHost: window,
     activeEntryPath: null,
     playerWindow: null,
+    dragDepth: 0,
+    suppressCardClickUntil: 0,
     searchQuery: "",
+    reorder: {
+      active: false,
+      pointerId: null,
+      holdTimer: 0,
+      holdMoveListener: null,
+      startTarget: null,
+      holdStartX: 0,
+      holdStartY: 0,
+      pointerX: 0,
+      pointerY: 0,
+      sourceGameId: "",
+      sourceElement: null,
+      placeholder: null,
+      ghost: null,
+      pointerOffsetX: 0,
+      pointerOffsetY: 0
+    },
     gameEditEditor: {
       gameId: null,
       image: null,
@@ -1081,7 +1175,25 @@
   }
 
   function sortedGames() {
-    return Array.from(state.gamesById.values()).sort((a, b) => b.importedAt - a.importedAt);
+    return Array.from(state.gamesById.values()).sort((a, b) => {
+      const aOrder = Number.isFinite(Number(a.sortOrder)) ? Number(a.sortOrder) : Number.MAX_SAFE_INTEGER;
+      const bOrder = Number.isFinite(Number(b.sortOrder)) ? Number(b.sortOrder) : Number.MAX_SAFE_INTEGER;
+      if (aOrder !== bOrder) {
+        return aOrder - bOrder;
+      }
+      return b.importedAt - a.importedAt;
+    });
+  }
+
+  function getNextSortOrder() {
+    let maxOrder = -1;
+    for (const game of state.gamesById.values()) {
+      const value = Number(game.sortOrder);
+      if (Number.isFinite(value) && value > maxOrder) {
+        maxOrder = value;
+      }
+    }
+    return maxOrder + 1;
   }
 
   function filteredGames() {
@@ -1383,6 +1495,32 @@
     renderGameCards();
   }
 
+  function setSelectedGameImmediate(gameId, options = {}) {
+    const persist = options.persist !== false;
+    const updateCardStyles = options.updateCardStyles !== false;
+    if (!gameId || !state.gamesById.has(gameId)) {
+      return;
+    }
+    if (state.selectedGameId === gameId) {
+      return;
+    }
+    state.selectedGameId = gameId;
+    gameSelect.value = gameId;
+    updateSelectedGameInfo(state.gamesById.get(gameId) || null);
+    if (updateCardStyles) {
+      for (const el of getGridReorderElements()) {
+        const id = String(el.dataset.gameId || "");
+        el.classList.toggle("is-selected", id === gameId);
+      }
+    }
+    if (persist) {
+      putSetting(SETTING_SELECTED_GAME, gameId).catch((error) => {
+        console.error(error);
+        log("Could not persist selected game.", "error");
+      });
+    }
+  }
+
   function normalizeResolverBase(baseHref) {
     if (typeof baseHref === "string" && baseHref) {
       try {
@@ -1498,6 +1636,11 @@
         if (!db.objectStoreNames.contains(STORE_SETTINGS)) {
           db.createObjectStore(STORE_SETTINGS);
         }
+        if (!db.objectStoreNames.contains(STORE_ERROR_LOGS)) {
+          const errorLogsStore = db.createObjectStore(STORE_ERROR_LOGS, { keyPath: "id" });
+          errorLogsStore.createIndex("timestamp", "timestamp", { unique: false });
+          errorLogsStore.createIndex("gameId", "gameId", { unique: false });
+        }
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -1555,6 +1698,21 @@
     const tx = state.db.transaction(STORE_FILES, "readwrite");
     tx.objectStore(STORE_FILES).put(record);
     return txDone(tx);
+  }
+
+  function putErrorLogRecord(record) {
+    const tx = state.db.transaction(STORE_ERROR_LOGS, "readwrite");
+    tx.objectStore(STORE_ERROR_LOGS).put(record);
+    return txDone(tx);
+  }
+
+  function getAllErrorLogRecords() {
+    return new Promise((resolve, reject) => {
+      const tx = state.db.transaction(STORE_ERROR_LOGS, "readonly");
+      const request = tx.objectStore(STORE_ERROR_LOGS).getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
   }
 
   function getAllFilesForGame(gameId) {
@@ -1993,6 +2151,21 @@
   async function loadLibrary(preferredGameId) {
     const games = await getAllGames();
     state.gamesById = new Map(games.map((game) => [game.id, game]));
+    let nextOrder = 0;
+    let changedOrder = false;
+    for (const game of sortedGames()) {
+      if (Number(game.sortOrder) !== nextOrder) {
+        game.sortOrder = nextOrder;
+        state.gamesById.set(game.id, game);
+        changedOrder = true;
+      }
+      nextOrder += 1;
+    }
+    if (changedOrder) {
+      for (const game of sortedGames()) {
+        await putGame(game);
+      }
+    }
 
     const selectedId = renderGameOptions(preferredGameId || state.selectedGameId);
     state.selectedGameId = selectedId || null;
@@ -2074,6 +2247,7 @@
         name: deriveGameName(file.name),
         zipName: file.name,
         importedAt: Date.now(),
+        sortOrder: getNextSortOrder(),
         fileCount: zip.entries.length,
         totalBytes: 0,
         htmlEntries,
@@ -2125,6 +2299,110 @@
     } finally {
       setActionButtonsDisabled(false);
       clearWorkProgress();
+    }
+  }
+
+  function isZipLikeFile(file) {
+    if (!file) {
+      return false;
+    }
+    const name = String(file.name || "");
+    const type = String(file.type || "").toLowerCase();
+    return (
+      /\.zip$/i.test(name) ||
+      type === "application/zip" ||
+      type === "application/x-zip-compressed"
+    );
+  }
+
+  function hasDragFiles(event) {
+    const types = event && event.dataTransfer && event.dataTransfer.types
+      ? Array.from(event.dataTransfer.types)
+      : [];
+    return types.includes("Files");
+  }
+
+  function setDragDropOverlay(visible, label) {
+    if (!dragDropOverlay) {
+      return;
+    }
+    dragDropOverlay.classList.toggle("open", Boolean(visible));
+    dragDropOverlay.setAttribute("aria-hidden", visible ? "false" : "true");
+    if (dragDropOverlayText && typeof label === "string" && label.trim()) {
+      dragDropOverlayText.textContent = label;
+    } else if (dragDropOverlayText) {
+      dragDropOverlayText.textContent = "Drop ZIP files to import";
+    }
+  }
+
+  async function detectDroppedZipKind(file) {
+    if (!isZipLikeFile(file)) {
+      return "not-zip";
+    }
+
+    let parsedZip;
+    try {
+      const buffer = await file.arrayBuffer();
+      parsedZip = parseZipArchive(buffer);
+    } catch {
+      return "invalid-zip";
+    }
+
+    const entryByPath = new Map(parsedZip.entries.map((entry) => [normalizePath(entry.path), entry]));
+    const manifestEntry = entryByPath.get("bundle.json");
+    if (!manifestEntry) {
+      return "game";
+    }
+
+    try {
+      const bytes = await extractEntryBytes(parsedZip, manifestEntry);
+      const parsed = JSON.parse(decodeUtf8(bytes));
+      if (parsed && parsed.format === "cbgames-zip-v2" && Array.isArray(parsed.games)) {
+        return "bundle";
+      }
+    } catch {
+      // treat malformed bundle marker as regular game ZIP
+    }
+
+    return "game";
+  }
+
+  async function handleDroppedZipFiles(fileList) {
+    const files = Array.from(fileList || []);
+    const zipFiles = files.filter((file) => isZipLikeFile(file));
+    if (!zipFiles.length) {
+      log("Drop one or more .zip files.", "error");
+      return;
+    }
+
+    for (const file of zipFiles) {
+      try {
+        setDragDropOverlay(true, "Inspecting " + file.name + "...");
+        const kind = await detectDroppedZipKind(file);
+        setDragDropOverlay(false);
+
+        if (kind === "not-zip") {
+          log("Skipped non-zip file: " + file.name, "error");
+          continue;
+        }
+        if (kind === "invalid-zip") {
+          log("Could not read ZIP: " + file.name, "error");
+          continue;
+        }
+
+        if (kind === "bundle") {
+          log("Detected bundle ZIP: " + file.name);
+          await importBundleFile(file);
+        } else {
+          log("Detected game ZIP: " + file.name);
+          await importZipFile(file);
+        }
+      } catch (error) {
+        console.error(error);
+        log("Drop import failed for " + file.name + ": " + (error.message || String(error)), "error");
+      } finally {
+        setDragDropOverlay(false);
+      }
     }
   }
 
@@ -2268,6 +2546,316 @@
     deleteGameButton.disabled = value;
     exportAllGamesButton.disabled = value;
     importAllGamesButton.disabled = value;
+    exportErrorLogsButton.disabled = value;
+  }
+
+  function getGridReorderElements() {
+    return Array.from(gamesGrid.querySelectorAll(".game-item"));
+  }
+
+  function cleanupReorderHoldTimer() {
+    if (state.reorder.holdTimer) {
+      clearTimeout(state.reorder.holdTimer);
+      state.reorder.holdTimer = 0;
+    }
+    if (state.reorder.holdMoveListener) {
+      window.removeEventListener("pointermove", state.reorder.holdMoveListener, true);
+      state.reorder.holdMoveListener = null;
+    }
+  }
+
+  function applyGridShiftAnimation(beforeRects) {
+    const elements = getGridReorderElements().concat(
+      state.reorder.placeholder ? [state.reorder.placeholder] : []
+    );
+    for (const el of elements) {
+      const key = el.dataset.gameId ? "game:" + el.dataset.gameId : "gap";
+      const prev = beforeRects.get(key);
+      if (!prev) {
+        continue;
+      }
+      const next = el.getBoundingClientRect();
+      const dx = prev.left - next.left;
+      const dy = prev.top - next.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+        continue;
+      }
+      const existingAnimation = reorderAnimations.get(el);
+      if (existingAnimation) {
+        try {
+          existingAnimation.cancel();
+        } catch {
+          // ignore cancel issues
+        }
+      }
+      if (typeof el.animate !== "function") {
+        continue;
+      }
+      const animation = el.animate(
+        [
+          { transform: "translate(" + dx + "px," + dy + "px)" },
+          { transform: "translate(0px,0px)" }
+        ],
+        {
+          duration: 180,
+          easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+          fill: "none"
+        }
+      );
+      reorderAnimations.set(el, animation);
+    }
+  }
+
+  function moveReorderPlaceholderBefore(targetNode) {
+    const placeholder = state.reorder.placeholder;
+    if (!placeholder || !targetNode || placeholder === targetNode || placeholder.nextSibling === targetNode) {
+      return;
+    }
+    const beforeRects = new Map();
+    for (const el of getGridReorderElements()) {
+      beforeRects.set("game:" + el.dataset.gameId, el.getBoundingClientRect());
+    }
+    beforeRects.set("gap", placeholder.getBoundingClientRect());
+    gamesGrid.insertBefore(placeholder, targetNode);
+    applyGridShiftAnimation(beforeRects);
+  }
+
+  function moveReorderPlaceholderToEnd() {
+    const placeholder = state.reorder.placeholder;
+    if (!placeholder || gamesGrid.lastElementChild === placeholder) {
+      return;
+    }
+    const beforeRects = new Map();
+    for (const el of getGridReorderElements()) {
+      beforeRects.set("game:" + el.dataset.gameId, el.getBoundingClientRect());
+    }
+    beforeRects.set("gap", placeholder.getBoundingClientRect());
+    gamesGrid.append(placeholder);
+    applyGridShiftAnimation(beforeRects);
+  }
+
+  function updateReorderGhostPosition(clientX, clientY) {
+    const ghost = state.reorder.ghost;
+    if (!ghost) {
+      return;
+    }
+    ghost.style.left = Math.round(clientX - state.reorder.pointerOffsetX) + "px";
+    ghost.style.top = Math.round(clientY - state.reorder.pointerOffsetY) + "px";
+  }
+
+  function reorderPointerMove(event) {
+    if (!state.reorder.active) {
+      return;
+    }
+    if (event.pointerId !== state.reorder.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    updateReorderGhostPosition(event.clientX, event.clientY);
+    const hovered = document.elementFromPoint(event.clientX, event.clientY);
+    const item = hovered instanceof Element ? hovered.closest(".game-item") : null;
+    if (!item || item === state.reorder.sourceElement) {
+      return;
+    }
+    const rect = item.getBoundingClientRect();
+    const insertAfter = event.clientX > rect.left + rect.width / 2;
+    if (insertAfter) {
+      if (!item.nextSibling) {
+        moveReorderPlaceholderToEnd();
+        return;
+      }
+      moveReorderPlaceholderBefore(item.nextSibling);
+    } else {
+      moveReorderPlaceholderBefore(item);
+    }
+  }
+
+  async function persistGridOrderFromDom() {
+    const ids = getGridReorderElements()
+      .map((el) => String(el.dataset.gameId || ""))
+      .filter((id) => id && state.gamesById.has(id));
+    let changed = false;
+    for (let i = 0; i < ids.length; i += 1) {
+      const game = state.gamesById.get(ids[i]);
+      if (!game) {
+        continue;
+      }
+      if (Number(game.sortOrder) !== i) {
+        game.sortOrder = i;
+        state.gamesById.set(game.id, game);
+        changed = true;
+      }
+    }
+    if (!changed) {
+      return;
+    }
+    for (const game of sortedGames()) {
+      await putGame(game);
+    }
+  }
+
+  async function finishCardReorder() {
+    if (!state.reorder.active) {
+      return;
+    }
+    const { sourceElement, placeholder, ghost } = state.reorder;
+    try {
+      if (sourceElement && placeholder && placeholder.parentElement === gamesGrid) {
+        gamesGrid.insertBefore(sourceElement, placeholder);
+      }
+      if (placeholder && placeholder.parentElement) {
+        placeholder.remove();
+      }
+      if (ghost && ghost.parentElement) {
+        ghost.remove();
+      }
+      if (sourceElement) {
+        sourceElement.classList.remove("is-drag-source");
+      }
+      await persistGridOrderFromDom();
+      renderGameOptions(state.selectedGameId);
+      updateSelectedGameInfo(state.selectedGameId ? state.gamesById.get(state.selectedGameId) : null);
+      state.suppressCardClickUntil = Date.now() + 250;
+    } finally {
+      state.reorder.active = false;
+      state.reorder.pointerId = null;
+      state.reorder.sourceGameId = "";
+      state.reorder.sourceElement = null;
+      state.reorder.placeholder = null;
+      state.reorder.ghost = null;
+      state.reorder.pointerOffsetX = 0;
+      state.reorder.pointerOffsetY = 0;
+      window.removeEventListener("pointermove", reorderPointerMove);
+      window.removeEventListener("pointerup", reorderPointerUp, true);
+      window.removeEventListener("pointercancel", reorderPointerUp, true);
+    }
+  }
+
+  function reorderPointerUp(event) {
+    if (state.reorder.active && event.pointerId === state.reorder.pointerId) {
+      event.preventDefault();
+      finishCardReorder().catch((error) => {
+        console.error(error);
+        log("Could not save card order.", "error");
+      });
+    }
+    cleanupReorderHoldTimer();
+    state.reorder.pointerId = null;
+    state.reorder.startTarget = null;
+  }
+
+  function startCardReorder(gameId, sourceElement, pointerEvent) {
+    if (!sourceElement || !gameId || !state.gamesById.has(gameId)) {
+      return;
+    }
+    setSelectedGameImmediate(gameId, { persist: true, updateCardStyles: false });
+    state.reorder.active = true;
+    cleanupReorderHoldTimer();
+    state.reorder.sourceGameId = gameId;
+    state.reorder.sourceElement = sourceElement;
+
+    const rect = sourceElement.getBoundingClientRect();
+    const placeholder = document.createElement("div");
+    placeholder.className = "drag-gap";
+    placeholder.style.height = Math.max(88, rect.height) + "px";
+    placeholder.style.minHeight = Math.max(88, rect.height) + "px";
+    state.reorder.placeholder = placeholder;
+
+    const ghost = sourceElement.cloneNode(true);
+    ghost.classList.add("reorder-ghost");
+    ghost.style.width = Math.round(rect.width) + "px";
+    ghost.style.left = Math.round(rect.left) + "px";
+    ghost.style.top = Math.round(rect.top) + "px";
+    state.reorder.ghost = ghost;
+
+    state.reorder.pointerOffsetX = rect.width / 2;
+    state.reorder.pointerOffsetY = rect.height / 2;
+
+    sourceElement.classList.add("is-drag-source");
+    gamesGrid.insertBefore(placeholder, sourceElement);
+    sourceElement.remove();
+    document.body.append(ghost);
+    updateReorderGhostPosition(pointerEvent.clientX, pointerEvent.clientY);
+
+    window.addEventListener("pointermove", reorderPointerMove, { passive: false });
+    window.addEventListener("pointerup", reorderPointerUp, true);
+    window.addEventListener("pointercancel", reorderPointerUp, true);
+  }
+
+  function normalizeErrorText(value, maxLength = 4000) {
+    const text = String(value == null ? "" : value).replace(/\s+/g, " ").trim();
+    if (!text) {
+      return "";
+    }
+    if (text.length <= maxLength) {
+      return text;
+    }
+    return text.slice(0, Math.max(0, maxLength - 3)) + "...";
+  }
+
+  async function persistPlayerError(payload) {
+    if (!payload || typeof payload !== "object") {
+      return;
+    }
+    const incomingGameId = typeof payload.gameId === "string" ? payload.gameId : "";
+    const resolvedGame = incomingGameId ? state.gamesById.get(incomingGameId) : null;
+    const gameId = resolvedGame ? resolvedGame.id : incomingGameId;
+    const gameName = resolvedGame
+      ? (resolvedGame.name || "")
+      : (typeof payload.gameName === "string" ? payload.gameName : "");
+    const record = {
+      id: makeId(),
+      timestamp: Number(payload.timestamp) || Date.now(),
+      level: normalizeErrorText(payload.level || "error", 16) || "error",
+      kind: normalizeErrorText(payload.kind || "runtime", 80) || "runtime",
+      message: normalizeErrorText(payload.message || "Unknown error"),
+      source: normalizeErrorText(payload.source || "", 1000),
+      lineno: Number(payload.lineno) || 0,
+      colno: Number(payload.colno) || 0,
+      stack: normalizeErrorText(payload.stack || "", 20000),
+      gameId,
+      gameName: normalizeErrorText(gameName, 300),
+      entryPath: normalizePath(payload.entryPath || "")
+    };
+    await putErrorLogRecord(record);
+    log("[Game Error] " + (record.gameName || record.gameId || "Unknown game") + ": " + record.message, "error");
+  }
+
+  async function downloadErrorLogs() {
+    setActionButtonsDisabled(true);
+    try {
+      setWorkProgress("Preparing error log export", 0, 0);
+      const logs = await getAllErrorLogRecords();
+      if (!logs.length) {
+        throw new Error("No saved game error logs to export.");
+      }
+      logs.sort((a, b) => (Number(a.timestamp) || 0) - (Number(b.timestamp) || 0));
+      const payload = {
+        format: "cbgames-error-logs-v1",
+        exportedAt: Date.now(),
+        totalLogs: logs.length,
+        logs
+      };
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = "cbgames-error-logs-" + stamp + ".json";
+      const url = URL.createObjectURL(blob);
+      try {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.append(anchor);
+        anchor.click();
+        anchor.remove();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+      log("Exported " + logs.length + " error log(s) to " + filename + ".");
+    } finally {
+      setActionButtonsDisabled(false);
+      clearWorkProgress();
+    }
   }
 
   function setWorkProgress(label, current, total) {
@@ -2759,10 +3347,72 @@
     return changed ? rewritten.join(", ") : value;
   }
 
-  function injectRuntimeBridge(documentNode) {
+  function injectRuntimeBridge(documentNode, options = {}) {
+    const bridgeMeta = {
+      gameId: typeof options.gameId === "string" ? options.gameId : "",
+      gameName: typeof options.gameName === "string" ? options.gameName : "",
+      entryPath: typeof options.entryPath === "string" ? normalizePath(options.entryPath) : ""
+    };
     const script = documentNode.createElement("script");
     script.textContent = `
 (function () {
+  var __launcherBridgeMeta = ${JSON.stringify(bridgeMeta)};
+  var __errorArgToString = function (value) {
+    if (value == null) return String(value);
+    if (value instanceof Error) {
+      return String(value.name || "Error") + ": " + String(value.message || "") + (value.stack ? " | " + String(value.stack) : "");
+    }
+    if (typeof value === "object") {
+      try {
+        return JSON.stringify(value);
+      } catch (_error) {
+        return Object.prototype.toString.call(value);
+      }
+    }
+    return String(value);
+  };
+
+  var __getLauncherHost = function () {
+    try {
+      if (window.parent && window.parent !== window && typeof window.parent.postMessage === "function") {
+        return window.parent;
+      }
+    } catch (_error) {
+      // continue
+    }
+    try {
+      if (window.opener && !window.opener.closed && typeof window.opener.postMessage === "function") {
+        return window.opener;
+      }
+    } catch (_error) {
+      // no host
+    }
+    return null;
+  };
+
+  var __reportLauncherError = function (details) {
+    var host = __getLauncherHost();
+    if (!host) {
+      return;
+    }
+    var payload = Object.assign(
+      {
+        __cbgamesPlayerLog: true,
+        level: "error",
+        timestamp: Date.now(),
+        gameId: __launcherBridgeMeta.gameId || "",
+        gameName: __launcherBridgeMeta.gameName || "",
+        entryPath: __launcherBridgeMeta.entryPath || ""
+      },
+      details || {}
+    );
+    try {
+      host.postMessage(payload, "*");
+    } catch (_error) {
+      // ignore report failure
+    }
+  };
+
   var getResolverHost = function () {
     try {
       if (window.parent && window.parent !== window && typeof window.parent.__loaderResolve === "function") {
@@ -3263,6 +3913,47 @@
     true
   );
 
+  window.addEventListener(
+    "error",
+    function (event) {
+      var errorObj = event && event.error;
+      __reportLauncherError({
+        kind: "error-event",
+        message: (event && event.message) ? String(event.message) : (errorObj && errorObj.message ? String(errorObj.message) : "Script error"),
+        source: event && event.filename ? String(event.filename) : "",
+        lineno: event && event.lineno ? Number(event.lineno) : 0,
+        colno: event && event.colno ? Number(event.colno) : 0,
+        stack: errorObj && errorObj.stack ? String(errorObj.stack) : ""
+      });
+    },
+    true
+  );
+
+  window.addEventListener("unhandledrejection", function (event) {
+    var reason = event ? event.reason : null;
+    var message = reason && reason.message ? String(reason.message) : __errorArgToString(reason || "Unhandled promise rejection");
+    __reportLauncherError({
+      kind: "unhandledrejection",
+      message: message,
+      stack: reason && reason.stack ? String(reason.stack) : ""
+    });
+  });
+
+  if (window.console && typeof window.console.error === "function") {
+    var __nativeConsoleError = window.console.error.bind(window.console);
+    window.console.error = function () {
+      var parts = [];
+      for (var i = 0; i < arguments.length; i++) {
+        parts.push(__errorArgToString(arguments[i]));
+      }
+      __reportLauncherError({
+        kind: "console.error",
+        message: parts.join(" | ")
+      });
+      return __nativeConsoleError.apply(window.console, arguments);
+    };
+  }
+
   // Suppress popups that mention file:// from bundled games.
   (function () {
     var originalAlert = window.alert;
@@ -3314,7 +4005,7 @@
     documentNode.head.prepend(script);
   }
 
-  function rewriteDocumentHtml(htmlText, entryPath) {
+  function rewriteDocumentHtml(htmlText, entryPath, runtimeBridgeOptions = {}) {
     const parser = new DOMParser();
     const documentNode = parser.parseFromString(htmlText, "text/html");
     const baseHref = toVirtualUrl(entryPath);
@@ -3359,7 +4050,7 @@
       element.setAttribute("srcset", rewritten);
     }
 
-    injectRuntimeBridge(documentNode);
+    injectRuntimeBridge(documentNode, runtimeBridgeOptions);
     return "<!DOCTYPE html>\n" + documentNode.documentElement.outerHTML;
   }
 
@@ -3417,7 +4108,11 @@
       }
 
       const htmlText = await entryRecord.blob.text();
-      const rewrittenHtml = rewriteDocumentHtml(htmlText, entryPath);
+      const rewrittenHtml = rewriteDocumentHtml(htmlText, entryPath, {
+        gameId: game.id,
+        gameName: game.name || "",
+        entryPath
+      });
       setWorkProgress("Opening player window", 3, 4);
 
       state.playerWindow.document.open();
@@ -3497,6 +4192,7 @@
       name: typeof source.name === "string" && source.name ? source.name : "Imported Game",
       zipName: typeof source.zipName === "string" && source.zipName ? source.zipName : "Imported Bundle",
       importedAt: Number(source.importedAt) || Date.now(),
+      sortOrder: Number.isFinite(Number(source.sortOrder)) ? Number(source.sortOrder) : Number.MAX_SAFE_INTEGER,
       fileCount: Number(source.fileCount) || 0,
       totalBytes: Number(source.totalBytes) || 0,
       htmlEntries: Array.isArray(source.htmlEntries) ? source.htmlEntries.map((v) => normalizePath(v)).filter(Boolean) : [],
@@ -3527,6 +4223,7 @@
         name: game.name,
         zipName: game.zipName,
         importedAt: game.importedAt,
+        sortOrder: Number.isFinite(Number(game.sortOrder)) ? Number(game.sortOrder) : Number.MAX_SAFE_INTEGER,
         fileCount: game.fileCount,
         totalBytes: game.totalBytes,
         htmlEntries: Array.isArray(game.htmlEntries) ? game.htmlEntries : [],
@@ -3805,6 +4502,14 @@
     }
   });
   importAllGamesButton.addEventListener("click", pickBundleFile);
+  exportErrorLogsButton.addEventListener("click", async () => {
+    try {
+      await downloadErrorLogs();
+    } catch (error) {
+      console.error(error);
+      log("Error log export failed: " + (error.message || String(error)), "error");
+    }
+  });
   launchButton.addEventListener("click", launchSelectedGame);
   deleteGameButton.addEventListener("click", deleteSelectedGame);
   gameSearch.addEventListener("input", () => {
@@ -3813,6 +4518,10 @@
   });
 
   gamesGrid.addEventListener("click", async (event) => {
+    if (Date.now() < state.suppressCardClickUntil) {
+      event.preventDefault();
+      return;
+    }
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
       return;
@@ -3853,6 +4562,75 @@
     await selectGameById(gameId);
     await launchSelectedGame();
   });
+
+  gamesGrid.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+    if (state.searchQuery.trim()) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.closest(".game-buttons") || target.closest(".game-edit-trigger")) {
+      return;
+    }
+    const card = target.closest(".game-item");
+    const gameId = card && card.dataset ? card.dataset.gameId || "" : "";
+    if (!card || !gameId || !state.gamesById.has(gameId)) {
+      return;
+    }
+    setSelectedGameImmediate(gameId, { persist: true, updateCardStyles: true });
+
+    cleanupReorderHoldTimer();
+    state.reorder.pointerId = event.pointerId;
+    state.reorder.startTarget = card;
+    state.reorder.holdStartX = event.clientX;
+    state.reorder.holdStartY = event.clientY;
+    state.reorder.pointerX = event.clientX;
+    state.reorder.pointerY = event.clientY;
+    state.reorder.holdMoveListener = (moveEvent) => {
+      if (state.reorder.active) {
+        return;
+      }
+      if (moveEvent.pointerId !== state.reorder.pointerId) {
+        return;
+      }
+      state.reorder.pointerX = moveEvent.clientX;
+      state.reorder.pointerY = moveEvent.clientY;
+      const dx = moveEvent.clientX - state.reorder.holdStartX;
+      const dy = moveEvent.clientY - state.reorder.holdStartY;
+      if (Math.hypot(dx, dy) > 8) {
+        cleanupReorderHoldTimer();
+      }
+    };
+    window.addEventListener("pointermove", state.reorder.holdMoveListener, true);
+    state.reorder.holdTimer = window.setTimeout(() => {
+      state.reorder.holdTimer = 0;
+      startCardReorder(gameId, card, {
+        clientX: state.reorder.pointerX,
+        clientY: state.reorder.pointerY
+      });
+    }, 300);
+  });
+
+  window.addEventListener("pointerup", () => {
+    if (!state.reorder.active) {
+      cleanupReorderHoldTimer();
+      state.reorder.pointerId = null;
+      state.reorder.startTarget = null;
+    }
+  }, true);
+
+  window.addEventListener("pointercancel", () => {
+    if (!state.reorder.active) {
+      cleanupReorderHoldTimer();
+      state.reorder.pointerId = null;
+      state.reorder.startTarget = null;
+    }
+  }, true);
 
   closeGameEditModalButton.addEventListener("click", closeGameEditModal);
   gameEditModal.addEventListener("click", (event) => {
@@ -3914,6 +4692,63 @@
       return;
     }
     await importBundleFile(bundleInput.files[0]);
+  });
+
+  window.addEventListener("dragenter", (event) => {
+    if (!hasDragFiles(event)) {
+      return;
+    }
+    event.preventDefault();
+    state.dragDepth += 1;
+    setDragDropOverlay(true, "Drop ZIP files to import");
+  });
+
+  window.addEventListener("dragover", (event) => {
+    if (!hasDragFiles(event)) {
+      return;
+    }
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "copy";
+    }
+    setDragDropOverlay(true, "Drop ZIP files to import");
+  });
+
+  window.addEventListener("dragleave", (event) => {
+    if (!hasDragFiles(event)) {
+      return;
+    }
+    event.preventDefault();
+    state.dragDepth = Math.max(0, state.dragDepth - 1);
+    if (state.dragDepth === 0) {
+      setDragDropOverlay(false);
+    }
+  });
+
+  window.addEventListener("drop", async (event) => {
+    if (!hasDragFiles(event)) {
+      return;
+    }
+    event.preventDefault();
+    state.dragDepth = 0;
+    setDragDropOverlay(false);
+    await handleDroppedZipFiles(event.dataTransfer && event.dataTransfer.files
+      ? event.dataTransfer.files
+      : []);
+  });
+
+  window.addEventListener("message", (event) => {
+    const payload = event && event.data;
+    if (!payload || typeof payload !== "object" || payload.__cbgamesPlayerLog !== true) {
+      return;
+    }
+    if (state.playerWindow && event.source && event.source !== state.playerWindow) {
+      return;
+    }
+    persistPlayerError(payload).catch((error) => {
+      console.error(error);
+      log("Could not save game error log.", "error");
+    });
   });
 
   setEmptyEntryState("Loading...");
