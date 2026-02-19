@@ -650,6 +650,47 @@
     background: #343434;
   }
   #removeGameEditImage { color: #ffd7bc; }
+  .confirm-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 4100;
+    background: rgba(6, 8, 12, 0.72);
+  }
+  .confirm-modal.open {
+    display: flex;
+  }
+  .confirm-dialog {
+    width: min(92vw, 560px);
+    background: #141414;
+    border: 1px solid #2e2e2e;
+    border-radius: 14px;
+    box-shadow: 0 26px 60px rgba(0, 0, 0, 0.52);
+    padding: 18px;
+    display: grid;
+    gap: 12px;
+  }
+  .confirm-dialog h3 {
+    margin: 0;
+    font-size: 20px;
+  }
+  .confirm-dialog p {
+    margin: 0;
+    color: #d6d6d6;
+    line-height: 1.45;
+  }
+  .confirm-dialog .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .confirm-dialog .actions button[data-variant="replace"] {
+    background: #28333a;
+    border-color: #435865;
+  }
   .drag-gap {
     width: 100%;
     border-radius: 12px;
@@ -902,6 +943,17 @@
 <input id="zipInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 <input id="bundleInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 <input id="gameEditImageInput" type="file" accept="image/*" hidden>
+<div id="importConflictModal" class="confirm-modal" aria-hidden="true">
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="importConflictTitle" aria-describedby="importConflictMessage">
+    <h3 id="importConflictTitle">Game Already Exists</h3>
+    <p id="importConflictMessage"></p>
+    <div class="actions">
+      <button id="importConflictCancel" type="button">Cancel</button> 
+      <button id="importConflictSeparate" type="button">Import Separately</button>
+      <button id="importConflictReplace" type="button" data-variant="replace">Replace Contents</button>
+    </div>
+  </div>
+</div>
 <div id="gameEditModal" class="game-edit-modal" aria-hidden="true">
   <div class="game-edit-dialog">
     <div class="game-edit-head">
@@ -980,6 +1032,11 @@
   const workProgressLabel = document.getElementById("workProgressLabel");
   const dragDropOverlay = document.getElementById("dragDropOverlay");
   const dragDropOverlayText = document.getElementById("dragDropOverlayText");
+  const importConflictModal = document.getElementById("importConflictModal");
+  const importConflictMessage = document.getElementById("importConflictMessage");
+  const importConflictReplaceButton = document.getElementById("importConflictReplace");
+  const importConflictSeparateButton = document.getElementById("importConflictSeparate");
+  const importConflictCancelButton = document.getElementById("importConflictCancel");
   const gameEditImageInput = document.getElementById("gameEditImageInput");
   const gameEditModal = document.getElementById("gameEditModal");
   const closeGameEditModalButton = document.getElementById("closeGameEditModal");
@@ -1039,7 +1096,8 @@
       sourceUrl: null,
       cropper: null,
       previewFrame: 0
-    }
+    },
+    importConflictResolver: null
   };
 
   function log(message, type = "info") {
@@ -1106,6 +1164,13 @@
       .replace(/[_-]+/g, " ")
       .trim();
     return cleaned || "Imported Game";
+  }
+
+  function normalizeGameIdentity(value) {
+    return String(value || "")
+      .replace(/\.zip$/i, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "");
   }
 
   function mimeFromPath(path) {
@@ -1206,6 +1271,46 @@
       const name = String(game.name || "").toLowerCase();
       const zipName = String(game.zipName || "").toLowerCase();
       return name.includes(query) || zipName.includes(query);
+    });
+  }
+
+  function findExistingGameMatchForImport(fileName) {
+    const zipName = String(fileName || "");
+    const zipNorm = normalizeGameIdentity(zipName);
+    const derivedNorm = normalizeGameIdentity(deriveGameName(zipName));
+    for (const game of state.gamesById.values()) {
+      const gameZipNorm = normalizeGameIdentity(game.zipName || "");
+      const gameNameNorm = normalizeGameIdentity(game.name || "");
+      if (zipNorm && (zipNorm === gameZipNorm || zipNorm === gameNameNorm)) {
+        return game;
+      }
+      if (derivedNorm && derivedNorm === gameNameNorm) {
+        return game;
+      }
+    }
+    return null;
+  }
+
+  function closeImportConflictModal() {
+    importConflictModal.classList.remove("open");
+    importConflictModal.setAttribute("aria-hidden", "true");
+    const resolver = state.importConflictResolver;
+    state.importConflictResolver = null;
+    return resolver;
+  }
+
+  function askImportConflictDecision(existingGame, incomingFileName) {
+    return new Promise((resolve) => {
+      const existingName = existingGame && existingGame.name ? String(existingGame.name) : "this game";
+      const incoming = String(incomingFileName || "this ZIP");
+      importConflictMessage.textContent =
+        "\"" + existingName + "\" is already in your library. Do you want to replace the existing copy or import \"" +
+        incoming +
+        "\" as a separate game?";
+      state.importConflictResolver = resolve;
+      importConflictModal.classList.add("open");
+      importConflictModal.setAttribute("aria-hidden", "false");
+      importConflictReplaceButton.focus();
     });
   }
 
@@ -2222,10 +2327,26 @@
       log("Please choose a .zip file.", "error");
       return;
     }
-
+    const existingGame = findExistingGameMatchForImport(file.name);
+    let importMode = "separate";
+    if (existingGame) {
+      importMode = await askImportConflictDecision(existingGame, file.name);
+      if (!importMode || importMode === "cancel") {
+        log("Import canceled.");
+        return;
+      }
+    }
     setActionButtonsDisabled(true);
-
-    const gameId = makeId();
+    const gameId = importMode === "replace" && existingGame ? existingGame.id : makeId();
+    const preservedThumbnail = importMode === "replace" && existingGame
+      ? (typeof existingGame.thumbnailDataUrl === "string" ? existingGame.thumbnailDataUrl : "")
+      : "";
+    const preservedName = importMode === "replace" && existingGame
+      ? String(existingGame.name || deriveGameName(file.name))
+      : deriveGameName(file.name);
+    const preservedSortOrder = importMode === "replace" && existingGame
+      ? Number(existingGame.sortOrder)
+      : Number.MAX_SAFE_INTEGER;
 
     try {
       setWorkProgress("Reading ZIP", 0, 0);
@@ -2244,15 +2365,20 @@
 
       const gameRecord = {
         id: gameId,
-        name: deriveGameName(file.name),
+        name: preservedName,
         zipName: file.name,
         importedAt: Date.now(),
-        sortOrder: getNextSortOrder(),
+        sortOrder: Number.isFinite(preservedSortOrder) ? preservedSortOrder : getNextSortOrder(),
         fileCount: zip.entries.length,
         totalBytes: 0,
         htmlEntries,
-        entryPath: chooseBestEntryPath(htmlEntries, "")
+        entryPath: chooseBestEntryPath(htmlEntries, ""),
+        thumbnailDataUrl: preservedThumbnail
       };
+      if (importMode === "replace" && existingGame) {
+        await deleteFilesByGameId(existingGame.id);
+        log("Replacing existing game: " + (existingGame.name || existingGame.id));
+      }
 
       let processed = 0;
       let totalBytes = 0;
@@ -2286,13 +2412,19 @@
       await putSetting(SETTING_SELECTED_GAME, gameId);
 
       await loadLibrary(gameId);
-      log("Saved game \"" + gameRecord.name + "\" (" + formatBytes(totalBytes) + ")");
+      if (importMode === "replace" && existingGame) {
+        log("Replaced game \"" + (existingGame.name || gameRecord.name) + "\" (" + formatBytes(totalBytes) + ")");
+      } else {
+        log("Saved game \"" + gameRecord.name + "\" (" + formatBytes(totalBytes) + ")");
+      }
     } catch (error) {
       console.error(error);
       log("Import failed: " + (error.message || String(error)), "error");
       try {
-        await deleteFilesByGameId(gameId);
-        await deleteGameRecord(gameId);
+        if (importMode !== "replace") {
+          await deleteFilesByGameId(gameId);
+          await deleteGameRecord(gameId);
+        }
       } catch {
         // best effort cleanup
       }
@@ -4639,6 +4771,13 @@
     }
   });
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && importConflictModal.classList.contains("open")) {
+      const resolver = closeImportConflictModal();
+      if (resolver) {
+        resolver("cancel");
+      }
+      return;
+    }
     if (event.key === "Escape" && gameEditModal.classList.contains("open")) {
       closeGameEditModal();
     }
@@ -4678,6 +4817,33 @@
     } catch (error) {
       console.error(error);
       log("Could not remove game image.", "error");
+    }
+  });
+
+  importConflictReplaceButton.addEventListener("click", () => {
+    const resolver = closeImportConflictModal();
+    if (resolver) {
+      resolver("replace");
+    }
+  });
+  importConflictSeparateButton.addEventListener("click", () => {
+    const resolver = closeImportConflictModal();
+    if (resolver) {
+      resolver("separate");
+    }
+  });
+  importConflictCancelButton.addEventListener("click", () => {
+    const resolver = closeImportConflictModal();
+    if (resolver) {
+      resolver("cancel");
+    }
+  });
+  importConflictModal.addEventListener("click", (event) => {
+    if (event.target === importConflictModal) {
+      const resolver = closeImportConflictModal();
+      if (resolver) {
+        resolver("cancel");
+      }
     }
   });
 
