@@ -23,21 +23,27 @@
   .container,
   .side-panel,
   #status,
-  .game-edit-dialog {
+  .game-edit-dialog,
+  .bundle-preview-dialog,
+  .bundle-preview-list {
     scrollbar-width: thin;
     scrollbar-color: var(--scroll-thumb) var(--scroll-track);
   }
   .container::-webkit-scrollbar,
   .side-panel::-webkit-scrollbar,
   #status::-webkit-scrollbar,
-  .game-edit-dialog::-webkit-scrollbar {
+  .game-edit-dialog::-webkit-scrollbar,
+  .bundle-preview-dialog::-webkit-scrollbar,
+  .bundle-preview-list::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
   .container::-webkit-scrollbar-track,
   .side-panel::-webkit-scrollbar-track,
   #status::-webkit-scrollbar-track,
-  .game-edit-dialog::-webkit-scrollbar-track {
+  .game-edit-dialog::-webkit-scrollbar-track,
+  .bundle-preview-dialog::-webkit-scrollbar-track,
+  .bundle-preview-list::-webkit-scrollbar-track {
     background: var(--scroll-track);
     border-radius: 999px;
     box-shadow: inset 0 0 0 1px var(--scroll-edge);
@@ -45,7 +51,9 @@
   .container::-webkit-scrollbar-thumb,
   .side-panel::-webkit-scrollbar-thumb,
   #status::-webkit-scrollbar-thumb,
-  .game-edit-dialog::-webkit-scrollbar-thumb {
+  .game-edit-dialog::-webkit-scrollbar-thumb,
+  .bundle-preview-dialog::-webkit-scrollbar-thumb,
+  .bundle-preview-list::-webkit-scrollbar-thumb {
     background: linear-gradient(180deg, #363636 0%, var(--scroll-thumb) 100%);
     border-radius: 999px;
     border: 1px solid #1a1a1a;
@@ -53,7 +61,9 @@
   .container::-webkit-scrollbar-thumb:hover,
   .side-panel::-webkit-scrollbar-thumb:hover,
   #status::-webkit-scrollbar-thumb:hover,
-  .game-edit-dialog::-webkit-scrollbar-thumb:hover {
+  .game-edit-dialog::-webkit-scrollbar-thumb:hover,
+  .bundle-preview-dialog::-webkit-scrollbar-thumb:hover,
+  .bundle-preview-list::-webkit-scrollbar-thumb:hover {
     background: linear-gradient(180deg, #4a4a4a 0%, var(--scroll-thumb-hover) 100%);
   }
   body {
@@ -691,6 +701,134 @@
     background: #28333a;
     border-color: #435865;
   }
+  .bundle-preview-dialog {
+    width: min(96vw, 900px);
+    max-height: calc(100dvh - 34px);
+    overflow: auto;
+  }
+  .bundle-preview-summary {
+    font-size: 14px;
+  }
+  .bundle-preview-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .bundle-preview-toolbar button {
+    width: auto;
+    padding: 8px 12px;
+  }
+  .bundle-preview-list {
+    display: grid;
+    gap: 8px;
+    max-height: 48dvh;
+    overflow: auto;
+    border: 1px solid #2b2b2b;
+    border-radius: 10px;
+    background: #121212;
+    padding: 10px;
+  }
+  .bundle-preview-row {
+    display: grid;
+    grid-template-columns: auto 70px minmax(0, 1fr) 180px;
+    gap: 10px;
+    align-items: center;
+    background: #181818;
+    border: 1px solid #2c2c2c;
+    border-radius: 9px;
+    padding: 10px;
+  }
+  .bundle-preview-row.is-invalid {
+    border-color: #5b3b3b;
+    background: #211616;
+  }
+  .bundle-preview-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+  }
+  .bundle-preview-main {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+  .bundle-preview-thumb {
+    width: 70px;
+    height: 70px;
+    border-radius: 10px;
+    border: 1px solid #2f2f2f;
+    background-color: #202938;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    color: #ced6e6;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .bundle-preview-thumb.no-thumb::before {
+    content: "No Image";
+  }
+  .bundle-preview-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bundle-preview-meta {
+    margin: 0;
+    color: #c7c7c7;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .bundle-preview-status {
+    margin: 0;
+    font-size: 12px;
+    color: #dbd2b1;
+  }
+  .bundle-preview-status.error {
+    color: #ffb9b9;
+  }
+  .bundle-preview-controls {
+    display: grid;
+    gap: 6px;
+  }
+  .bundle-preview-controls-hint {
+    margin: 0;
+    color: #bfc5d2;
+    font-size: 12px;
+  }
+  .bundle-preview-controls select {
+    width: 100%;
+    border: 1px solid #3a3a3a;
+    border-radius: 7px;
+    padding: 7px 8px;
+    background: #1a1a1a;
+    color: #fff;
+  }
+  .bundle-preview-plan {
+    margin: 0;
+    color: #d6d6d6;
+    font-size: 13px;
+  }
+  @media (max-width: 760px) {
+    .bundle-preview-row {
+      grid-template-columns: auto 58px minmax(0, 1fr);
+      align-items: start;
+    }
+    .bundle-preview-thumb {
+      width: 58px;
+      height: 58px;
+    }
+    .bundle-preview-controls {
+      grid-column: 2 / -1;
+    }
+  }
   .drag-gap {
     width: 100%;
     border-radius: 12px;
@@ -856,7 +994,7 @@
 </head>
 <body>
 <header>
-  <div class="logo">CBGames</div>
+  <div class="logo">CBGames - Offline Launcher</div>
 </header>
 <div id="dragDropOverlay" class="drag-drop-overlay" aria-hidden="true">
   <div class="drag-drop-overlay-card">
@@ -892,7 +1030,7 @@
       <div class="control-stack">
         <select id="entryFile"></select>
         <button id="exportAllGames" type="button">Export All Games</button>
-        <button id="importAllGames" type="button">Import All Games</button>
+        <button id="importBundle" type="button">Import Bundle</button>
         <button id="exportErrorLogs" type="button">Export Error Logs</button>
       </div>
     </section>
@@ -951,6 +1089,24 @@
       <button id="importConflictCancel" type="button">Cancel</button> 
       <button id="importConflictSeparate" type="button">Import Separately</button>
       <button id="importConflictReplace" type="button" data-variant="replace">Replace Contents</button>
+    </div>
+  </div>
+</div>
+<div id="bundlePreviewModal" class="confirm-modal" aria-hidden="true">
+  <div class="confirm-dialog bundle-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="bundlePreviewTitle" aria-describedby="bundlePreviewSummary">
+    <h3 id="bundlePreviewTitle">Bundle Import Preview</h3>
+    <p id="bundlePreviewSummary" class="bundle-preview-summary"></p>
+    <div class="bundle-preview-toolbar">
+      <button id="bundlePreviewSelectAll" type="button">Select All</button>
+      <button id="bundlePreviewSelectNone" type="button">Select None</button>
+      <button id="bundlePreviewConflictMode" type="button">Conflicts: Replace Existing</button>
+      <button id="bundlePreviewIndividualMode" type="button">Per-Game Actions: Off</button>
+    </div>
+    <div id="bundlePreviewList" class="bundle-preview-list"></div>
+    <p id="bundlePreviewPlan" class="bundle-preview-plan"></p>
+    <div class="actions">
+      <button id="bundlePreviewCancel" type="button">Cancel</button>
+      <button id="bundlePreviewImport" type="button" data-variant="replace">Import Selected</button>
     </div>
   </div>
 </div>
@@ -1024,7 +1180,7 @@
   const zipInput = document.getElementById("zipInput");
   const bundleInput = document.getElementById("bundleInput");
   const exportAllGamesButton = document.getElementById("exportAllGames");
-  const importAllGamesButton = document.getElementById("importAllGames");
+  const importBundleButton = document.getElementById("importBundle");
   const exportErrorLogsButton = document.getElementById("exportErrorLogs");
   const workProgress = document.getElementById("workProgress");
   const workProgressCircle = document.getElementById("workProgressCircle");
@@ -1037,6 +1193,16 @@
   const importConflictReplaceButton = document.getElementById("importConflictReplace");
   const importConflictSeparateButton = document.getElementById("importConflictSeparate");
   const importConflictCancelButton = document.getElementById("importConflictCancel");
+  const bundlePreviewModal = document.getElementById("bundlePreviewModal");
+  const bundlePreviewSummary = document.getElementById("bundlePreviewSummary");
+  const bundlePreviewList = document.getElementById("bundlePreviewList");
+  const bundlePreviewPlan = document.getElementById("bundlePreviewPlan");
+  const bundlePreviewSelectAllButton = document.getElementById("bundlePreviewSelectAll");
+  const bundlePreviewSelectNoneButton = document.getElementById("bundlePreviewSelectNone");
+  const bundlePreviewConflictModeButton = document.getElementById("bundlePreviewConflictMode");
+  const bundlePreviewIndividualModeButton = document.getElementById("bundlePreviewIndividualMode");
+  const bundlePreviewCancelButton = document.getElementById("bundlePreviewCancel");
+  const bundlePreviewImportButton = document.getElementById("bundlePreviewImport");
   const gameEditImageInput = document.getElementById("gameEditImageInput");
   const gameEditModal = document.getElementById("gameEditModal");
   const closeGameEditModalButton = document.getElementById("closeGameEditModal");
@@ -1097,7 +1263,9 @@
       cropper: null,
       previewFrame: 0
     },
-    importConflictResolver: null
+    importConflictResolver: null,
+    bundlePreviewResolver: null,
+    bundlePreviewDraft: null
   };
 
   function log(message, type = "info") {
@@ -1138,7 +1306,7 @@
     if (bytes === 0) {
       return "0 B";
     }
-    const units = ["B", "KB", "MB", "GB", "TB"];
+    const units = ["B", "KB", "MB", "GB", "TB"]; // if anyone has petabytes -_-
     const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
     const scaled = bytes / Math.pow(1024, exponent);
     return scaled.toFixed(scaled >= 100 || exponent === 0 ? 0 : 1) + " " + units[exponent];
@@ -1311,6 +1479,272 @@
       importConflictModal.classList.add("open");
       importConflictModal.setAttribute("aria-hidden", "false");
       importConflictReplaceButton.focus();
+    });
+  }
+
+  function getBundleNameConflicts(name) {
+    const normalized = normalizeGameIdentity(name);
+    if (!normalized) {
+      return [];
+    }
+    const matches = [];
+    for (const game of state.gamesById.values()) {
+      if (normalizeGameIdentity(game.name || "") === normalized) {
+        matches.push(game);
+      }
+    }
+    return matches;
+  }
+
+  function chooseUniqueGameId(candidateId, reservedIds) {
+    const fallbackBase = typeof candidateId === "string" && candidateId ? candidateId : makeId();
+    if (!reservedIds.has(fallbackBase)) {
+      reservedIds.add(fallbackBase);
+      return fallbackBase;
+    }
+    let nextId = fallbackBase + "-imported";
+    let counter = 2;
+    while (reservedIds.has(nextId)) {
+      nextId = fallbackBase + "-imported-" + counter;
+      counter += 1;
+    }
+    reservedIds.add(nextId);
+    return nextId;
+  }
+
+  function chooseUniqueGameName(baseName, usedNameKeys) {
+    const base = String(baseName || "").trim() || "Imported Game";
+    const baseKey = normalizeGameIdentity(base);
+    if (!baseKey || !usedNameKeys.has(baseKey)) {
+      if (baseKey) {
+        usedNameKeys.add(baseKey);
+      }
+      return base;
+    }
+    let index = 2;
+    while (index < 10000) {
+      const candidate = base + " (" + index + ")";
+      const key = normalizeGameIdentity(candidate);
+      if (!usedNameKeys.has(key)) {
+        usedNameKeys.add(key);
+        return candidate;
+      }
+      index += 1;
+    }
+    const fallback = base + "-" + Date.now();
+    const fallbackKey = normalizeGameIdentity(fallback);
+    if (fallbackKey) {
+      usedNameKeys.add(fallbackKey);
+    }
+    return fallback;
+  }
+
+  function closeBundlePreviewModal() {
+    bundlePreviewModal.classList.remove("open");
+    bundlePreviewModal.setAttribute("aria-hidden", "true");
+    const resolver = state.bundlePreviewResolver;
+    state.bundlePreviewResolver = null;
+    state.bundlePreviewDraft = null;
+    return resolver;
+  }
+
+  function cycleGlobalConflictMode(mode) {
+    if (mode === "replace") {
+      return "rename";
+    }
+    if (mode === "rename") {
+      return "skip";
+    }
+    return "replace";
+  }
+
+  function globalConflictModeLabel(mode) {
+    if (mode === "replace") {
+      return "Replace Existing";
+    }
+    if (mode === "rename") {
+      return "Import Separately";
+    }
+    return "Skip Conflicts";
+  }
+
+  function applyGlobalConflictModeToDraft() {
+    const draft = state.bundlePreviewDraft;
+    if (!draft || !Array.isArray(draft.games)) {
+      return;
+    }
+    const globalMode = String(draft.globalConflictMode || "replace");
+    for (const game of draft.games) {
+      if (!game || !game.hasConflict || game.isInvalid) {
+        continue;
+      }
+      if (!game.selected) {
+        continue;
+      }
+      game.mode = globalMode;
+      if (globalMode === "skip") {
+        game.selected = false;
+      }
+    }
+  }
+
+  function buildBundlePreviewPlanSummary() {
+    const draft = state.bundlePreviewDraft;
+    if (!draft || !Array.isArray(draft.games)) {
+      return {
+        selectedGames: 0,
+        importCount: 0,
+        replaceCount: 0,
+        renameCount: 0,
+        skippedCount: 0,
+        invalidCount: 0,
+        selectedFiles: 0,
+        selectedBytes: 0
+      };
+    }
+    const summary = {
+      selectedGames: 0,
+      importCount: 0,
+      replaceCount: 0,
+      renameCount: 0,
+      skippedCount: 0,
+      invalidCount: 0,
+      selectedFiles: 0,
+      selectedBytes: 0
+    };
+    for (const game of draft.games) {
+      const selected = Boolean(game.selected);
+      const mode = game.mode || "skip";
+      const isInvalid = Boolean(game.isInvalid);
+      if (isInvalid) {
+        summary.invalidCount += 1;
+      }
+      if (!selected || mode === "skip" || isInvalid) {
+        summary.skippedCount += 1;
+        continue;
+      }
+      summary.selectedGames += 1;
+      summary.selectedFiles += game.fileCount || 0;
+      summary.selectedBytes += game.totalBytes || 0;
+      if (mode === "replace") {
+        summary.replaceCount += 1;
+      } else if (mode === "rename") {
+        summary.renameCount += 1;
+      } else {
+        summary.importCount += 1;
+      }
+    }
+    return summary;
+  }
+
+  function renderBundlePreviewModal() {
+    const draft = state.bundlePreviewDraft;
+    if (!draft || !Array.isArray(draft.games)) {
+      return;
+    }
+    const individualMode = Boolean(draft.individualConflictControl);
+    const globalConflictMode = String(draft.globalConflictMode || "replace");
+    bundlePreviewConflictModeButton.textContent = "Conflicts: " + globalConflictModeLabel(globalConflictMode);
+    bundlePreviewIndividualModeButton.textContent = "Per-Game Actions: " + (individualMode ? "On" : "Off");
+
+    bundlePreviewSummary.textContent =
+      String(draft.fileName || "bundle.zip") +
+      " contains " + draft.games.length +
+      " game(s), " + draft.totalFiles + " file(s), " + formatBytes(draft.totalBytes) + ".";
+
+    const rows = [];
+    for (const game of draft.games) {
+      const statusClass = game.isInvalid ? "bundle-preview-status error" : "bundle-preview-status";
+      const rowClass = game.isInvalid ? "bundle-preview-row is-invalid" : "bundle-preview-row";
+      const conflictText = game.conflictName
+        ? ("Conflicts with \"" + game.conflictName + "\".")
+        : "No conflicts detected.";
+      const statusText = game.isInvalid
+        ? ("Missing payload files: " + game.missingPayloadCount + ".")
+        : conflictText;
+      const thumbClass = game.thumbnailDataUrl ? "bundle-preview-thumb" : "bundle-preview-thumb no-thumb";
+      const thumbStyle = game.thumbnailDataUrl
+        ? " style=\"background-image:url('" + escapeHtml(game.thumbnailDataUrl) + "');\""
+        : "";
+      const modeControl = individualMode
+        ? (
+            "<select data-action=\"change-mode\" data-index=\"" + game.index + "\"" + (game.isInvalid ? " disabled" : "") + ">" +
+              "<option value=\"import\"" + (game.mode === "import" ? " selected" : "") + ">Import</option>" +
+              "<option value=\"replace\"" + (game.mode === "replace" ? " selected" : "") + (game.canReplace ? "" : " disabled") + ">Replace Existing</option>" +
+              "<option value=\"rename\"" + (game.mode === "rename" ? " selected" : "") + ">Import Separately</option>" +
+              "<option value=\"skip\"" + (game.mode === "skip" ? " selected" : "") + ">Skip</option>" +
+            "</select>"
+          )
+        : (
+            "<p class=\"bundle-preview-controls-hint\">" +
+              (game.hasConflict
+                ? ("Global: " + escapeHtml(globalConflictModeLabel(globalConflictMode)))
+                : "Auto") +
+            "</p>"
+          );
+      rows.push(
+        "<div class=\"" + rowClass + "\">" +
+          "<input type=\"checkbox\" data-action=\"toggle-select\" data-index=\"" + game.index + "\"" + (game.selected ? " checked" : "") + (game.isInvalid ? " disabled" : "") + ">" +
+          "<div class=\"" + thumbClass + "\"" + thumbStyle + "></div>" +
+          "<div class=\"bundle-preview-main\">" +
+            "<p class=\"bundle-preview-title\">" + escapeHtml(game.name || "Imported Game") + "</p>" +
+            "<p class=\"bundle-preview-meta\">" +
+              formatBytes(game.totalBytes) + " • " + String(game.fileCount || 0) + " files • Startup: " + escapeHtml(game.entryPath || "-") +
+            "</p>" +
+            "<p class=\"" + statusClass + "\">" + escapeHtml(statusText) + "</p>" +
+          "</div>" +
+          "<div class=\"bundle-preview-controls\">" +
+            modeControl +
+          "</div>" +
+        "</div>"
+      );
+    }
+    bundlePreviewList.innerHTML = rows.join("");
+
+    const summary = buildBundlePreviewPlanSummary();
+    bundlePreviewPlan.textContent =
+      "Planned: " + summary.selectedGames + " game(s), " +
+      summary.selectedFiles + " file(s), " +
+      formatBytes(summary.selectedBytes) + ". " +
+      summary.importCount + " import, " +
+      summary.replaceCount + " replace, " +
+      summary.renameCount + " import separately, " +
+      summary.skippedCount + " skipped.";
+    bundlePreviewImportButton.disabled = summary.selectedGames === 0;
+  }
+
+  function openBundlePreviewModal(preview) {
+    return new Promise((resolve) => {
+      const defaultGlobalConflictMode = preview.games.some((game) => game.canReplace) ? "replace" : "rename";
+      state.bundlePreviewDraft = {
+        fileName: preview.fileName,
+        totalFiles: preview.totalFiles,
+        totalBytes: preview.totalBytes,
+        globalConflictMode: defaultGlobalConflictMode,
+        individualConflictControl: false,
+        games: preview.games.map((game) => ({
+          index: game.index,
+          sourceId: game.sourceId,
+          name: game.normalizedGame ? game.normalizedGame.name : "Imported Game",
+          entryPath: game.normalizedGame ? game.normalizedGame.entryPath : "",
+          fileCount: game.fileCount,
+          totalBytes: game.totalBytes,
+          thumbnailDataUrl: game.thumbnailDataUrl || "",
+          conflictName: game.conflictGame ? String(game.conflictGame.name || game.conflictGame.id || "") : "",
+          canReplace: Boolean(game.conflictGame),
+          hasConflict: Boolean(game.conflictGame),
+          isInvalid: Boolean(game.missingPayloadCount),
+          missingPayloadCount: game.missingPayloadCount,
+          mode: game.defaultMode,
+          selected: !game.missingPayloadCount && game.defaultMode !== "skip"
+        }))
+      };
+      applyGlobalConflictModeToDraft();
+      state.bundlePreviewResolver = resolve;
+      renderBundlePreviewModal();
+      bundlePreviewModal.classList.add("open");
+      bundlePreviewModal.setAttribute("aria-hidden", "false");
+      bundlePreviewImportButton.focus();
     });
   }
 
@@ -2677,12 +3111,12 @@
     launchButton.disabled = value;
     deleteGameButton.disabled = value;
     exportAllGamesButton.disabled = value;
-    importAllGamesButton.disabled = value;
+    importBundleButton.disabled = value;
     exportErrorLogsButton.disabled = value;
   }
 
   function getGridReorderElements() {
-    return Array.from(gamesGrid.querySelectorAll(".game-item"));
+    return Array.from(gamesGrid.querySelectorAll(".game-item[data-game-id]"));
   }
 
   function cleanupReorderHoldTimer() {
@@ -2786,7 +3220,7 @@
     updateReorderGhostPosition(event.clientX, event.clientY);
     const hovered = document.elementFromPoint(event.clientX, event.clientY);
     const item = hovered instanceof Element ? hovered.closest(".game-item") : null;
-    if (!item || item === state.reorder.sourceElement) {
+    if (!item || !item.dataset || !item.dataset.gameId || item === state.reorder.sourceElement) {
       return;
     }
     const rect = item.getBoundingClientRect();
@@ -4319,6 +4753,15 @@
 
   function normalizeBundleGameRecord(record) {
     const source = record && typeof record === "object" ? record : {};
+    const explicitHtmlEntries = Array.isArray(source.htmlEntries)
+      ? source.htmlEntries.map((v) => normalizePath(v)).filter(Boolean)
+      : [];
+    const derivedHtmlEntries = Array.isArray(source.files)
+      ? source.files
+          .map((item) => normalizePath(item && item.path ? item.path : ""))
+          .filter((path) => /\.html?$/i.test(path))
+      : [];
+    const htmlEntries = explicitHtmlEntries.length ? explicitHtmlEntries : derivedHtmlEntries;
     const normalized = {
       id: typeof source.id === "string" && source.id ? source.id : makeId(),
       name: typeof source.name === "string" && source.name ? source.name : "Imported Game",
@@ -4327,7 +4770,7 @@
       sortOrder: Number.isFinite(Number(source.sortOrder)) ? Number(source.sortOrder) : Number.MAX_SAFE_INTEGER,
       fileCount: Number(source.fileCount) || 0,
       totalBytes: Number(source.totalBytes) || 0,
-      htmlEntries: Array.isArray(source.htmlEntries) ? source.htmlEntries.map((v) => normalizePath(v)).filter(Boolean) : [],
+      htmlEntries,
       entryPath: typeof source.entryPath === "string" ? normalizePath(source.entryPath) : "",
       thumbnailDataUrl: typeof source.thumbnailDataUrl === "string" ? source.thumbnailDataUrl : ""
     };
@@ -4470,128 +4913,293 @@
     bundleInput.click();
   }
 
+  async function parseBundlePreviewData(file) {
+    setWorkProgress("Reading bundle", 0, 0);
+    log("Reading bundle: " + file.name);
+    const buffer = await file.arrayBuffer();
+    let parsedZip;
+    try {
+      parsedZip = parseZipArchive(buffer);
+    } catch {
+      throw new Error("Bundle import only supports .zip files.");
+    }
+    const entryByPath = new Map(parsedZip.entries.map((entry) => [normalizePath(entry.path), entry]));
+    const manifestEntry = entryByPath.get("bundle.json");
+    if (!manifestEntry) {
+      throw new Error("Bundle ZIP missing bundle.json.");
+    }
+    const manifestBytes = await extractEntryBytes(parsedZip, manifestEntry);
+    let bundle;
+    try {
+      bundle = JSON.parse(decodeUtf8(manifestBytes));
+    } catch {
+      throw new Error("Invalid bundle JSON inside ZIP.");
+    }
+    if (!bundle || bundle.format !== "cbgames-zip-v2" || !Array.isArray(bundle.games)) {
+      throw new Error("Unsupported backup format.");
+    }
+
+    const previewGames = [];
+    let totalFiles = 0;
+    let totalBytes = 0;
+    for (let index = 0; index < bundle.games.length; index += 1) {
+      const rawGame = bundle.games[index];
+      const normalizedGame = normalizeBundleGameRecord({
+        ...rawGame,
+        thumbnailDataUrl: ""
+      });
+      const fileList = Array.isArray(rawGame && rawGame.files) ? rawGame.files : [];
+      let missingPayloadCount = 0;
+      let computedBytes = 0;
+      for (const fileInfo of fileList) {
+        if (!fileInfo || typeof fileInfo !== "object") {
+          continue;
+        }
+        const zipPath = normalizePath(fileInfo.zipPath || "");
+        if (!zipPath || !entryByPath.has(zipPath)) {
+          missingPayloadCount += 1;
+        }
+        const rawSize = Number(fileInfo.size);
+        if (Number.isFinite(rawSize) && rawSize > 0) {
+          computedBytes += rawSize;
+        }
+      }
+      const fileCount = fileList.length;
+      const totalGameBytes = computedBytes || Number(normalizedGame.totalBytes) || 0;
+      totalFiles += fileCount;
+      totalBytes += totalGameBytes;
+
+      const existingById = normalizedGame.id ? state.gamesById.get(normalizedGame.id) : null;
+      const nameConflicts = getBundleNameConflicts(normalizedGame.name || "");
+      const conflictGame = existingById || nameConflicts[0] || null;
+      let thumbnailDataUrl = "";
+      if (rawGame && rawGame.thumbnail && typeof rawGame.thumbnail.path === "string") {
+        const thumbPath = normalizePath(rawGame.thumbnail.path);
+        const thumbEntry = entryByPath.get(thumbPath);
+        if (thumbEntry) {
+          try {
+            const thumbBytes = await extractEntryBytes(parsedZip, thumbEntry);
+            const thumbMime = typeof rawGame.thumbnail.type === "string" && rawGame.thumbnail.type
+              ? rawGame.thumbnail.type
+              : mimeFromPath(thumbPath);
+            thumbnailDataUrl = "data:" + thumbMime + ";base64," + bytesToBase64(thumbBytes);
+          } catch {
+            thumbnailDataUrl = "";
+          }
+        }
+      }
+      let defaultMode = "import";
+      if (missingPayloadCount > 0) {
+        defaultMode = "skip";
+      } else if (existingById) {
+        defaultMode = "replace";
+      } else if (nameConflicts.length) {
+        defaultMode = "rename";
+      }
+
+      previewGames.push({
+        index,
+        sourceId: typeof rawGame.id === "string" ? rawGame.id : "",
+        rawGame,
+        normalizedGame,
+        fileCount,
+        totalBytes: totalGameBytes,
+        missingPayloadCount,
+        conflictGame,
+        canReplace: Boolean(conflictGame),
+        thumbnailDataUrl,
+        defaultMode
+      });
+    }
+
+    return {
+      fileName: file.name,
+      parsedZip,
+      entryByPath,
+      games: previewGames,
+      totalFiles,
+      totalBytes
+    };
+  }
+
+  async function executeBundleImportPlan(previewData, planGames) {
+    const selected = planGames.filter((item) =>
+      item &&
+      item.selected &&
+      item.mode !== "skip" &&
+      item.preview &&
+      !item.preview.missingPayloadCount
+    );
+    if (!selected.length) {
+      throw new Error("No games were selected to import.");
+    }
+
+    const usedNameKeys = new Set(
+      Array.from(state.gamesById.values())
+        .map((game) => normalizeGameIdentity(game.name || ""))
+        .filter(Boolean)
+    );
+    const reservedIds = new Set(Array.from(state.gamesById.keys()));
+    const metadataOut = [];
+    const totalFiles = selected.reduce((sum, item) => sum + (item.preview.fileCount || 0), 0);
+
+    let metadataImported = 0;
+    setWorkProgress("Importing game metadata", 0, selected.length || 1);
+    for (const item of selected) {
+      const preview = item.preview;
+      const rawGame = preview.rawGame;
+      const incoming = normalizeBundleGameRecord({
+        ...rawGame,
+        thumbnailDataUrl: ""
+      });
+      const mode = item.mode;
+      const replaceTarget = mode === "replace" ? preview.conflictGame : null;
+
+      if (replaceTarget) {
+        await deleteFilesByGameId(replaceTarget.id);
+        incoming.id = replaceTarget.id;
+        incoming.sortOrder = Number.isFinite(Number(replaceTarget.sortOrder))
+          ? Number(replaceTarget.sortOrder)
+          : getNextSortOrder();
+        incoming.name = String(replaceTarget.name || incoming.name || "Imported Game");
+      } else {
+        incoming.id = chooseUniqueGameId(incoming.id, reservedIds);
+        incoming.sortOrder = Number.isFinite(Number(incoming.sortOrder))
+          ? Number(incoming.sortOrder)
+          : getNextSortOrder();
+        if (mode === "rename") {
+          incoming.name = chooseUniqueGameName(incoming.name, usedNameKeys);
+        } else {
+          incoming.name = chooseUniqueGameName(incoming.name, usedNameKeys);
+        }
+      }
+
+      if (rawGame && rawGame.thumbnail && typeof rawGame.thumbnail.path === "string") {
+        const thumbPath = normalizePath(rawGame.thumbnail.path);
+        const thumbEntry = previewData.entryByPath.get(thumbPath);
+        if (thumbEntry) {
+          const thumbBytes = await extractEntryBytes(previewData.parsedZip, thumbEntry);
+          const thumbMime = typeof rawGame.thumbnail.type === "string" && rawGame.thumbnail.type
+            ? rawGame.thumbnail.type
+            : mimeFromPath(thumbPath);
+          incoming.thumbnailDataUrl = "data:" + thumbMime + ";base64," + bytesToBase64(thumbBytes);
+        } else if (replaceTarget && typeof replaceTarget.thumbnailDataUrl === "string") {
+          incoming.thumbnailDataUrl = replaceTarget.thumbnailDataUrl;
+        }
+      } else if (replaceTarget && typeof replaceTarget.thumbnailDataUrl === "string") {
+        incoming.thumbnailDataUrl = replaceTarget.thumbnailDataUrl;
+      }
+
+      await putGame(incoming);
+      state.gamesById.set(incoming.id, incoming);
+
+      metadataOut.push({
+        preview,
+        gameId: incoming.id
+      });
+
+      metadataImported += 1;
+      if (metadataImported % 5 === 0 || metadataImported === selected.length) {
+        setWorkProgress("Importing game metadata", metadataImported, selected.length || 1);
+      }
+    }
+
+    let importedFiles = 0;
+    setWorkProgress("Importing game files", 0, totalFiles || 1);
+    for (const item of metadataOut) {
+      const rawGame = item.preview.rawGame;
+      const fileList = Array.isArray(rawGame && rawGame.files) ? rawGame.files : [];
+      for (const fileInfo of fileList) {
+        if (!fileInfo || typeof fileInfo !== "object") {
+          continue;
+        }
+        const sourcePath = normalizePath(fileInfo.path || "");
+        const zipPath = normalizePath(fileInfo.zipPath || "");
+        if (!sourcePath || !zipPath) {
+          continue;
+        }
+        const zipEntry = previewData.entryByPath.get(zipPath);
+        if (!zipEntry) {
+          throw new Error("Bundle missing file payload: " + zipPath);
+        }
+        const fileBytes = await extractEntryBytes(previewData.parsedZip, zipEntry);
+        const type = typeof fileInfo.type === "string" && fileInfo.type ? fileInfo.type : mimeFromPath(sourcePath);
+        const blob = new Blob([fileBytes], { type });
+        await putFileRecord({
+          gameId: item.gameId,
+          path: sourcePath,
+          size: blob.size,
+          type: blob.type,
+          blob
+        });
+        importedFiles += 1;
+        if (importedFiles % 25 === 0 || importedFiles === totalFiles) {
+          setWorkProgress("Importing game files", importedFiles, totalFiles || 1);
+        }
+      }
+    }
+
+    const selectedFirst = metadataOut.length ? metadataOut[0].gameId : "";
+    const preferredSelected = state.selectedGameId && state.gamesById.has(state.selectedGameId)
+      ? state.selectedGameId
+      : selectedFirst;
+
+    setWorkProgress("Refreshing library", 0, 0);
+    await loadLibrary(preferredSelected);
+    if (preferredSelected) {
+      await putSetting(SETTING_SELECTED_GAME, preferredSelected);
+    }
+
+    const skippedCount = planGames.length - selected.length;
+    log(
+      "Imported bundle: " +
+      metadataOut.length +
+      " games and " +
+      importedFiles +
+      " files. Skipped " +
+      skippedCount +
+      " games."
+    );
+  }
+
   async function importBundleFile(file) {
     if (!file) {
       return;
     }
+
+    let previewData;
     setActionButtonsDisabled(true);
     try {
-      setWorkProgress("Reading bundle", 0, 0);
-      log("Reading bundle: " + file.name);
-      const buffer = await file.arrayBuffer();
-      let parsedZip;
-      try {
-        parsedZip = parseZipArchive(buffer);
-      } catch {
-        throw new Error("Bundle import only supports .zip files.");
-      }
-      const entryByPath = new Map(parsedZip.entries.map((entry) => [normalizePath(entry.path), entry]));
-      const manifestEntry = entryByPath.get("bundle.json");
-      if (!manifestEntry) {
-        throw new Error("Bundle ZIP missing bundle.json.");
-      }
-      const manifestBytes = await extractEntryBytes(parsedZip, manifestEntry);
-      let bundle;
-      try {
-        bundle = JSON.parse(decodeUtf8(manifestBytes));
-      } catch {
-        throw new Error("Invalid bundle JSON inside ZIP.");
-      }
-      if (!bundle || bundle.format !== "cbgames-zip-v2" || !Array.isArray(bundle.games)) {
-        throw new Error("Unsupported backup format.");
-      }
+      previewData = await parseBundlePreviewData(file);
+      log("Bundle preview ready: " + previewData.games.length + " games.");
+    } catch (error) {
+      console.error(error);
+      log("Bundle import failed: " + (error.message || String(error)), "error");
+      return;
+    } finally {
+      setActionButtonsDisabled(false);
+      clearWorkProgress();
+    }
 
-      const idMap = new Map();
-      for (const rawGame of bundle.games) {
-        const game = normalizeBundleGameRecord({
-          ...rawGame,
-          thumbnailDataUrl: ""
-        });
-        if (state.gamesById.has(game.id) || idMap.has(game.id)) {
-          idMap.set(game.id, makeId());
-        } else {
-          idMap.set(game.id, game.id);
-        }
-      }
+    const plan = await openBundlePreviewModal(previewData);
+    if (!plan || !Array.isArray(plan.games)) {
+      log("Bundle import canceled.");
+      return;
+    }
 
-      let importedGames = 0;
-      setWorkProgress("Importing game metadata", 0, bundle.games.length || 1);
-      for (const rawGame of bundle.games) {
-        const game = normalizeBundleGameRecord({
-          ...rawGame,
-          thumbnailDataUrl: ""
-        });
-        game.id = idMap.get(game.id) || makeId();
-        if (rawGame && rawGame.thumbnail && typeof rawGame.thumbnail.path === "string") {
-          const thumbEntry = entryByPath.get(normalizePath(rawGame.thumbnail.path));
-          if (thumbEntry) {
-            const thumbBytes = await extractEntryBytes(parsedZip, thumbEntry);
-            const thumbMime = typeof rawGame.thumbnail.type === "string" && rawGame.thumbnail.type
-              ? rawGame.thumbnail.type
-              : mimeFromPath(rawGame.thumbnail.path);
-            game.thumbnailDataUrl = "data:" + thumbMime + ";base64," + bytesToBase64(thumbBytes);
-          }
-        }
-        await putGame(game);
-        state.gamesById.set(game.id, game);
-        importedGames += 1;
-        if (importedGames % 5 === 0 || importedGames === bundle.games.length) {
-          setWorkProgress("Importing game metadata", importedGames, bundle.games.length || 1);
-        }
-      }
+    const planByIndex = new Map(plan.games.map((entry) => [entry.index, entry]));
+    const planGames = previewData.games.map((preview) => {
+      const selectedPlan = planByIndex.get(preview.index) || null;
+      return {
+        preview,
+        selected: selectedPlan ? Boolean(selectedPlan.selected) : false,
+        mode: selectedPlan ? String(selectedPlan.mode || "skip") : "skip"
+      };
+    });
 
-      let importedFiles = 0;
-      const totalFiles = bundle.games.reduce((sum, game) => {
-        const files = Array.isArray(game && game.files) ? game.files.length : 0;
-        return sum + files;
-      }, 0);
-      setWorkProgress("Importing game files", 0, totalFiles || 1);
-      for (const rawGame of bundle.games) {
-        const sourceGameId = typeof rawGame.id === "string" ? rawGame.id : "";
-        const mappedGameId = idMap.get(sourceGameId);
-        if (!mappedGameId) {
-          continue;
-        }
-        const fileList = Array.isArray(rawGame.files) ? rawGame.files : [];
-        for (const fileInfo of fileList) {
-          if (!fileInfo || typeof fileInfo !== "object") {
-            continue;
-          }
-          const sourcePath = normalizePath(fileInfo.path || "");
-          const zipPath = normalizePath(fileInfo.zipPath || "");
-          if (!sourcePath || !zipPath) {
-            continue;
-          }
-          const zipEntry = entryByPath.get(zipPath);
-          if (!zipEntry) {
-            throw new Error("Bundle missing file payload: " + zipPath);
-          }
-          const fileBytes = await extractEntryBytes(parsedZip, zipEntry);
-          const type = typeof fileInfo.type === "string" && fileInfo.type ? fileInfo.type : mimeFromPath(sourcePath);
-          const blob = new Blob([fileBytes], { type });
-          await putFileRecord({
-            gameId: mappedGameId,
-            path: sourcePath,
-            size: blob.size,
-            type: blob.type,
-            blob
-          });
-          importedFiles += 1;
-          if (importedFiles % 25 === 0 || importedFiles === totalFiles) {
-            setWorkProgress("Importing game files", importedFiles, totalFiles || 1);
-          }
-        }
-      }
-
-      setWorkProgress("Refreshing library", 0, 0);
-      const preferredSelected = state.selectedGameId && state.gamesById.has(state.selectedGameId)
-        ? state.selectedGameId
-        : (bundle.games[0] && idMap.get(bundle.games[0].id)) || "";
-      await loadLibrary(preferredSelected);
-      if (preferredSelected) {
-        await putSetting(SETTING_SELECTED_GAME, preferredSelected);
-      }
-      log("Imported bundle: " + importedGames + " games and " + importedFiles + " files.");
+    setActionButtonsDisabled(true);
+    try {
+      await executeBundleImportPlan(previewData, planGames);
     } catch (error) {
       console.error(error);
       log("Bundle import failed: " + (error.message || String(error)), "error");
@@ -4633,7 +5241,7 @@
       log("Bundle export failed: " + (error.message || String(error)), "error");
     }
   });
-  importAllGamesButton.addEventListener("click", pickBundleFile);
+  importBundleButton.addEventListener("click", pickBundleFile);
   exportErrorLogsButton.addEventListener("click", async () => {
     try {
       await downloadErrorLogs();
@@ -4771,6 +5379,13 @@
     }
   });
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && bundlePreviewModal.classList.contains("open")) {
+      const resolver = closeBundlePreviewModal();
+      if (resolver) {
+        resolver(null);
+      }
+      return;
+    }
     if (event.key === "Escape" && importConflictModal.classList.contains("open")) {
       const resolver = closeImportConflictModal();
       if (resolver) {
@@ -4843,6 +5458,143 @@
       const resolver = closeImportConflictModal();
       if (resolver) {
         resolver("cancel");
+      }
+    }
+  });
+  bundlePreviewSelectAllButton.addEventListener("click", () => {
+    if (!state.bundlePreviewDraft || !Array.isArray(state.bundlePreviewDraft.games)) {
+      return;
+    }
+    const draft = state.bundlePreviewDraft;
+    const globalMode = String(draft.globalConflictMode || "replace");
+    for (const game of state.bundlePreviewDraft.games) {
+      if (!game.isInvalid) {
+        game.selected = true;
+        if (!draft.individualConflictControl && game.hasConflict) {
+          game.mode = globalMode;
+        } else if (game.mode === "skip") {
+          game.mode = game.canReplace ? "replace" : "import";
+        }
+      }
+    }
+    renderBundlePreviewModal();
+  });
+  bundlePreviewSelectNoneButton.addEventListener("click", () => {
+    if (!state.bundlePreviewDraft || !Array.isArray(state.bundlePreviewDraft.games)) {
+      return;
+    }
+    for (const game of state.bundlePreviewDraft.games) {
+      game.selected = false;
+      game.mode = "skip";
+    }
+    renderBundlePreviewModal();
+  });
+  bundlePreviewConflictModeButton.addEventListener("click", () => {
+    const draft = state.bundlePreviewDraft;
+    if (!draft || !Array.isArray(draft.games)) {
+      return;
+    }
+    draft.globalConflictMode = cycleGlobalConflictMode(draft.globalConflictMode);
+    if (!draft.individualConflictControl) {
+      for (const game of draft.games) {
+        if (!game || !game.hasConflict || game.isInvalid) {
+          continue;
+        }
+        if (!game.selected) {
+          continue;
+        }
+        game.mode = draft.globalConflictMode;
+      }
+    }
+    renderBundlePreviewModal();
+  });
+  bundlePreviewIndividualModeButton.addEventListener("click", () => {
+    const draft = state.bundlePreviewDraft;
+    if (!draft || !Array.isArray(draft.games)) {
+      return;
+    }
+    draft.individualConflictControl = !draft.individualConflictControl;
+    if (!draft.individualConflictControl) {
+      for (const game of draft.games) {
+        if (!game || !game.hasConflict || game.isInvalid) {
+          continue;
+        }
+        if (!game.selected) {
+          continue;
+        }
+        game.mode = draft.globalConflictMode;
+      }
+    }
+    renderBundlePreviewModal();
+  });
+  bundlePreviewList.addEventListener("change", (event) => {
+    if (!state.bundlePreviewDraft || !Array.isArray(state.bundlePreviewDraft.games)) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const action = target.dataset.action || "";
+    const index = Number(target.dataset.index);
+    if (!Number.isFinite(index)) {
+      return;
+    }
+    const game = state.bundlePreviewDraft.games.find((entry) => entry.index === index);
+    if (!game) {
+      return;
+    }
+    if (action === "toggle-select" && target instanceof HTMLInputElement) {
+      game.selected = target.checked;
+      if (!target.checked) {
+        game.mode = "skip";
+      } else if (!state.bundlePreviewDraft.individualConflictControl && game.hasConflict) {
+        game.mode = state.bundlePreviewDraft.globalConflictMode || "replace";
+      } else if (game.mode === "skip") {
+        game.mode = game.canReplace ? "replace" : "import";
+      }
+      renderBundlePreviewModal();
+      return;
+    }
+    if (action === "change-mode" && target instanceof HTMLSelectElement) {
+      game.mode = target.value || "skip";
+      if (game.mode === "skip") {
+        game.selected = false;
+      } else {
+        game.selected = true;
+      }
+      renderBundlePreviewModal();
+    }
+  });
+  bundlePreviewCancelButton.addEventListener("click", () => {
+    const resolver = closeBundlePreviewModal();
+    if (resolver) {
+      resolver(null);
+    }
+  });
+  bundlePreviewImportButton.addEventListener("click", () => {
+    const draft = state.bundlePreviewDraft;
+    const resolver = closeBundlePreviewModal();
+    if (!resolver) {
+      return;
+    }
+    if (!draft || !Array.isArray(draft.games)) {
+      resolver(null);
+      return;
+    }
+    resolver({
+      games: draft.games.map((game) => ({
+        index: game.index,
+        selected: Boolean(game.selected) && !game.isInvalid && game.mode !== "skip",
+        mode: String(game.mode || "skip")
+      }))
+    });
+  });
+  bundlePreviewModal.addEventListener("click", (event) => {
+    if (event.target === bundlePreviewModal) {
+      const resolver = closeBundlePreviewModal();
+      if (resolver) {
+        resolver(null);
       }
     }
   });
