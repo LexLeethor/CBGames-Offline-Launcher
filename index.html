@@ -921,6 +921,44 @@
     background: #28333a;
     border-color: #435865;
   }
+  .docs-launch {
+    width: 100%;
+    min-height: 44px;
+    font-size: 14px;
+  }
+  .docs-modal-dialog {
+    width: min(96vw, 980px);
+    max-height: calc(100dvh - 28px);
+    overflow: auto;
+    gap: 14px;
+  }
+  .docs-sections {
+    display: grid;
+    gap: 10px;
+  }
+  .docs-sections section {
+    border: 1px solid #2b2b2b;
+    border-radius: 10px;
+    background: #111;
+    padding: 12px;
+    display: grid;
+    gap: 8px;
+  }
+  .docs-sections h4 {
+    margin: 0;
+    font-size: 15px;
+  }
+  .docs-list {
+    margin: 0;
+    padding-left: 18px;
+    color: #d2d2d2;
+    line-height: 1.45;
+    display: grid;
+    gap: 4px;
+  }
+  .docs-list code {
+    color: #fff;
+  }
   .replace-target-dialog {
     width: min(96vw, 760px);
     max-height: calc(100dvh - 32px);
@@ -1438,6 +1476,9 @@
       </div>
     </section>
     <section class="panel-block">
+      <button id="openHowToModal" type="button" class="docs-launch">What games will work?</button>
+    </section>
+    <section class="panel-block">
       <details class="advanced log-dropdown">
         <summary>Activity Log</summary>
         <div id="status" aria-live="polite"></div>
@@ -1662,6 +1703,42 @@
     </div>
   </div>
 </div>
+<div id="howToModal" class="confirm-modal" aria-hidden="true">
+  <div class="confirm-dialog docs-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="howToTitle">
+    <h3 id="howToTitle">What games will work?</h3>
+    <p>Note this launcher is not perfect and most games are not designed to work like this so small bugs may occur. Anyways, You can find games on github. </p>
+    <div class="docs-sections">
+      <section>
+        <h4>Usual Game Types</h4>
+        <ul class="docs-list">
+          <li><strong>HTML5 game:</strong> has an <code>index.html</code> (or another start <code>*.html</code> file) and javascript (<code>*.js</code>).</li>
+          <li><strong>Unity WebGL game:</strong> often has folders like <code>Build/</code> and <code>TemplateData/</code>.</li>
+          <li><strong>Flash game:</strong> has a <code>*.swf</code> file.</li>
+        </ul>
+      </section>
+      <section>
+        <h4>Quick Check Before Import</h4>
+        <ul class="docs-list">
+          <li>For Flash games: look for <code>*.swf</code> and an <code>index.html</code>.</li>
+          <li>You will usually also see a <code>ruffle</code> file/folder with Flash web builds.</li>
+          <li>If you cannot find a start <code>*.html</code> file, it is usually not ready.</li>
+          
+        </ul>
+      </section>
+      <section>
+        <h4>What won't work</h4>
+        <ul class="docs-list">
+          <li>Some games may need service workers usually in files called <code>sw.js</code> which wont work in the launcher. This wont always break the game but it may.</li>
+          <li>It may be easy to mistake a game for a full website to with a web server. You can tell by look for <code>server.js</code> or <code>npm</code> which indicate its a web server</li>
+          <li>A game missing a <code>*.html</code> file</li>
+        </ul>
+      </section>
+    </div>
+    <div class="actions">
+      <button id="closeHowToModal" type="button">Close</button>
+    </div>
+  </div>
+</div>
 
 <script src="./lib/cropper.min.js"></script>
 <script>
@@ -1685,8 +1762,11 @@
   const importZipButton = document.getElementById("importZip");
   const replaceZipSelectedButton = document.getElementById("replaceZipSelected");
   const openOpsModalButton = document.getElementById("openOpsModal");
+  const openHowToModalButton = document.getElementById("openHowToModal");
   const opsModal = document.getElementById("opsModal");
   const closeOpsModalButton = document.getElementById("closeOpsModal");
+  const howToModal = document.getElementById("howToModal");
+  const closeHowToModalButton = document.getElementById("closeHowToModal");
   const launchButton = document.getElementById("launch");
   const deleteGameButton = document.getElementById("deleteGame");
   const gameSelect = document.getElementById("gameSelect");
@@ -4879,6 +4959,28 @@
     return true;
   }
 
+  function showHowToModal() {
+    if (!howToModal) {
+      return;
+    }
+    howToModal.classList.add("open");
+    howToModal.setAttribute("aria-hidden", "false");
+    if (closeHowToModalButton && !closeHowToModalButton.disabled) {
+      closeHowToModalButton.focus();
+    }
+  }
+
+  function hideHowToModal() {
+    if (!howToModal) {
+      return;
+    }
+    howToModal.classList.remove("open");
+    howToModal.setAttribute("aria-hidden", "true");
+    if (openHowToModalButton && !openHowToModalButton.disabled) {
+      openHowToModalButton.focus();
+    }
+  }
+
   function getGridReorderElements() {
     return Array.from(gamesGrid.querySelectorAll(".game-item[data-game-id]"));
   }
@@ -7070,12 +7172,19 @@
     }
   });
   openOpsModalButton.addEventListener("click", showOpsModal);
+  openHowToModalButton.addEventListener("click", showHowToModal);
   closeOpsModalButton.addEventListener("click", () => {
     hideOpsModal(false);
   });
+  closeHowToModalButton.addEventListener("click", hideHowToModal);
   opsModal.addEventListener("click", (event) => {
     if (event.target === opsModal) {
       hideOpsModal(false);
+    }
+  });
+  howToModal.addEventListener("click", (event) => {
+    if (event.target === howToModal) {
+      hideHowToModal();
     }
   });
   importGithubButton.addEventListener("click", async () => {
@@ -7274,6 +7383,10 @@
     }
     if (event.key === "Escape" && opsModal.classList.contains("open")) {
       hideOpsModal(false);
+      return;
+    }
+    if (event.key === "Escape" && howToModal.classList.contains("open")) {
+      hideHowToModal();
       return;
     }
     if (event.key === "Escape" && gameEditModal.classList.contains("open")) {
