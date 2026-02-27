@@ -156,7 +156,7 @@
     width: min(1480px, 96vw);
     margin: 0 auto 14px;
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(250px, 320px);
     gap: 16px;
     align-items: stretch;
     flex: 1 1 auto;
@@ -360,7 +360,8 @@
     display: grid;
     gap: 12px;
     min-height: 0;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     align-content: start;
   }
   .control-stack {
@@ -922,9 +923,10 @@
   }
   .replace-target-dialog {
     width: min(96vw, 760px);
+    max-height: calc(100dvh - 32px);
   }
   .replace-target-list {
-    max-height: 54dvh;
+    max-height: 56dvh;
     overflow: auto;
     border: 1px solid #2f2f2f;
     border-radius: 12px;
@@ -932,11 +934,33 @@
     padding: 20px;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 20px;
+    grid-auto-rows: max-content;
+    gap: 14px;
     align-content: start;
+    scrollbar-width: thin;
+    scrollbar-color: #3a3a3a #151515;
+  }
+  .replace-target-list::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+  .replace-target-list::-webkit-scrollbar-track {
+    background: #151515;
+    border-radius: 999px;
+  }
+  .replace-target-list::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #4a4a4a 0%, #2f2f2f 100%);
+    border: 2px solid #151515;
+    border-radius: 999px;
+  }
+  .replace-target-list::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #5b5b5b 0%, #3a3a3a 100%);
   }
   .replace-target-card {
     cursor: pointer;
+    transform: none !important;
+  }
+  .replace-target-card:hover {
     transform: none !important;
   }
   .confirm-dialog input[type="text"] {
@@ -1293,6 +1317,20 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
+  @media (max-width: 1220px) {
+    .workspace {
+      grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) minmax(230px, 280px);
+      gap: 12px;
+    }
+    .replace-target-dialog {
+      width: min(96vw, 680px);
+    }
+    .replace-target-list {
+      padding: 14px;
+      gap: 12px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
   @media (max-width: 740px) {
     header {
       flex-direction: column;
@@ -1369,7 +1407,7 @@
       grid-template-columns: 1fr;
     }
     .replace-target-list {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: 1fr;
     }
   }
 </style>
@@ -1398,6 +1436,12 @@
         <button id="launch">Launch Selected</button>
         <button id="deleteGame">Delete Selected</button>
       </div>
+    </section>
+    <section class="panel-block">
+      <details class="advanced log-dropdown">
+        <summary>Activity Log</summary>
+        <div id="status" aria-live="polite"></div>
+      </details>
     </section>
   </aside>
   <div class="games-column">
@@ -1453,12 +1497,6 @@
         <div class="metric"><span class="metric-label">Startup</span><strong id="selectedEntry" class="metric-value">-</strong></div>
         <div class="metric"><span class="metric-label">Last Imported</span><strong id="selectedImported" class="metric-value">-</strong></div>
       </div>
-    </section>
-    <section class="panel-block">
-      <details class="advanced log-dropdown">
-        <summary>Activity Log</summary>
-        <div id="status" aria-live="polite"></div>
-      </details>
     </section>
   </aside>
 </div>
@@ -1604,7 +1642,8 @@
       <div class="game-edit-side-panel">
         <article class="preview-card" aria-label="Live card preview">
           <button id="gameEditPreviewThumb" class="preview-square preview-empty" type="button" aria-label="Preview thumbnail">
-            <span class="preview-edit-pill">Edit</span>
+            <span id="gameEditPreviewBadges" class="game-badges" aria-hidden="true"></span>
+            <span class="game-edit-trigger" aria-hidden="true"></span>
           </button>
           <div class="preview-info">
             <p id="gameEditPreviewTitle" class="preview-title">Untitled game</p>
@@ -1708,6 +1747,7 @@
   const gameEditCropWrap = document.getElementById("gameEditCropWrap");
   const gameEditCropImage = document.getElementById("gameEditCropImage");
   const gameEditPreviewThumb = document.getElementById("gameEditPreviewThumb");
+  const gameEditPreviewBadges = document.getElementById("gameEditPreviewBadges");
   const gameEditPreviewTitle = document.getElementById("gameEditPreviewTitle");
 
   const gameMeta = document.getElementById("gameMeta");
@@ -1727,6 +1767,7 @@
 
   const statusBox = document.getElementById("status");
   const reorderAnimations = new WeakMap();
+  const BADGE_RESCAN_SECRET_PARAM = "__cbgames_rebadge";
 
   const state = {
     db: null,
@@ -1769,7 +1810,8 @@
     replaceTargetSelectedId: "",
     updatePromptResolver: null,
     bundlePreviewResolver: null,
-    bundlePreviewDraft: null
+    bundlePreviewDraft: null,
+    badgeRescanCompleted: false
   };
 
   function log(message, type = "info") {
@@ -1796,6 +1838,16 @@
       .replace(/\\/g, "/")
       .replace(/^\/+/, "")
       .replace(/\/+/g, "/");
+  }
+
+  function shouldRunSecretBadgeRescan() {
+    try {
+      const params = new URLSearchParams(window.location.search || "");
+      const raw = String(params.get(BADGE_RESCAN_SECRET_PARAM) || "").trim().toLowerCase();
+      return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+    } catch {
+      return false;
+    }
   }
 
   function dirnamePath(path) {
@@ -2547,17 +2599,9 @@
       const thumbStyle = hasThumb
         ? " style=\"background-image:url('" + escapeHtml(game.thumbnailDataUrl) + "');\""
         : "";
-      const githubBadge = game.githubSource
-        ? "<span class=\"game-github-badge\" aria-hidden=\"true\"></span>"
-        : "";
-      const unityBadge = game.unityDetected
-        ? "<span class=\"game-unity-badge\" aria-hidden=\"true\"></span>"
-        : "";
-      const flashBadge = game.flashDetected
-        ? "<span class=\"game-flash-badge\" aria-hidden=\"true\"></span>"
-        : "";
-      const badges = (githubBadge || unityBadge || flashBadge)
-        ? "<span class=\"game-badges\" aria-hidden=\"true\">" + githubBadge + unityBadge + flashBadge + "</span>"
+      const badgeItems = buildGameBadgeItemsMarkup(game, false);
+      const badges = badgeItems
+        ? "<span class=\"game-badges\" aria-hidden=\"true\">" + badgeItems + "</span>"
         : "";
       const card = document.createElement("div");
       card.className = "game-item replace-target-card" + selectedClass;
@@ -2883,17 +2927,9 @@
       const thumbStyle = hasThumb
         ? " style=\"background-image:url('" + escapeHtml(game.thumbnailDataUrl) + "');\""
         : "";
-      const githubBadge = game.githubSource
-        ? "<span class=\"game-github-badge\" aria-hidden=\"true\" title=\"Imported from GitHub\"></span>"
-        : "";
-      const unityBadge = game.unityDetected
-        ? "<span class=\"game-unity-badge\" aria-hidden=\"true\" title=\"Unity game\"></span>"
-        : "";
-      const flashBadge = game.flashDetected
-        ? "<span class=\"game-flash-badge\" aria-hidden=\"true\" title=\"Adobe Flash game\"></span>"
-        : "";
-      const badges = (githubBadge || unityBadge || flashBadge)
-        ? "<span class=\"game-badges\" aria-hidden=\"true\">" + githubBadge + unityBadge + flashBadge + "</span>"
+      const badgeItems = buildGameBadgeItemsMarkup(game, true);
+      const badges = badgeItems
+        ? "<span class=\"game-badges\" aria-hidden=\"true\">" + badgeItems + "</span>"
         : "";
       const card = document.createElement("div");
       card.className = "game-item" + selectedClass;
@@ -2935,9 +2971,26 @@
     gameEditCropImage.removeAttribute("src");
     gameEditNameInput.value = "";
     gameEditPreviewTitle.textContent = "Untitled game";
+    if (gameEditPreviewBadges) {
+      gameEditPreviewBadges.innerHTML = "";
+    }
     gameEditPreviewThumb.style.backgroundImage = "";
     gameEditPreviewThumb.classList.add("preview-empty");
     gameEditImageInput.value = "";
+  }
+
+  function buildGameBadgeItemsMarkup(game, withTitles) {
+    const titleAttr = (text) => withTitles ? " title=\"" + escapeHtml(text) + "\"" : "";
+    const githubBadge = game && game.githubSource
+      ? "<span class=\"game-github-badge\" aria-hidden=\"true\"" + titleAttr("Imported from GitHub") + "></span>"
+      : "";
+    const unityBadge = game && game.unityDetected
+      ? "<span class=\"game-unity-badge\" aria-hidden=\"true\"" + titleAttr("Unity game") + "></span>"
+      : "";
+    const flashBadge = game && game.flashDetected
+      ? "<span class=\"game-flash-badge\" aria-hidden=\"true\"" + titleAttr("Adobe Flash game") + "></span>"
+      : "";
+    return githubBadge + unityBadge + flashBadge;
   }
 
   function updateGameEditPreviewThumbFromSource() {
@@ -3105,6 +3158,9 @@
     }
     gameEditNameInput.value = String(game.name || "");
     gameEditPreviewTitle.textContent = String(game.name || "Untitled game");
+    if (gameEditPreviewBadges) {
+      gameEditPreviewBadges.innerHTML = buildGameBadgeItemsMarkup(game, true);
+    }
     gameEditModal.classList.add("open");
     gameEditModal.setAttribute("aria-hidden", "false");
   }
@@ -3508,6 +3564,29 @@
       };
       request.onerror = () => reject(request.error);
     });
+  }
+
+  async function detectUnityFromStoredFiles(gameId) {
+    const files = await getAllFilesForGame(gameId);
+    const paths = files.map((file) => normalizePath(file.path || ""));
+    if (detectUnityByPaths(paths)) {
+      return true;
+    }
+    for (const file of files) {
+      const path = normalizePath(file.path || "");
+      if (!/\.html?$/i.test(path)) {
+        continue;
+      }
+      try {
+        const htmlText = await file.blob.text();
+        if (detectUnityByHtmlText(htmlText)) {
+          return true;
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+    return false;
   }
 
   function deleteFilesByGameId(gameId) {
@@ -3975,6 +4054,35 @@
         console.error(error);
         log("Could not detect Flash files for " + (normalized.name || normalized.id) + ".", "error");
       }
+    }
+
+    const forceBadgeRescan = shouldRunSecretBadgeRescan() && !state.badgeRescanCompleted;
+    if (forceBadgeRescan) {
+      log("Secret badge rescan enabled. Re-checking all saved games...");
+      for (let i = 0; i < games.length; i += 1) {
+        const raw = storedGames[i];
+        const normalized = games[i];
+        try {
+          const [hasUnity, hasFlash] = await Promise.all([
+            detectUnityFromStoredFiles(normalized.id),
+            detectFlashFromStoredFiles(normalized.id)
+          ]);
+          const unityChanged = Boolean(raw.unityDetected) !== hasUnity;
+          const flashChanged = Boolean(raw.flashDetected) !== hasFlash;
+          if (unityChanged || flashChanged) {
+            raw.unityDetected = hasUnity;
+            raw.flashDetected = hasFlash;
+            normalized.unityDetected = hasUnity;
+            normalized.flashDetected = hasFlash;
+            await putGame(raw);
+          }
+        } catch (error) {
+          console.error(error);
+          log("Badge rescan failed for " + (normalized.name || normalized.id) + ".", "error");
+        }
+      }
+      state.badgeRescanCompleted = true;
+      log("Badge rescan complete.");
     }
 
     state.gamesById = new Map(games.map((game) => [game.id, game]));
