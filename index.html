@@ -253,12 +253,78 @@
     position: absolute;
     right: 8px;
     bottom: 8px;
+    width: 24px;
+    height: 24px;
     border: 1px solid #444;
     background: rgba(16, 16, 16, 0.85);
-    color: #fff;
     border-radius: 999px;
-    font-size: 11px;
-    padding: 4px 8px;
+    display: grid;
+    place-items: center;
+    font-size: 0;
+    color: transparent;
+    padding: 0;
+  }
+  .game-edit-trigger::before {
+    content: "";
+    width: 13px;
+    height: 13px;
+    background-color: #fff;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.33H5v-.92l8.06-8.06.92.92L5.92 19.58zM20.71 7.04c.39-.39.39-1.02 0-1.41L18.37 3.29a.996.996 0 1 0-1.41 1.41l2.34 2.34c.39.39 1.02.39 1.41 0z'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.33H5v-.92l8.06-8.06.92.92L5.92 19.58zM20.71 7.04c.39-.39.39-1.02 0-1.41L18.37 3.29a.996.996 0 1 0-1.41 1.41l2.34 2.34c.39.39 1.02.39 1.41 0z'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .game-badges {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    pointer-events: none;
+  }
+  .game-github-badge {
+    width: 24px;
+    height: 24px;
+    border: 1px solid #444;
+    background: rgba(16, 16, 16, 0.9);
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+  }
+  .game-github-badge::before {
+    content: "";
+    width: 14px;
+    height: 14px;
+    background-color: #fff;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='black'%3E%3Cpath d='M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.66 7.66 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='black'%3E%3Cpath d='M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.66 7.66 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .game-unity-badge {
+    width: 24px;
+    height: 24px;
+    border: 1px solid #444;
+    background: rgba(16, 16, 16, 0.92);
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+  }
+  .game-unity-badge::before {
+    content: "";
+    width: 14px;
+    height: 14px;
+    background-color: #fff;
+    transform: translateX(-1px);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='black'%3E%3Cpath d='M25.94 25.061l-5.382-9.060 5.382-9.064 2.598 9.062-2.599 9.060zM13.946 24.191l-6.768-6.717h10.759l5.38 9.061-9.372-2.342zM13.946 7.809l9.371-2.342-5.379 9.061h-10.761zM30.996 12.917l-3.282-11.913-12.251 3.193-1.812 3.112-3.68-0.027-8.966 8.719 8.967 8.72 3.678-0.029 1.817 3.112 12.246 3.192 3.283-11.908-1.864-3.087z'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='black'%3E%3Cpath d='M25.94 25.061l-5.382-9.060 5.382-9.064 2.598 9.062-2.599 9.060zM13.946 24.191l-6.768-6.717h10.759l5.38 9.061-9.372-2.342zM13.946 7.809l9.371-2.342-5.379 9.061h-10.761zM30.996 12.917l-3.282-11.913-12.251 3.193-1.812 3.112-3.68-0.027-8.966 8.719 8.967 8.72 3.678-0.029 1.817 3.112 12.246 3.192 3.283-11.908-1.864-3.087z'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .game-flash-badge {
+    width: 24px;
+    height: 24px;
+    border: 1px solid #6f1a1f;
+    border-radius: 999px;
+    overflow: hidden;
+    background:
+      url("data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAyNC4zLjAsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiA2LjAwIEJ1aWxkIDApICAtLT4NCjxzdmcgdmVyc2lvbj0iMS4xIiBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgeD0iMHB4IiB5PSIwcHgiDQoJIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBzdHlsZT0iZW5hYmxlLWJhY2tncm91bmQ6bmV3IDAgMCA1MTIgNTEyOyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+DQo8c3R5bGUgdHlwZT0idGV4dC9jc3MiPg0KCS5zdDB7ZmlsbDp1cmwoI1hNTElEXzJfKTt9DQoJLnN0MXtmaWxsOiNGRkZGRkY7fQ0KPC9zdHlsZT4NCjxnIGlkPSJYTUxJRF8xOF8iPg0KCQ0KCQk8bGluZWFyR3JhZGllbnQgaWQ9IlhNTElEXzJfIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeDE9IjUuOTg4IiB5MT0iNTA2IiB4Mj0iNy4wMTIiIHkyPSI1MDYiIGdyYWRpZW50VHJhbnNmb3JtPSJtYXRyaXgoMCAtNTAwIDUwMCAwIC0yNTI3NDQgMzUwNi4wMDAyKSI+DQoJCTxzdG9wICBvZmZzZXQ9IjAiIHN0eWxlPSJzdG9wLWNvbG9yOiM0QzA2MEEiLz4NCgkJPHN0b3AgIG9mZnNldD0iMSIgc3R5bGU9InN0b3AtY29sb3I6I0QyMTkyMSIvPg0KCTwvbGluZWFyR3JhZGllbnQ+DQoJPHJlY3QgaWQ9IlhNTElEXzIwXyIgY2xhc3M9InN0MCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiLz4NCgk8cGF0aCBpZD0iWE1MSURfMjRfIiBjbGFzcz0ic3QxIiBkPSJNMjE1LjA0LDI2Ny4yMmMtMzkuOTgsOTguNjEtMTA0LjUsOTcuMzUtMTA0LjUsOTcuMzV2NjIuODQNCgkJYzk5Ljg4LDAsMTM5LjU3LTY5LjAxLDE2OC42MS0xMzguNTloODEuMjJ2LTY1LjUxaC01NC43MWMzNC41MS03OC41NSw5MS42LTc1Ljc1LDkxLjYtNzUuNzVWODQuMDINCgkJQzI4Mi42NSw4NC4wMiwyNTAuMjUsMTgwLjI1LDIxNS4wNCwyNjcuMjJ6Ii8+DQo8L2c+DQo8L3N2Zz4NCg==") center / cover no-repeat;
   }
   .game-info {
     padding: 10px;
@@ -301,6 +367,38 @@
     display: grid;
     gap: 8px;
   }
+  .ops-open-cta {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 14px;
+    border: 1px solid #2d2d2d;
+    background: #1a1a1a;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    text-align: center;
+    line-height: 1.2;
+    display: grid;
+    place-items: center;
+    padding: 14px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+  .ops-open-cta:hover:not(:disabled) {
+    background: #2a2a2a;
+  }
+  .ops-open-cta::before {
+    content: "";
+    width: 90px;
+    height: 90px;
+    margin-bottom: 8px;
+    background-color: #d8d8d8;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpolygon fill='none' stroke='black' stroke-width='2' stroke-miterlimit='10' points='63,18 63,54 1,54 1,10 22,10 30,18'/%3E%3Cpolyline fill='none' stroke='black' stroke-width='2' stroke-linejoin='bevel' stroke-miterlimit='10' points='23.998,34 31.998,26 39.998,34'/%3E%3Cline fill='none' stroke='black' stroke-width='2' stroke-miterlimit='10' x1='31.998' y1='26' x2='31.998' y2='46'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpolygon fill='none' stroke='black' stroke-width='2' stroke-miterlimit='10' points='63,18 63,54 1,54 1,10 22,10 30,18'/%3E%3Cpolyline fill='none' stroke='black' stroke-width='2' stroke-linejoin='bevel' stroke-miterlimit='10' points='23.998,34 31.998,26 39.998,34'/%3E%3Cline fill='none' stroke='black' stroke-width='2' stroke-miterlimit='10' x1='31.998' y1='26' x2='31.998' y2='46'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .legacy-launch-actions {
+    display: none;
+  }
   .work-progress {
     display: grid;
     justify-items: center;
@@ -308,8 +406,8 @@
   }
   .work-progress-circle {
     --progress-pct: 0;
-    width: 88px;
-    height: 88px;
+    width: 118px;
+    height: 118px;
     border-radius: 50%;
     background: conic-gradient(#73c9ff calc(var(--progress-pct) * 1%), #2a2a2a 0);
     position: relative;
@@ -319,15 +417,15 @@
   }
   .work-progress-circle::before {
     content: "";
-    width: 70px;
-    height: 70px;
+    width: 94px;
+    height: 94px;
     border-radius: 50%;
     background: #151515;
     border: 1px solid #333;
   }
   .work-progress-value {
     position: absolute;
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 600;
     color: #dff0ff;
   }
@@ -364,6 +462,59 @@
     display: grid;
     gap: 8px;
   }
+  .storage-visual {
+    display: grid;
+    gap: 12px;
+  }
+  .storage-donut {
+    --used-pct: 0;
+    width: 170px;
+    height: 170px;
+    margin: 0 auto;
+    border-radius: 50%;
+    background: conic-gradient(#73c9ff 0 calc(var(--used-pct) * 1%), #2a2a2a 0 100%);
+    position: relative;
+    display: grid;
+    place-items: center;
+  }
+  .storage-donut::before {
+    content: "";
+    width: 126px;
+    height: 126px;
+    border-radius: 50%;
+    background: #151515;
+    border: 1px solid #333;
+  }
+  .storage-donut-center {
+    position: absolute;
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+  }
+  .storage-donut-center strong {
+    font-size: 24px;
+    color: #e7f3ff;
+    line-height: 1;
+  }
+  .storage-donut-center span {
+    font-size: 12px;
+    color: #c6c6c6;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .storage-breakdown {
+    display: grid;
+    gap: 6px;
+  }
+  .storage-breakdown .metric {
+    padding: 7px 9px;
+  }
+  .storage-breakdown .metric-label {
+    font-size: 11px;
+  }
+  .storage-breakdown .metric-value {
+    font-size: 12px;
+  }
   .metric {
     display: flex;
     justify-content: space-between;
@@ -383,6 +534,71 @@
     padding: 8px 10px;
     border-radius: 8px;
     margin: 0;
+  }
+  .selected-summary {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+  }
+  .selected-thumb {
+    width: 64px;
+    height: 64px;
+    border-radius: 10px;
+    border: 1px solid #333;
+    background: #202020 center / cover no-repeat;
+    position: relative;
+    overflow: hidden;
+  }
+  .selected-thumb.no-thumb::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(180deg, #7a7a7a, #5e5e5e);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2zm2 6h2v3h3v2h-3v3h-2v-3H9v-2h3v-3z'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2zm2 6h2v3h3v2h-3v3h-2v-3H9v-2h3v-3z'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .selected-title-wrap {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+  }
+  .selected-title {
+    margin: 0;
+    font-size: 15px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .selected-subtitle {
+    margin: 0;
+    font-size: 12px;
+    color: #bdbdbd;
+  }
+  .selected-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .selected-startup-picker {
+    margin-top: 8px;
+    display: grid;
+    gap: 6px;
+  }
+  .selected-startup-picker label {
+    font-size: 11px;
+    color: #bababa;
+    text-transform: uppercase;
+    letter-spacing: 0.35px;
+  }
+  .selected-actions button {
+    min-height: 36px;
+    font-size: 13px;
   }
   details.advanced {
     border: 1px dashed #3a3a3a;
@@ -666,7 +882,7 @@
     display: none;
     align-items: center;
     justify-content: center;
-    z-index: 4100;
+    z-index: 10100;
     background: rgba(6, 8, 12, 0.72);
   }
   .confirm-modal.open {
@@ -691,6 +907,9 @@
     color: #d6d6d6;
     line-height: 1.45;
   }
+  #updatePromptMessage {
+    white-space: pre-line;
+  }
   .confirm-dialog .actions {
     display: flex;
     flex-wrap: wrap;
@@ -700,6 +919,34 @@
   .confirm-dialog .actions button[data-variant="replace"] {
     background: #28333a;
     border-color: #435865;
+  }
+  .replace-target-dialog {
+    width: min(96vw, 760px);
+  }
+  .replace-target-list {
+    max-height: 54dvh;
+    overflow: auto;
+    border: 1px solid #2f2f2f;
+    border-radius: 12px;
+    background: #141414;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 20px;
+    align-content: start;
+  }
+  .replace-target-card {
+    cursor: pointer;
+    transform: none !important;
+  }
+  .confirm-dialog input[type="text"] {
+    width: 100%;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    padding: 9px 10px;
+    font-size: 14px;
+    background: #1a1a1a;
+    color: #fff;
   }
   .bundle-preview-dialog {
     width: min(96vw, 900px);
@@ -890,6 +1137,128 @@
     font-weight: 600;
     letter-spacing: 0.2px;
   }
+  .ops-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10020;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0, 0, 0, 0);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, background 0.25s ease;
+  }
+  .ops-modal.open {
+    opacity: 1;
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  .ops-sheet {
+    width: min(1120px, 96vw);
+    max-height: min(88dvh, 900px);
+    margin: 0 auto;
+    border: 1px solid #323232;
+    border-radius: 16px;
+    background: #171717;
+    transform: translateY(40px);
+    opacity: 0;
+    transition: transform 0.28s ease;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+    gap: 16px;
+    padding: 16px;
+    overflow: auto;
+  }
+  .ops-modal.open .ops-sheet {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  .ops-actions {
+    display: grid;
+    gap: 12px;
+    align-content: start;
+  }
+  .ops-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .ops-head h3 {
+    margin: 0;
+    font-size: 19px;
+  }
+  .ops-head p {
+    margin: 4px 0 0;
+    color: #c0c0c0;
+    font-size: 13px;
+  }
+  #closeOpsModal {
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    padding: 0;
+    font-size: 18px;
+    line-height: 1;
+  }
+  .ops-controls {
+    display: grid;
+    gap: 10px;
+  }
+  .ops-group {
+    border: 1px solid #2c2c2c;
+    border-radius: 12px;
+    background: #121212;
+    padding: 12px;
+    display: grid;
+    gap: 8px;
+  }
+  .ops-group h4 {
+    margin: 0;
+    font-size: 14px;
+    color: #f2f2f2;
+  }
+  .ops-group p {
+    margin: 0;
+    font-size: 12px;
+    color: #bebebe;
+    line-height: 1.35;
+  }
+  .ops-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .ops-row.one {
+    grid-template-columns: 1fr;
+  }
+  .ops-controls button {
+    width: 100%;
+    min-height: 40px;
+  }
+  .ops-progress {
+    border: 1px solid #2b2b2b;
+    border-radius: 12px;
+    background: #101010;
+    padding: 14px;
+    display: grid;
+    gap: 10px;
+    align-content: start;
+    justify-items: center;
+  }
+  .ops-progress h4 {
+    margin: 0;
+    font-size: 15px;
+    color: #d7d7d7;
+    font-weight: 600;
+  }
+  .ops-progress p {
+    margin: 0;
+    font-size: 12px;
+    color: #bdbdbd;
+    text-align: center;
+  }
   @media (max-width: 980px) {
     body {
       overflow: auto;
@@ -990,6 +1359,19 @@
       max-height: 170px;
     }
   }
+  @media (max-width: 860px) {
+    .ops-sheet {
+      grid-template-columns: 1fr;
+      gap: 12px;
+      max-height: 92dvh;
+    }
+    .ops-row {
+      grid-template-columns: 1fr;
+    }
+    .replace-target-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
 </style>
 </head>
 <body>
@@ -1009,29 +1391,12 @@
 <div class="workspace">
   <aside class="side-panel">
     <section class="panel-block">
-      <h3>Progress</h3>
-      <div id="workProgress" class="work-progress" aria-live="polite">
-        <div id="workProgressCircle" class="work-progress-circle">
-          <div id="workProgressValue" class="work-progress-value">0%</div>
-        </div>
-        <div id="workProgressLabel" class="work-progress-label">Idle...</div>
-      </div>
-    </section>
-    <section class="panel-block">
-      <h3>Launcher Controls</h3>
-      <div class="control-stack">
-        <button id="importZip">Import Game (Zip)</button>
+      <button id="openOpsModal" type="button" class="ops-open-cta">
+        Manage Games
+      </button>
+      <div class="legacy-launch-actions" aria-hidden="true">
         <button id="launch">Launch Selected</button>
         <button id="deleteGame">Delete Selected</button>
-      </div>
-    </section>
-    <section class="panel-block">
-      <h3>Other stuff</h3>
-      <div class="control-stack">
-        <select id="entryFile"></select>
-        <button id="exportAllGames" type="button">Export All Games</button>
-        <button id="importBundle" type="button">Import Bundle</button>
-        <button id="exportErrorLogs" type="button">Export Error Logs</button>
       </div>
     </section>
   </aside>
@@ -1042,30 +1407,51 @@
   <aside class="side-panel">
     <section class="panel-block">
       <h3>Storage Overview</h3>
-      <div class="metrics">
-        <div class="metric">
-          <span class="metric-label">Games</span>
-          <strong id="libraryCount" class="metric-value">0</strong>
+      <div class="storage-visual">
+        <div id="storageDonut" class="storage-donut" aria-hidden="true">
+          <div class="storage-donut-center">
+            <strong id="storageUsedPct">0%</strong>
+            <span>Used</span>
+          </div>
         </div>
-        <div class="metric">
-          <span class="metric-label">Saved Size</span>
-          <strong id="libraryBytes" class="metric-value">0 B</strong>
-        </div>
-        <div class="metric">
-          <span class="metric-label">Browser Usage</span>
-          <strong id="quotaUsage" class="metric-value">Checking...</strong>
+        <div class="storage-breakdown">
+          <div class="metric">
+            <span class="metric-label">Games</span>
+            <strong id="libraryCount" class="metric-value">0</strong>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Saved by Launcher</span>
+            <strong id="libraryBytes" class="metric-value">0 B</strong>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Browser Usage</span>
+            <strong id="quotaUsage" class="metric-value">Checking...</strong>
+          </div>
         </div>
       </div>
     </section>
     <section class="panel-block">
       <h3>Selected Game</h3>
-      <p class="hint" id="gameMeta">No saved game selected.</p>
+      <div class="selected-summary">
+        <div id="selectedThumb" class="selected-thumb no-thumb" aria-hidden="true"></div>
+        <div class="selected-title-wrap">
+          <p id="gameMeta" class="selected-title">No saved game selected.</p>
+          <p id="selectedSubtext" class="selected-subtitle">Pick a game and press Play.</p>
+        </div>
+      </div>
+      <div class="selected-actions">
+        <button id="selectedPlayBtn" type="button">Play</button>
+        <button id="selectedEditBtn" type="button">Edit</button>
+        <button id="selectedDeleteBtn" type="button">Delete</button>
+      </div>
+      <div class="selected-startup-picker">
+        <label for="entryFile">Startup File</label>
+        <select id="entryFile"></select>
+      </div>
       <div class="selected-stats">
-        <div class="metric"><span class="metric-label">Imported</span><strong id="selectedImported" class="metric-value">-</strong></div>
-        <div class="metric"><span class="metric-label">Files</span><strong id="selectedFiles" class="metric-value">-</strong></div>
         <div class="metric"><span class="metric-label">Saved Size</span><strong id="selectedSize" class="metric-value">-</strong></div>
-        <div class="metric"><span class="metric-label">Source ZIP</span><strong id="selectedSource" class="metric-value">-</strong></div>
         <div class="metric"><span class="metric-label">Startup</span><strong id="selectedEntry" class="metric-value">-</strong></div>
+        <div class="metric"><span class="metric-label">Last Imported</span><strong id="selectedImported" class="metric-value">-</strong></div>
       </div>
     </section>
     <section class="panel-block">
@@ -1076,9 +1462,64 @@
     </section>
   </aside>
 </div>
+<div id="opsModal" class="ops-modal" aria-hidden="true">
+  <div class="ops-sheet" role="dialog" aria-modal="true" aria-labelledby="opsModalTitle">
+    <div class="ops-actions">
+      <div class="ops-head">
+        <div>
+          <h3 id="opsModalTitle">Game Imports & Downloads</h3>
+          <p>Add games, check updates, and manage backups in one place.</p>
+        </div>
+        <button id="closeOpsModal" type="button" aria-label="Close">×</button>
+      </div>
+      <div class="ops-controls">
+        <section class="ops-group">
+          <h4>Add Games</h4>
+          <p>Bring in individual games from local ZIP files or directly from GitHub.</p>
+          <div class="ops-row">
+            <button id="importZip">Import ZIP</button>
+            <button id="importGithub" type="button">Import from GitHub</button>
+          </div>
+          <div class="ops-row one">
+            <button id="replaceZipSelected" type="button">Replace Game with ZIP</button>
+          </div>
+        </section>
+        <section class="ops-group">
+          <h4>Updates</h4>
+          <p>Scan every GitHub-linked game and choose which updates to install.</p>
+          <div class="ops-row one">
+            <button id="checkGithubUpdate" type="button">Check All GitHub Updates</button>
+          </div>
+          <p id="updateScanStatus">Update status: Not checked yet.</p>
+        </section>
+        <section class="ops-group">
+          <h4>Backup & Restore</h4>
+          <p>Export your whole library, import a bundle, or save error logs for troubleshooting.</p>
+          <div class="ops-row">
+            <button id="exportAllGames" type="button">Export All Games</button>
+            <button id="importBundle" type="button">Import Bundle</button>
+          </div>
+          <div class="ops-row one">
+            <button id="exportErrorLogs" type="button">Export Error Logs</button>
+          </div>
+        </section>
+      </div>
+    </div>
+    <div class="ops-progress">
+      <h4>Progress</h4>
+      <div id="workProgress" class="work-progress" aria-live="polite">
+        <div id="workProgressCircle" class="work-progress-circle">
+          <div id="workProgressValue" class="work-progress-value">0%</div>
+        </div>
+        <div id="workProgressLabel" class="work-progress-label">Idle...</div>
+      </div>
+    </div>
+  </div>
+</div>
 <select id="gameSelect" class="sr-only" aria-hidden="true" tabindex="-1"></select>
 
 <input id="zipInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
+<input id="replaceZipInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 <input id="bundleInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 <input id="gameEditImageInput" type="file" accept="image/*" hidden>
 <div id="importConflictModal" class="confirm-modal" aria-hidden="true">
@@ -1089,6 +1530,39 @@
       <button id="importConflictCancel" type="button">Cancel</button> 
       <button id="importConflictSeparate" type="button">Import Separately</button>
       <button id="importConflictReplace" type="button" data-variant="replace">Replace Contents</button>
+    </div>
+  </div>
+</div>
+<div id="githubImportModal" class="confirm-modal" aria-hidden="true">
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="githubImportTitle" aria-describedby="githubImportHint">
+    <h3 id="githubImportTitle">Import from GitHub</h3>
+    <p id="githubImportHint">Enter `owner/repo`, a GitHub repo URL, or a direct `.zip` URL.</p>
+    <input id="githubImportInput" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. landgreen/n-gon or https://github.com/owner/repo">
+    <div class="actions">
+      <button id="githubImportCancel" type="button">Cancel</button>
+      <button id="githubImportSubmit" type="button" data-variant="replace">Import</button>
+    </div>
+  </div>
+</div>
+<div id="replaceTargetModal" class="confirm-modal" aria-hidden="true">
+  <div class="confirm-dialog replace-target-dialog" role="dialog" aria-modal="true" aria-labelledby="replaceTargetTitle" aria-describedby="replaceTargetHint">
+    <h3 id="replaceTargetTitle">Replace Game with ZIP</h3>
+    <p id="replaceTargetHint">Choose which game should be replaced. Existing thumbnail and custom title are kept.</p>
+    <div id="replaceTargetList" class="replace-target-list"></div>
+    <div class="actions">
+      <button id="replaceTargetCancel" type="button">Cancel</button>
+      <button id="replaceTargetChoose" type="button" data-variant="replace">Choose Game</button>
+    </div>
+  </div>
+</div>
+<div id="updatePromptModal" class="confirm-modal" aria-hidden="true">
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="updatePromptTitle" aria-describedby="updatePromptMessage">
+    <h3 id="updatePromptTitle">Game Update Available</h3>
+    <p id="updatePromptMessage"></p>
+    <div class="actions">
+      <button id="updatePromptStop" type="button">Stop Checking</button>
+      <button id="updatePromptSkip" type="button">Skip This Game</button>
+      <button id="updatePromptInstall" type="button" data-variant="replace">Update Game</button>
     </div>
   </div>
 </div>
@@ -1156,7 +1630,7 @@
   "use strict";
 
   const DB_NAME = "cbgamesOfflineZipDB";
-  const DB_VERSION = 2;
+  const DB_VERSION = 2; // DONT CHANGE THE DB VERSION
   const STORE_GAMES = "games";
   const STORE_FILES = "files";
   const STORE_SETTINGS = "settings";
@@ -1170,6 +1644,10 @@
   const UNITY_CLAMP_DEVICE_PIXEL_RATIO = 1;
 
   const importZipButton = document.getElementById("importZip");
+  const replaceZipSelectedButton = document.getElementById("replaceZipSelected");
+  const openOpsModalButton = document.getElementById("openOpsModal");
+  const opsModal = document.getElementById("opsModal");
+  const closeOpsModalButton = document.getElementById("closeOpsModal");
   const launchButton = document.getElementById("launch");
   const deleteGameButton = document.getElementById("deleteGame");
   const gameSelect = document.getElementById("gameSelect");
@@ -1178,9 +1656,13 @@
   const emptyLibrary = document.getElementById("emptyLibrary");
   const entrySelect = document.getElementById("entryFile");
   const zipInput = document.getElementById("zipInput");
+  const replaceZipInput = document.getElementById("replaceZipInput");
   const bundleInput = document.getElementById("bundleInput");
   const exportAllGamesButton = document.getElementById("exportAllGames");
   const importBundleButton = document.getElementById("importBundle");
+  const importGithubButton = document.getElementById("importGithub");
+  const checkGithubUpdateButton = document.getElementById("checkGithubUpdate");
+  const updateScanStatus = document.getElementById("updateScanStatus");
   const exportErrorLogsButton = document.getElementById("exportErrorLogs");
   const workProgress = document.getElementById("workProgress");
   const workProgressCircle = document.getElementById("workProgressCircle");
@@ -1193,6 +1675,19 @@
   const importConflictReplaceButton = document.getElementById("importConflictReplace");
   const importConflictSeparateButton = document.getElementById("importConflictSeparate");
   const importConflictCancelButton = document.getElementById("importConflictCancel");
+  const githubImportModal = document.getElementById("githubImportModal");
+  const githubImportInput = document.getElementById("githubImportInput");
+  const githubImportSubmitButton = document.getElementById("githubImportSubmit");
+  const githubImportCancelButton = document.getElementById("githubImportCancel");
+  const replaceTargetModal = document.getElementById("replaceTargetModal");
+  const replaceTargetList = document.getElementById("replaceTargetList");
+  const replaceTargetChooseButton = document.getElementById("replaceTargetChoose");
+  const replaceTargetCancelButton = document.getElementById("replaceTargetCancel");
+  const updatePromptModal = document.getElementById("updatePromptModal");
+  const updatePromptMessage = document.getElementById("updatePromptMessage");
+  const updatePromptInstallButton = document.getElementById("updatePromptInstall");
+  const updatePromptSkipButton = document.getElementById("updatePromptSkip");
+  const updatePromptStopButton = document.getElementById("updatePromptStop");
   const bundlePreviewModal = document.getElementById("bundlePreviewModal");
   const bundlePreviewSummary = document.getElementById("bundlePreviewSummary");
   const bundlePreviewList = document.getElementById("bundlePreviewList");
@@ -1216,14 +1711,19 @@
   const gameEditPreviewTitle = document.getElementById("gameEditPreviewTitle");
 
   const gameMeta = document.getElementById("gameMeta");
+  const selectedSubtext = document.getElementById("selectedSubtext");
+  const selectedThumb = document.getElementById("selectedThumb");
+  const selectedPlayButton = document.getElementById("selectedPlayBtn");
+  const selectedEditButton = document.getElementById("selectedEditBtn");
+  const selectedDeleteButton = document.getElementById("selectedDeleteBtn");
   const selectedImported = document.getElementById("selectedImported");
-  const selectedFiles = document.getElementById("selectedFiles");
   const selectedSize = document.getElementById("selectedSize");
-  const selectedSource = document.getElementById("selectedSource");
   const selectedEntry = document.getElementById("selectedEntry");
   const libraryCount = document.getElementById("libraryCount");
   const libraryBytes = document.getElementById("libraryBytes");
   const quotaUsage = document.getElementById("quotaUsage");
+  const storageDonut = document.getElementById("storageDonut");
+  const storageUsedPct = document.getElementById("storageUsedPct");
 
   const statusBox = document.getElementById("status");
   const reorderAnimations = new WeakMap();
@@ -1263,7 +1763,11 @@
       cropper: null,
       previewFrame: 0
     },
+    actionInProgress: false,
     importConflictResolver: null,
+    githubImportResolver: null,
+    replaceTargetSelectedId: "",
+    updatePromptResolver: null,
     bundlePreviewResolver: null,
     bundlePreviewDraft: null
   };
@@ -1277,6 +1781,14 @@
     line.textContent = "[" + timestamp + "] " + message;
     statusBox.append(line);
     statusBox.scrollTop = statusBox.scrollHeight;
+  }
+
+  function setUpdateScanStatus(text) {
+    if (!updateScanStatus) {
+      return;
+    }
+    const message = String(text || "").trim();
+    updateScanStatus.textContent = "Update status: " + (message || "Not checked yet.");
   }
 
   function normalizePath(path) {
@@ -1339,6 +1851,512 @@
       .replace(/\.zip$/i, "")
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "");
+  }
+
+  function detectUnityByPaths(paths) {
+    for (const rawPath of paths || []) {
+      const path = normalizePath(rawPath).toLowerCase();
+      if (!path) {
+        continue;
+      }
+      if (
+        /(^|\/)unityloader\.js$/.test(path) ||
+        /(^|\/)unityprogress\.js$/.test(path) ||
+        /(^|\/)build\/.*\.(data|wasm|mem|unityweb|loader\.js|framework\.js|json)$/.test(path) ||
+        /(^|\/)templatedata\//.test(path)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function detectUnityByHtmlText(text) {
+    if (typeof text !== "string" || !text) {
+      return false;
+    }
+    return /createUnityInstance\s*\(|UnityLoader\.instantiate\s*\(|unityInstance/i.test(text);
+  }
+
+  function detectFlashByPaths(paths) {
+    for (const rawPath of paths || []) {
+      const path = normalizePath(rawPath).toLowerCase();
+      if (/(^|\/)[^/]+\.swf$/.test(path)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function toHttpUrl(value) {
+    if (typeof value !== "string" || !value.trim()) {
+      return "";
+    }
+    try {
+      const parsed = new URL(value.trim());
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return "";
+      }
+      return parsed.href;
+    } catch {
+      return "";
+    }
+  }
+
+  function normalizeGithubSource(raw) {
+    const source = raw && typeof raw === "object" ? raw : null;
+    if (!source) {
+      return null;
+    }
+    const provider = String(source.provider || "").toLowerCase();
+    if (provider === "github-release") {
+      const owner = String(source.owner || "").trim();
+      const repo = String(source.repo || "").trim();
+      const downloadUrl = toHttpUrl(source.downloadUrl || "");
+      if (!owner || !repo || !downloadUrl) {
+        return null;
+      }
+      return {
+        provider,
+        owner,
+        repo,
+        releaseTag: String(source.releaseTag || ""),
+        releaseId: Number(source.releaseId) || 0,
+        assetId: Number(source.assetId) || 0,
+        assetName: String(source.assetName || ""),
+        assetUpdatedAt: Number(source.assetUpdatedAt) || 0,
+        downloadUrl,
+        etag: String(source.etag || ""),
+        lastModified: String(source.lastModified || ""),
+        lastCheckedAt: Number(source.lastCheckedAt) || 0
+      };
+    }
+    if (provider === "zip-url") {
+      const url = toHttpUrl(source.url || "");
+      if (!url) {
+        return null;
+      }
+      return {
+        provider,
+        url,
+        etag: String(source.etag || ""),
+        lastModified: String(source.lastModified || ""),
+        lastCheckedAt: Number(source.lastCheckedAt) || 0
+      };
+    }
+    if (provider === "github-tree") {
+      const owner = String(source.owner || "").trim();
+      const repo = String(source.repo || "").trim();
+      const branch = String(source.branch || "").trim();
+      const treeSha = String(source.treeSha || "").trim();
+      if (!owner || !repo || !branch || !treeSha) {
+        return null;
+      }
+      return {
+        provider,
+        owner,
+        repo,
+        branch,
+        treeSha,
+        lastCheckedAt: Number(source.lastCheckedAt) || 0
+      };
+    }
+    return null;
+  }
+
+  function parseGithubRepoRef(input) {
+    const raw = String(input || "").trim();
+    if (!raw) {
+      return null;
+    }
+    if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(raw)) {
+      const parts = raw.split("/");
+      return { owner: parts[0], repo: parts[1] };
+    }
+    try {
+      const parsed = new URL(raw);
+      if (parsed.hostname !== "github.com") {
+        return null;
+      }
+      const pathParts = parsed.pathname.split("/").filter(Boolean);
+      if (pathParts.length < 2) {
+        return null;
+      }
+      return {
+        owner: pathParts[0],
+        repo: pathParts[1].replace(/\.git$/i, "")
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function normalizeHttpHeaderToken(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+    return value.trim();
+  }
+
+  function extractZipFileNameFromResponse(response, fallbackUrl) {
+    const disposition = response && response.headers ? response.headers.get("content-disposition") : "";
+    if (typeof disposition === "string" && disposition) {
+      const encoded = disposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+      if (encoded && encoded[1]) {
+        try {
+          const value = decodeURIComponent(encoded[1].replace(/^"(.*)"$/, "$1"));
+          if (value) {
+            return value;
+          }
+        } catch {
+          // ignore
+        }
+      }
+      const plain = disposition.match(/filename\s*=\s*"?([^";]+)"?/i);
+      if (plain && plain[1]) {
+        return plain[1];
+      }
+    }
+    try {
+      const parsed = new URL(String(fallbackUrl || response.url || ""));
+      const base = parsed.pathname.split("/").pop() || "";
+      if (base) {
+        return decodeURIComponent(base);
+      }
+    } catch {
+      // ignore
+    }
+    return "download.zip";
+  }
+
+  async function fetchLatestGithubReleaseInfo(owner, repo, preferredAssetName) {
+    const apiUrl = "https://api.github.com/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + "/releases/latest";
+    const response = await fetch(apiUrl, {
+      cache: "no-store",
+      headers: {
+        Accept: "application/vnd.github+json"
+      }
+    });
+    if (!response.ok) {
+      const extra = response.status === 404 ? " No latest release found for this repo." : "";
+      throw new Error("GitHub release lookup failed (" + response.status + ")." + extra);
+    }
+    const release = await response.json();
+    const assets = Array.isArray(release.assets) ? release.assets : [];
+    const preferredName = String(preferredAssetName || "").trim();
+    let asset = null;
+    if (preferredName) {
+      asset = assets.find((entry) => String(entry && entry.name || "") === preferredName) || null;
+    }
+    if (!asset) {
+      asset = assets.find((entry) => /\.zip$/i.test(String(entry && entry.name || ""))) || null;
+    }
+    if (!asset || !asset.browser_download_url) {
+      throw new Error("Latest release has no .zip asset.");
+    }
+    const downloadUrl = toHttpUrl(asset.browser_download_url);
+    if (!downloadUrl) {
+      throw new Error("Latest release ZIP URL is invalid.");
+    }
+    return {
+      provider: "github-release",
+      owner,
+      repo,
+      releaseTag: String(release.tag_name || ""),
+      releaseId: Number(release.id) || 0,
+      assetId: Number(asset.id) || 0,
+      assetName: String(asset.name || ""),
+      assetUpdatedAt: Number(Date.parse(asset.updated_at || "")) || 0,
+      downloadUrl,
+      etag: "",
+      lastModified: "",
+      lastCheckedAt: Date.now()
+    };
+  }
+
+  async function fetchGithubRepoTreeSnapshot(owner, repo, branchHint) {
+    const branchCandidate = String(branchHint || "").trim();
+    let branch = branchCandidate;
+    if (!branch) {
+      const repoApiUrl = "https://api.github.com/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo);
+      const repoResponse = await fetch(repoApiUrl, {
+        cache: "no-store",
+        headers: {
+          Accept: "application/vnd.github+json"
+        }
+      });
+      if (!repoResponse.ok) {
+        throw new Error("GitHub repo lookup failed (" + repoResponse.status + ").");
+      }
+      const repoInfo = await repoResponse.json();
+      branch = String(repoInfo.default_branch || "").trim();
+      if (!branch) {
+        throw new Error("Could not determine repo default branch.");
+      }
+    }
+    const treeApiUrl =
+      "https://api.github.com/repos/" +
+      encodeURIComponent(owner) + "/" +
+      encodeURIComponent(repo) +
+      "/git/trees/" + encodeURIComponent(branch) + "?recursive=1";
+    const treeResponse = await fetch(treeApiUrl, {
+      cache: "no-store",
+      headers: {
+        Accept: "application/vnd.github+json"
+      }
+    });
+    if (!treeResponse.ok) {
+      throw new Error("GitHub tree lookup failed (" + treeResponse.status + ").");
+    }
+    const tree = await treeResponse.json();
+    const treeSha = String(tree.sha || "").trim();
+    const rawEntries = Array.isArray(tree.tree) ? tree.tree : [];
+    const fileEntries = rawEntries
+      .filter((entry) => entry && entry.type === "blob" && typeof entry.path === "string" && entry.path)
+      .map((entry) => ({
+        path: normalizePath(entry.path),
+        url: toHttpUrl(entry.url || ""),
+        sha: String(entry.sha || ""),
+        size: Number(entry.size) || 0
+      }))
+      .filter((entry) => entry.path && entry.url);
+    if (!treeSha) {
+      throw new Error("GitHub tree response missing SHA.");
+    }
+    if (!fileEntries.length) {
+      throw new Error("Repository has no file blobs to import.");
+    }
+    return {
+      owner,
+      repo,
+      branch,
+      treeSha,
+      fileEntries
+    };
+  }
+
+  async function buildZipFileFromGithubTree(snapshot, labelPrefix) {
+    const entries = [];
+    const files = Array.isArray(snapshot && snapshot.fileEntries) ? snapshot.fileEntries : [];
+    const progressLabel = String(labelPrefix || "Downloading repo files");
+    const hasKnownSizes = files.every((file) => Number.isFinite(file && file.size) && Number(file.size) >= 0);
+    const totalBytes = hasKnownSizes
+      ? files.reduce((sum, file) => sum + (Number(file.size) || 0), 0)
+      : 0;
+    let downloadedBytes = 0;
+    const updateProgress = () => {
+      if (totalBytes > 0) {
+        setWorkProgress(
+          progressLabel,
+          downloadedBytes,
+          totalBytes,
+          {
+            currentText: formatBytes(downloadedBytes),
+            totalText: formatBytes(totalBytes)
+          }
+        );
+      } else {
+        setWorkProgress(progressLabel + " (" + formatBytes(downloadedBytes) + ")", 0, 0);
+      }
+    };
+    updateProgress();
+    for (let i = 0; i < files.length; i += 1) {
+      const fileMeta = files[i];
+      const blobResponse = await fetch(fileMeta.url, {
+        cache: "no-store",
+        headers: {
+          Accept: "application/vnd.github.raw"
+        }
+      });
+      if (!blobResponse.ok) {
+        throw new Error("GitHub blob download failed (" + blobResponse.status + ") for " + fileMeta.path + ".");
+      }
+      let bytes = null;
+      const rawType = String(blobResponse.headers.get("content-type") || "").toLowerCase();
+      if (blobResponse.body && typeof blobResponse.body.getReader === "function" && rawType.indexOf("application/json") === -1) {
+        const reader = blobResponse.body.getReader();
+        const chunks = [];
+        let loadedForFile = 0;
+        let lastProgressReported = 0;
+        while (true) {
+          const part = await reader.read();
+          if (part.done) {
+            break;
+          }
+          const chunk = part.value;
+          if (!chunk) {
+            continue;
+          }
+          chunks.push(chunk);
+          loadedForFile += chunk.byteLength;
+          downloadedBytes += chunk.byteLength;
+          if (downloadedBytes - lastProgressReported >= 131072) {
+            updateProgress();
+            lastProgressReported = downloadedBytes;
+          }
+        }
+        bytes = new Uint8Array(loadedForFile);
+        let offset = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        updateProgress();
+      } else {
+        const fallbackResponse = rawType.indexOf("application/json") !== -1
+          ? blobResponse
+          : await fetch(fileMeta.url, {
+              cache: "no-store",
+              headers: {
+                Accept: "application/vnd.github+json"
+              }
+            });
+        if (!fallbackResponse.ok) {
+          throw new Error("GitHub blob fallback failed (" + fallbackResponse.status + ") for " + fileMeta.path + ".");
+        }
+        const blobPayload = await fallbackResponse.json();
+        const encoding = String(blobPayload.encoding || "").toLowerCase();
+        if (encoding !== "base64") {
+          throw new Error("Unsupported blob encoding for " + fileMeta.path + ".");
+        }
+        const content = String(blobPayload.content || "").replace(/\s+/g, "");
+        bytes = base64ToBytes(content);
+        downloadedBytes += bytes.byteLength;
+        updateProgress();
+      }
+      entries.push({
+        path: fileMeta.path,
+        bytes
+      });
+    }
+    const zipBlob = createZipStoreArchive(entries);
+    const fileName = String(snapshot.repo || "github-repo") + "-" + String(snapshot.branch || "branch") + ".zip";
+    return new File([zipBlob], fileName, { type: "application/zip" });
+  }
+
+  async function fetchZipHeadInfo(url) {
+    const normalizedUrl = toHttpUrl(url);
+    if (!normalizedUrl) {
+      throw new Error("Invalid ZIP URL.");
+    }
+    const response = await fetch(normalizedUrl, { method: "HEAD", cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("HEAD request failed (" + response.status + ").");
+    }
+    return {
+      url: toHttpUrl(response.url || normalizedUrl) || normalizedUrl,
+      etag: normalizeHttpHeaderToken(response.headers.get("etag") || ""),
+      lastModified: normalizeHttpHeaderToken(response.headers.get("last-modified") || ""),
+      contentLength: Number(response.headers.get("content-length")) || 0
+    };
+  }
+
+  async function downloadZipFromUrl(url, label) {
+    const normalizedUrl = toHttpUrl(url);
+    if (!normalizedUrl) {
+      throw new Error("Invalid ZIP URL.");
+    }
+    let expectedTotal = 0;
+    try {
+      const head = await fetchZipHeadInfo(normalizedUrl);
+      expectedTotal = Number(head.contentLength) || 0;
+    } catch {
+      expectedTotal = 0;
+    }
+    const response = await fetch(normalizedUrl, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("Download failed (" + response.status + ").");
+    }
+    const contentLength = Number(response.headers.get("content-length")) || 0;
+    const total = contentLength || expectedTotal;
+    const reader = response.body && typeof response.body.getReader === "function"
+      ? response.body.getReader()
+      : null;
+    if (!reader) {
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      setWorkProgress(label || "Downloading ZIP", bytes.byteLength, bytes.byteLength || 1);
+      const fileName = extractZipFileNameFromResponse(response, normalizedUrl);
+      const outName = /\.zip$/i.test(fileName) ? fileName : (fileName + ".zip");
+      return {
+        file: new File([bytes], outName, { type: "application/zip" }),
+        resolvedUrl: toHttpUrl(response.url || normalizedUrl) || normalizedUrl,
+        etag: normalizeHttpHeaderToken(response.headers.get("etag") || ""),
+        lastModified: normalizeHttpHeaderToken(response.headers.get("last-modified") || "")
+      };
+    }
+
+    let loaded = 0;
+    let lastReported = 0;
+    const chunks = [];
+    setWorkProgress(label || "Downloading ZIP", 0, total > 0 ? total : 0);
+    while (true) {
+      const part = await reader.read();
+      if (part.done) {
+        break;
+      }
+      const chunk = part.value;
+      if (!chunk) {
+        continue;
+      }
+      chunks.push(chunk);
+      loaded += chunk.byteLength;
+      if (loaded - lastReported >= 262144 || (total > 0 && loaded >= total)) {
+        if (total > 0) {
+          setWorkProgress(label || "Downloading ZIP", loaded, total);
+        } else {
+          setWorkProgress((label || "Downloading ZIP") + " (" + formatBytes(loaded) + ")", 0, 0);
+        }
+        lastReported = loaded;
+      }
+    }
+    if (total > 0) {
+      setWorkProgress(label || "Downloading ZIP", loaded, total);
+    } else {
+      setWorkProgress(label || "Download complete", loaded || 1, loaded || 1);
+    }
+    const blob = new Blob(chunks, { type: "application/zip" });
+    const fileName = extractZipFileNameFromResponse(response, normalizedUrl);
+    const outName = /\.zip$/i.test(fileName) ? fileName : (fileName + ".zip");
+    return {
+      file: new File([blob], outName, { type: "application/zip" }),
+      resolvedUrl: toHttpUrl(response.url || normalizedUrl) || normalizedUrl,
+      etag: normalizeHttpHeaderToken(response.headers.get("etag") || ""),
+      lastModified: normalizeHttpHeaderToken(response.headers.get("last-modified") || "")
+    };
+  }
+
+  function githubReleaseHasUpdate(previousSource, latestSource) {
+    const prev = normalizeGithubSource(previousSource);
+    const next = normalizeGithubSource(latestSource);
+    if (!prev || !next || prev.provider !== "github-release" || next.provider !== "github-release") {
+      return false;
+    }
+    if (prev.assetId && next.assetId) {
+      return prev.assetId !== next.assetId;
+    }
+    if (prev.releaseTag && next.releaseTag) {
+      return prev.releaseTag !== next.releaseTag;
+    }
+    if (prev.assetUpdatedAt && next.assetUpdatedAt) {
+      return next.assetUpdatedAt > prev.assetUpdatedAt;
+    }
+    return prev.downloadUrl !== next.downloadUrl;
+  }
+
+  function zipUrlHasUpdate(previousSource, remoteHeadInfo) {
+    const prev = normalizeGithubSource(previousSource);
+    if (!prev || prev.provider !== "zip-url") {
+      return false;
+    }
+    const nextEtag = normalizeHttpHeaderToken(remoteHeadInfo && remoteHeadInfo.etag ? remoteHeadInfo.etag : "");
+    const nextLastModified = normalizeHttpHeaderToken(remoteHeadInfo && remoteHeadInfo.lastModified ? remoteHeadInfo.lastModified : "");
+    if (prev.etag && nextEtag) {
+      return prev.etag !== nextEtag;
+    }
+    if (prev.lastModified && nextLastModified) {
+      return prev.lastModified !== nextLastModified;
+    }
+    return false;
   }
 
   function mimeFromPath(path) {
@@ -1479,6 +2497,111 @@
       importConflictModal.classList.add("open");
       importConflictModal.setAttribute("aria-hidden", "false");
       importConflictReplaceButton.focus();
+    });
+  }
+
+  function closeGithubImportModal() {
+    githubImportModal.classList.remove("open");
+    githubImportModal.setAttribute("aria-hidden", "true");
+    const resolver = state.githubImportResolver;
+    state.githubImportResolver = null;
+    return resolver;
+  }
+
+  function askGithubImportSource() {
+    return new Promise((resolve) => {
+      githubImportInput.value = "";
+      state.githubImportResolver = resolve;
+      githubImportModal.classList.add("open");
+      githubImportModal.setAttribute("aria-hidden", "false");
+      githubImportInput.focus();
+    });
+  }
+
+  function closeReplaceTargetModal() {
+    replaceTargetModal.classList.remove("open");
+    replaceTargetModal.setAttribute("aria-hidden", "true");
+    state.replaceTargetSelectedId = "";
+  }
+
+  function renderReplaceTargetList() {
+    const games = sortedGames();
+    replaceTargetList.innerHTML = "";
+    if (!games.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "No games available to replace yet.";
+      replaceTargetList.append(empty);
+      replaceTargetChooseButton.disabled = true;
+      return;
+    }
+    const selectedId = state.replaceTargetSelectedId && state.gamesById.has(state.replaceTargetSelectedId)
+      ? state.replaceTargetSelectedId
+      : games[0].id;
+    state.replaceTargetSelectedId = selectedId;
+    replaceTargetChooseButton.disabled = false;
+    for (const game of games) {
+      const selectedClass = game.id === selectedId ? " is-selected" : "";
+      const hasThumb = typeof game.thumbnailDataUrl === "string" && game.thumbnailDataUrl.length > 0;
+      const thumbClass = hasThumb ? "square-button" : "square-button no-thumb";
+      const thumbStyle = hasThumb
+        ? " style=\"background-image:url('" + escapeHtml(game.thumbnailDataUrl) + "');\""
+        : "";
+      const githubBadge = game.githubSource
+        ? "<span class=\"game-github-badge\" aria-hidden=\"true\"></span>"
+        : "";
+      const unityBadge = game.unityDetected
+        ? "<span class=\"game-unity-badge\" aria-hidden=\"true\"></span>"
+        : "";
+      const flashBadge = game.flashDetected
+        ? "<span class=\"game-flash-badge\" aria-hidden=\"true\"></span>"
+        : "";
+      const badges = (githubBadge || unityBadge || flashBadge)
+        ? "<span class=\"game-badges\" aria-hidden=\"true\">" + githubBadge + unityBadge + flashBadge + "</span>"
+        : "";
+      const card = document.createElement("div");
+      card.className = "game-item replace-target-card" + selectedClass;
+      card.dataset.gameId = game.id;
+      card.innerHTML =
+        "<button class=\"" + thumbClass + "\" type=\"button\"" + thumbStyle + " data-action=\"choose-replace\" data-game-id=\"" + escapeHtml(game.id) + "\">" +
+          badges +
+        "</button>" +
+        "<div class=\"game-info\">" +
+          "<p class=\"game-title\">" + escapeHtml(game.name || "Untitled game") + "</p>" +
+        "</div>";
+      replaceTargetList.append(card);
+    }
+  }
+
+  function openReplaceTargetGameModal() {
+    state.replaceTargetSelectedId = state.selectedGameId && state.gamesById.has(state.selectedGameId)
+      ? state.selectedGameId
+      : "";
+    renderReplaceTargetList();
+    replaceTargetModal.classList.add("open");
+    replaceTargetModal.setAttribute("aria-hidden", "false");
+    replaceTargetChooseButton.focus();
+  }
+
+  function closeUpdatePromptModal() {
+    updatePromptModal.classList.remove("open");
+    updatePromptModal.setAttribute("aria-hidden", "true");
+    const resolver = state.updatePromptResolver;
+    state.updatePromptResolver = null;
+    return resolver;
+  }
+
+  function askUpdateInstallDecision(gameName, sourceLabel, progressLabel) {
+    return new Promise((resolve) => {
+      updatePromptMessage.textContent =
+        String(progressLabel || "") +
+        "\n\n\"" + String(gameName || "Selected game") + "\" has an available update.\n" +
+        "Source: " + String(sourceLabel || "unknown") + "\n\n" +
+        "Do you want to update this game now?";
+      state.updatePromptResolver = resolve;
+      updatePromptModal.classList.add("open");
+      updatePromptModal.setAttribute("aria-hidden", "false");
+      updatePromptInstallButton.focus();
     });
   }
 
@@ -1760,13 +2883,25 @@
       const thumbStyle = hasThumb
         ? " style=\"background-image:url('" + escapeHtml(game.thumbnailDataUrl) + "');\""
         : "";
-      const thumbButtonLabel = "Edit";
+      const githubBadge = game.githubSource
+        ? "<span class=\"game-github-badge\" aria-hidden=\"true\" title=\"Imported from GitHub\"></span>"
+        : "";
+      const unityBadge = game.unityDetected
+        ? "<span class=\"game-unity-badge\" aria-hidden=\"true\" title=\"Unity game\"></span>"
+        : "";
+      const flashBadge = game.flashDetected
+        ? "<span class=\"game-flash-badge\" aria-hidden=\"true\" title=\"Adobe Flash game\"></span>"
+        : "";
+      const badges = (githubBadge || unityBadge || flashBadge)
+        ? "<span class=\"game-badges\" aria-hidden=\"true\">" + githubBadge + unityBadge + flashBadge + "</span>"
+        : "";
       const card = document.createElement("div");
       card.className = "game-item" + selectedClass;
       card.dataset.gameId = game.id;
       card.innerHTML =
         "<button class=\"" + thumbClass + "\" data-action=\"select\" data-game-id=\"" + escapeHtml(game.id) + "\" type=\"button\"" + thumbStyle + ">" +
-          "<span class=\"game-edit-trigger\" data-action=\"edit-game\" data-game-id=\"" + escapeHtml(game.id) + "\">" + thumbButtonLabel + "</span>" +
+          badges +
+          "<span class=\"game-edit-trigger\" data-action=\"edit-game\" data-game-id=\"" + escapeHtml(game.id) + "\" title=\"Edit game\" aria-label=\"Edit game\"></span>" +
         "</button>" +
         "<div class=\"game-info\">" +
           "<p class=\"game-title\">" + escapeHtml(game.name || "Untitled game") + "</p>" +
@@ -1951,6 +3086,7 @@
     if (!gameId || !state.gamesById.has(gameId)) {
       return;
     }
+    hideOpsModal(true);
     const game = state.gamesById.get(gameId);
     state.gameEditEditor.gameId = gameId;
     if (state.gameEditEditor.cropper) {
@@ -2109,16 +3245,89 @@
     return normalized || null;
   }
 
+  function resolveMediaSchemePath(rawValue) {
+    if (typeof rawValue !== "string") {
+      return null;
+    }
+    const value = rawValue.trim();
+    if (!value || !/^media:/i.test(value)) {
+      return null;
+    }
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol !== "media:") {
+        return null;
+      }
+      const host = normalizePath(parsed.hostname || "");
+      const pathname = normalizePath((parsed.pathname || "").replace(/^\/+/, ""));
+      const combined = normalizePath([host, pathname].filter(Boolean).join("/"));
+      return combined || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function buildAssetFallbackCandidates(path) {
+    const normalized = normalizePath(path);
+    if (!normalized) {
+      return [];
+    }
+
+    const out = [normalized];
+    const push = (candidate) => {
+      const next = normalizePath(candidate);
+      if (next && !out.includes(next)) {
+        out.push(next);
+      }
+    };
+
+    const mediaTrimmed = normalized.replace(/^media\/+/i, "");
+    const baseAsset = mediaTrimmed || normalized;
+    if (!/^static\/blocks-media\//i.test(baseAsset)) {
+      push("static/blocks-media/default/" + baseAsset);
+      push("static/blocks-media/high-contrast/" + baseAsset);
+    }
+
+    const fileNameOnly = baseAsset.split("/").pop() || "";
+    if (fileNameOnly && fileNameOnly !== baseAsset) {
+      push(fileNameOnly);
+      push("static/blocks-media/default/" + fileNameOnly);
+      push("static/blocks-media/high-contrast/" + fileNameOnly);
+    }
+
+    return out;
+  }
+
   function requestToObjectUrl(rawValue, baseHref) {
     const raw = String(rawValue);
     const resolvedBase = normalizeResolverBase(baseHref);
-    const path = resolveToPath(raw, resolvedBase);
+    const path = resolveToPath(raw, resolvedBase) || resolveMediaSchemePath(raw);
     if (!path) {
       return null;
     }
-    const direct = state.objectUrls.get(path);
-    if (direct) {
-      return direct;
+
+    const directCandidates = buildAssetFallbackCandidates(path);
+    for (const candidate of directCandidates) {
+      const mapped = state.objectUrls.get(candidate);
+      if (mapped) {
+        return mapped;
+      }
+    }
+
+    // Some bundles include an extra top-level folder (e.g. "Turbowarp/...").
+    // If direct lookup misses, progressively strip leading segments and retry.
+    const pathParts = path.split("/").filter(Boolean);
+    if (pathParts.length > 1) {
+      for (let i = 1; i < pathParts.length; i += 1) {
+        const trimmedPath = pathParts.slice(i).join("/");
+        const trimmedCandidates = buildAssetFallbackCandidates(trimmedPath);
+        for (const trimmedCandidate of trimmedCandidates) {
+          const mapped = state.objectUrls.get(trimmedCandidate);
+          if (mapped) {
+            return mapped;
+          }
+        }
+      }
     }
 
     const trimmed = raw.trim();
@@ -2140,9 +3349,12 @@
 
     while (probeDir) {
       const candidate = normalizePath(probeDir + "/" + path);
-      const mapped = state.objectUrls.get(candidate);
-      if (mapped) {
-        return mapped;
+      const nestedCandidates = buildAssetFallbackCandidates(candidate);
+      for (const nestedCandidate of nestedCandidates) {
+        const mapped = state.objectUrls.get(nestedCandidate);
+        if (mapped) {
+          return mapped;
+        }
       }
       probeDir = dirnamePath(probeDir);
     }
@@ -2271,6 +3483,30 @@
       request.onerror = () => reject(request.error);
       tx.oncomplete = () => resolve(out);
       tx.onabort = () => reject(tx.error || new Error("Failed to read files"));
+    });
+  }
+
+  function detectFlashFromStoredFiles(gameId) {
+    return new Promise((resolve, reject) => {
+      const tx = state.db.transaction(STORE_FILES, "readonly");
+      const index = tx.objectStore(STORE_FILES).index("gameId");
+      const request = index.openCursor(IDBKeyRange.only(gameId));
+      request.onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (!cursor) {
+          resolve(false);
+          return;
+        }
+        const primaryKey = cursor.primaryKey;
+        const pathFromKey = Array.isArray(primaryKey) ? primaryKey[1] : "";
+        const path = normalizePath(pathFromKey || (cursor.value && cursor.value.path ? cursor.value.path : ""));
+        if (/(^|\/)[^/]+\.swf$/i.test(path)) {
+          resolve(true);
+          return;
+        }
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
     });
   }
 
@@ -2639,6 +3875,16 @@
     libraryCount.textContent = String(games.length);
     libraryBytes.textContent = formatBytes(totalBytes);
 
+    const setDonut = (pct) => {
+      const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
+      if (storageDonut) {
+        storageDonut.style.setProperty("--used-pct", clamped.toFixed(1));
+      }
+      if (storageUsedPct) {
+        storageUsedPct.textContent = Math.round(clamped) + "%";
+      }
+    };
+
     if (navigator.storage && navigator.storage.estimate) {
       try {
         const estimate = await navigator.storage.estimate();
@@ -2646,34 +3892,51 @@
         const hasQuota = estimate && typeof estimate.quota === "number";
         if (hasUsage && hasQuota) {
           quotaUsage.textContent = formatBytes(estimate.usage) + " / " + formatBytes(estimate.quota);
+          setDonut((estimate.usage / Math.max(1, estimate.quota)) * 100);
         } else {
           quotaUsage.textContent = "Unavailable";
+          setDonut(0);
         }
       } catch {
         quotaUsage.textContent = "Unavailable";
+        setDonut(0);
       }
     } else {
       quotaUsage.textContent = "Unsupported";
+      setDonut(0);
     }
   }
 
   function updateSelectedGameInfo(game) {
     if (!game) {
       gameMeta.textContent = "No saved game selected.";
+      selectedSubtext.textContent = "Pick a game and press Play.";
+      selectedThumb.classList.add("no-thumb");
+      selectedThumb.style.backgroundImage = "";
       selectedImported.textContent = "-";
-      selectedFiles.textContent = "-";
       selectedSize.textContent = "-";
-      selectedSource.textContent = "-";
       selectedEntry.textContent = "-";
+      selectedPlayButton.disabled = true;
+      selectedEditButton.disabled = true;
+      selectedDeleteButton.disabled = true;
       setEmptyEntryState("Select a saved game");
       return;
     }
 
     gameMeta.textContent = game.name || "Selected game";
+    selectedSubtext.textContent = "Ready to launch";
+    if (typeof game.thumbnailDataUrl === "string" && game.thumbnailDataUrl) {
+      selectedThumb.classList.remove("no-thumb");
+      selectedThumb.style.backgroundImage = "url('" + game.thumbnailDataUrl + "')";
+    } else {
+      selectedThumb.classList.add("no-thumb");
+      selectedThumb.style.backgroundImage = "";
+    }
     selectedImported.textContent = formatDate(game.importedAt);
-    selectedFiles.textContent = String(game.fileCount || 0);
     selectedSize.textContent = formatBytes(game.totalBytes || 0);
-    selectedSource.textContent = game.zipName || "unknown";
+    selectedPlayButton.disabled = false;
+    selectedEditButton.disabled = false;
+    selectedDeleteButton.disabled = false;
 
     const chosenEntry = populateEntryOptions(game.htmlEntries || [], game.entryPath || "");
     selectedEntry.textContent = chosenEntry || game.entryPath || "-";
@@ -2688,7 +3951,32 @@
   }
 
   async function loadLibrary(preferredGameId) {
-    const games = await getAllGames();
+    const storedGames = await getAllGames();
+    const games = storedGames.map((game) => ({
+      ...game,
+      githubSource: normalizeGithubSource(game.githubSource),
+      unityDetected: Boolean(game.unityDetected),
+      flashDetected: typeof game.flashDetected === "boolean" ? game.flashDetected : false
+    }));
+
+    // One-time backfill for older saves that predate flashDetected.
+    for (let i = 0; i < games.length; i += 1) {
+      const raw = storedGames[i];
+      const normalized = games[i];
+      if (typeof raw.flashDetected === "boolean") {
+        continue;
+      }
+      try {
+        const hasFlash = await detectFlashFromStoredFiles(normalized.id);
+        normalized.flashDetected = hasFlash;
+        raw.flashDetected = hasFlash;
+        await putGame(raw);
+      } catch (error) {
+        console.error(error);
+        log("Could not detect Flash files for " + (normalized.name || normalized.id) + ".", "error");
+      }
+    }
+
     state.gamesById = new Map(games.map((game) => [game.id, game]));
     let nextOrder = 0;
     let changedOrder = false;
@@ -2753,7 +4041,75 @@
     zipInput.click();
   }
 
-  async function importZipFile(file) {
+  async function pickReplaceZipForGameId(gameId) {
+    const selected = gameId ? state.gamesById.get(gameId) : null;
+    if (!selected) {
+      log("Choose a valid game to replace.", "error");
+      return;
+    }
+
+    const importSelectedFile = async (file) => {
+      if (!file) {
+        return;
+      }
+      await importZipFile(file, {
+        importMode: "replace",
+        replaceGameId: selected.id
+      });
+    };
+
+    if (window.showOpenFilePicker) {
+      try {
+        const handles = await window.showOpenFilePicker({
+          multiple: false,
+          excludeAcceptAllOption: false,
+          types: [
+            {
+              description: "ZIP archives",
+              accept: {
+                "application/zip": [".zip"],
+                "application/x-zip-compressed": [".zip"]
+              }
+            }
+          ]
+        });
+        if (!handles.length) {
+          return;
+        }
+        const file = await handles[0].getFile();
+        await importSelectedFile(file);
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          log("Replace import canceled.");
+          return;
+        }
+        console.error(error);
+        log("Replace import failed: " + (error.message || String(error)), "error");
+      }
+      return;
+    }
+
+    replaceZipInput.value = "";
+    replaceZipInput.dataset.replaceGameId = selected.id;
+    replaceZipInput.click();
+  }
+
+  function replaceGameWithZipFlow() {
+    if (!state.gamesById.size) {
+      log("No games available to replace yet.", "error");
+      return;
+    }
+    openReplaceTargetGameModal();
+  }
+
+  async function importZipFile(file, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const requestedMode = opts.importMode === "replace" || opts.importMode === "separate"
+      ? opts.importMode
+      : "";
+    const replaceGameId = typeof opts.replaceGameId === "string" ? opts.replaceGameId : "";
+    const incomingGithubSource = normalizeGithubSource(opts.githubSource);
+    const manageUi = opts.manageUi !== false;
     if (!file) {
       return;
     }
@@ -2761,16 +4117,22 @@
       log("Please choose a .zip file.", "error");
       return;
     }
-    const existingGame = findExistingGameMatchForImport(file.name);
+    const existingGame = replaceGameId && state.gamesById.has(replaceGameId)
+      ? state.gamesById.get(replaceGameId)
+      : findExistingGameMatchForImport(file.name);
     let importMode = "separate";
-    if (existingGame) {
+    if (requestedMode) {
+      importMode = requestedMode === "replace" && existingGame ? "replace" : "separate";
+    } else if (existingGame) {
       importMode = await askImportConflictDecision(existingGame, file.name);
       if (!importMode || importMode === "cancel") {
         log("Import canceled.");
         return;
       }
     }
-    setActionButtonsDisabled(true);
+    if (manageUi) {
+      setActionButtonsDisabled(true);
+    }
     const gameId = importMode === "replace" && existingGame ? existingGame.id : makeId();
     const preservedThumbnail = importMode === "replace" && existingGame
       ? (typeof existingGame.thumbnailDataUrl === "string" ? existingGame.thumbnailDataUrl : "")
@@ -2781,6 +4143,9 @@
     const preservedSortOrder = importMode === "replace" && existingGame
       ? Number(existingGame.sortOrder)
       : Number.MAX_SAFE_INTEGER;
+    const resolvedGithubSource = incomingGithubSource || (
+      importMode === "replace" && existingGame ? normalizeGithubSource(existingGame.githubSource) : null
+    );
 
     try {
       setWorkProgress("Reading ZIP", 0, 0);
@@ -2807,7 +4172,10 @@
         totalBytes: 0,
         htmlEntries,
         entryPath: chooseBestEntryPath(htmlEntries, ""),
-        thumbnailDataUrl: preservedThumbnail
+        thumbnailDataUrl: preservedThumbnail,
+        githubSource: resolvedGithubSource,
+        unityDetected: detectUnityByPaths(zip.entries.map((entry) => entry.path)),
+        flashDetected: detectFlashByPaths(zip.entries.map((entry) => entry.path))
       };
       if (importMode === "replace" && existingGame) {
         await deleteFilesByGameId(existingGame.id);
@@ -2831,6 +4199,17 @@
           blob
         });
 
+        if (!gameRecord.unityDetected && /\.html?$/i.test(entry.path)) {
+          try {
+            const htmlText = decodeUtf8(entryBytes);
+            if (detectUnityByHtmlText(htmlText)) {
+              gameRecord.unityDetected = true;
+            }
+          } catch {
+            // ignore decode errors
+          }
+        }
+
         processed += 1;
         if (processed % 20 === 0 || processed === zip.entries.length) {
           setWorkProgress("Importing game files", processed, zip.entries.length);
@@ -2850,6 +4229,7 @@
         log("Replaced game \"" + (existingGame.name || gameRecord.name) + "\" (" + formatBytes(totalBytes) + ")");
       } else {
         log("Saved game \"" + gameRecord.name + "\" (" + formatBytes(totalBytes) + ")");
+        openGameEditModal(gameId);
       }
     } catch (error) {
       console.error(error);
@@ -2863,6 +4243,250 @@
         // best effort cleanup
       }
     } finally {
+      if (manageUi) {
+        setActionButtonsDisabled(false);
+        clearWorkProgress();
+      }
+    }
+  }
+
+  async function importFromGithub() {
+    const input = await askGithubImportSource();
+    if (!input) {
+      log("GitHub import canceled.");
+      return;
+    }
+    const repoRef = parseGithubRepoRef(input);
+    const directUrl = toHttpUrl(input);
+    setActionButtonsDisabled(true);
+    try {
+      let sourceMeta = null;
+      let downloadUrl = "";
+      if (repoRef) {
+        setWorkProgress("Checking GitHub release", 0, 0);
+        try {
+          sourceMeta = await fetchLatestGithubReleaseInfo(repoRef.owner, repoRef.repo, "");
+          downloadUrl = sourceMeta.downloadUrl;
+        } catch (error) {
+          const message = String(error && error.message ? error.message : error);
+          const noRelease = /No latest release found|\/releases\/latest|no \.zip asset/i.test(message);
+          if (!noRelease) {
+            throw error;
+          }
+          setWorkProgress("No release found, reading repo tree", 0, 0);
+          const snapshot = await fetchGithubRepoTreeSnapshot(repoRef.owner, repoRef.repo, "");
+          const repoZipFile = await buildZipFileFromGithubTree(snapshot, "Downloading repo files");
+          sourceMeta = {
+            provider: "github-tree",
+            owner: snapshot.owner,
+            repo: snapshot.repo,
+            branch: snapshot.branch,
+            treeSha: snapshot.treeSha,
+            lastCheckedAt: Date.now()
+          };
+          await importZipFile(repoZipFile, {
+            githubSource: sourceMeta,
+            manageUi: false
+          });
+          log("Imported from GitHub source.");
+          return;
+        }
+      } else if (directUrl && /\.zip(?:$|[?#])/i.test(directUrl)) {
+        sourceMeta = {
+          provider: "zip-url",
+          url: directUrl,
+          etag: "",
+          lastModified: "",
+          lastCheckedAt: Date.now()
+        };
+        downloadUrl = directUrl;
+      } else {
+        throw new Error("Input must be a GitHub repo or a .zip URL.");
+      }
+      const download = await downloadZipFromUrl(downloadUrl, "Downloading ZIP");
+      if (sourceMeta.provider === "github-release") {
+        sourceMeta.etag = download.etag;
+        sourceMeta.lastModified = download.lastModified;
+      } else {
+        sourceMeta.url = download.resolvedUrl || sourceMeta.url;
+        sourceMeta.etag = download.etag;
+        sourceMeta.lastModified = download.lastModified;
+      }
+      sourceMeta.lastCheckedAt = Date.now();
+      await importZipFile(download.file, {
+        githubSource: sourceMeta,
+        manageUi: false
+      });
+      log("Imported from GitHub source.");
+    } finally {
+      setActionButtonsDisabled(false);
+      clearWorkProgress();
+    }
+  }
+
+  async function checkAllGithubUpdates() {
+    const candidates = sortedGames().filter((game) => normalizeGithubSource(game.githubSource));
+    if (!candidates.length) {
+      log("No GitHub-linked games found in your library.", "error");
+      setUpdateScanStatus("No GitHub-linked games found.");
+      return;
+    }
+
+    let updatedCount = 0;
+    let availableCount = 0;
+    let noUpdateCount = 0;
+    let stoppedByUser = false;
+
+    setActionButtonsDisabled(true);
+    try {
+      setUpdateScanStatus("Checking " + candidates.length + " GitHub-linked game(s)...");
+      for (let i = 0; i < candidates.length; i += 1) {
+        const selected = candidates[i];
+        const source = normalizeGithubSource(selected.githubSource);
+        if (!source) {
+          continue;
+        }
+
+        setWorkProgress("Checking updates (" + (i + 1) + "/" + candidates.length + ")", i + 1, candidates.length);
+
+        let updateAvailable = false;
+        let nextSource = source;
+        let sourceLabel = "";
+
+        if (source.provider === "github-release") {
+          const latest = await fetchLatestGithubReleaseInfo(source.owner, source.repo, source.assetName);
+          latest.etag = source.etag || "";
+          latest.lastModified = source.lastModified || "";
+          updateAvailable = githubReleaseHasUpdate(source, latest);
+          nextSource = latest;
+          sourceLabel = latest.releaseTag || latest.assetName || "latest release";
+        } else if (source.provider === "zip-url") {
+          let headInfo = null;
+          try {
+            headInfo = await fetchZipHeadInfo(source.url);
+          } catch {
+            headInfo = null;
+          }
+          if (headInfo) {
+            updateAvailable = zipUrlHasUpdate(source, headInfo);
+            nextSource = normalizeGithubSource({
+              ...source,
+              url: headInfo.url || source.url,
+              etag: headInfo.etag || source.etag,
+              lastModified: headInfo.lastModified || source.lastModified,
+              lastCheckedAt: Date.now()
+            }) || source;
+          }
+          sourceLabel = source.url;
+        } else if (source.provider === "github-tree") {
+          const latestTree = await fetchGithubRepoTreeSnapshot(source.owner, source.repo, source.branch);
+          updateAvailable = latestTree.treeSha !== source.treeSha;
+          nextSource = normalizeGithubSource({
+            provider: "github-tree",
+            owner: latestTree.owner,
+            repo: latestTree.repo,
+            branch: latestTree.branch,
+            treeSha: latestTree.treeSha,
+            lastCheckedAt: Date.now()
+          }) || source;
+          sourceLabel = source.owner + "/" + source.repo + "@" + latestTree.branch;
+        }
+
+        if (!updateAvailable) {
+          noUpdateCount += 1;
+          nextSource.lastCheckedAt = Date.now();
+          selected.githubSource = nextSource;
+          state.gamesById.set(selected.id, selected);
+          await putGame(selected);
+          continue;
+        }
+
+        availableCount += 1;
+        const decision = await askUpdateInstallDecision(
+          selected.name || "Selected game",
+          sourceLabel,
+          "Update " + (availableCount) + " found while checking " + (i + 1) + "/" + candidates.length + " games."
+        );
+        if (decision === "stop") {
+          stoppedByUser = true;
+          break;
+        }
+        if (decision !== "update") {
+          log("Skipped update for \"" + (selected.name || selected.id) + "\".");
+          continue;
+        }
+
+        if (source.provider === "github-tree") {
+          const latestTree = await fetchGithubRepoTreeSnapshot(source.owner, source.repo, source.branch);
+          const repoZipFile = await buildZipFileFromGithubTree(latestTree, "Downloading repo files");
+          const mergedSource = normalizeGithubSource({
+            provider: "github-tree",
+            owner: latestTree.owner,
+            repo: latestTree.repo,
+            branch: latestTree.branch,
+            treeSha: latestTree.treeSha,
+            lastCheckedAt: Date.now()
+          });
+          await importZipFile(repoZipFile, {
+            importMode: "replace",
+            replaceGameId: selected.id,
+            githubSource: mergedSource,
+            manageUi: false
+          });
+        } else {
+          const downloadUrl = source.provider === "github-release"
+            ? String(nextSource.downloadUrl || source.downloadUrl || "")
+            : String(source.url || "");
+          const download = await downloadZipFromUrl(downloadUrl, "Downloading update");
+          const mergedSource = normalizeGithubSource(
+            source.provider === "github-release"
+              ? {
+                  ...nextSource,
+                  etag: download.etag || nextSource.etag,
+                  lastModified: download.lastModified || nextSource.lastModified,
+                  lastCheckedAt: Date.now()
+                }
+              : {
+                  ...nextSource,
+                  url: download.resolvedUrl || source.url,
+                  etag: download.etag || nextSource.etag,
+                  lastModified: download.lastModified || nextSource.lastModified,
+                  lastCheckedAt: Date.now()
+                }
+          );
+          await importZipFile(download.file, {
+            importMode: "replace",
+            replaceGameId: selected.id,
+            githubSource: mergedSource,
+            manageUi: false
+          });
+        }
+        updatedCount += 1;
+        log("Updated \"" + (selected.name || selected.id) + "\".");
+      }
+
+      log(
+        "GitHub update check complete. " +
+        updatedCount + " updated, " +
+        noUpdateCount + " already up to date, " +
+        Math.max(0, availableCount - updatedCount) + " updates skipped." +
+        (stoppedByUser ? " Stopped early." : "")
+      );
+      if (availableCount === 0) {
+        setUpdateScanStatus("All checked games are already up to date.");
+      } else {
+        setUpdateScanStatus(
+          updatedCount + " updated, " +
+          Math.max(0, availableCount - updatedCount) + " skipped, " +
+          noUpdateCount + " already up to date" +
+          (stoppedByUser ? " (stopped early)." : ".")
+        );
+      }
+    } finally {
+      const updateResolver = closeUpdatePromptModal();
+      if (updateResolver) {
+        updateResolver("stop");
+      }
       setActionButtonsDisabled(false);
       clearWorkProgress();
     }
@@ -3107,12 +4731,44 @@
 
   function setActionButtonsDisabled(disabled) {
     const value = Boolean(disabled);
+    state.actionInProgress = value;
     importZipButton.disabled = value;
+    replaceZipSelectedButton.disabled = value;
+    openOpsModalButton.disabled = value;
     launchButton.disabled = value;
     deleteGameButton.disabled = value;
     exportAllGamesButton.disabled = value;
     importBundleButton.disabled = value;
+    importGithubButton.disabled = value;
+    checkGithubUpdateButton.disabled = value;
     exportErrorLogsButton.disabled = value;
+    closeOpsModalButton.disabled = value;
+  }
+
+  function showOpsModal() {
+    if (!opsModal) {
+      return;
+    }
+    opsModal.classList.add("open");
+    opsModal.setAttribute("aria-hidden", "false");
+    if (!state.actionInProgress && importZipButton) {
+      importZipButton.focus();
+    }
+  }
+
+  function hideOpsModal(force) {
+    if (!opsModal) {
+      return false;
+    }
+    if (state.actionInProgress && !force) {
+      return false;
+    }
+    opsModal.classList.remove("open");
+    opsModal.setAttribute("aria-hidden", "true");
+    if (openOpsModalButton && !openOpsModalButton.disabled) {
+      openOpsModalButton.focus();
+    }
+    return true;
   }
 
   function getGridReorderElements() {
@@ -3424,7 +5080,7 @@
     }
   }
 
-  function setWorkProgress(label, current, total) {
+  function setWorkProgress(label, current, total, displayValues) {
     if (!workProgress || !workProgressLabel || !workProgressCircle || !workProgressValue) {
       return;
     }
@@ -3434,8 +5090,15 @@
     const safeTotal = hasTotal ? Math.max(1, total) : 0;
     if (hasTotal) {
       const pct = Math.max(0, Math.min(100, (safeCurrent / safeTotal) * 100));
+      const hasDisplayValues = displayValues && typeof displayValues === "object";
+      const currentText = hasDisplayValues && typeof displayValues.currentText === "string"
+        ? displayValues.currentText
+        : String(Math.min(safeCurrent, safeTotal));
+      const totalText = hasDisplayValues && typeof displayValues.totalText === "string"
+        ? displayValues.totalText
+        : String(safeTotal);
       workProgress.classList.remove("indeterminate");
-      workProgressLabel.textContent = text + " (" + Math.min(safeCurrent, safeTotal) + "/" + safeTotal + ")";
+      workProgressLabel.textContent = text + " (" + currentText + "/" + totalText + ")";
       workProgressCircle.style.setProperty("--progress-pct", pct.toFixed(1));
       workProgressValue.textContent = Math.round(pct) + "%";
       return;
@@ -4031,6 +5694,20 @@
     return mapped || normalized;
   };
 
+  var isMappedAttributeName = function (name) {
+    var attr = String(name || "").toLowerCase();
+    return (
+      attr === "srcset" ||
+      attr === "src" ||
+      attr === "href" ||
+      attr === "xlink:href" ||
+      attr.endsWith(":href") ||
+      attr === "data" ||
+      attr === "poster" ||
+      attr === "action"
+    );
+  };
+
   var UNITY_GPU_SAFE_MODE = true;
   var UNITY_FORCE_WEBGL1 = false;
   var UNITY_CLAMP_DEVICE_PIXEL_RATIO = 1;
@@ -4069,6 +5746,7 @@
     var targetAttrs = [
       "src",
       "href",
+      "xlink:href",
       "data",
       "poster",
       "action"
@@ -4133,13 +5811,7 @@
     var attr = String(name || "").toLowerCase();
     if (attr === "srcset") {
       value = mapSrcSet(value);
-    } else if (
-      attr === "src" ||
-      attr === "href" ||
-      attr === "data" ||
-      attr === "poster" ||
-      attr === "action"
-    ) {
+    } else if (isMappedAttributeName(attr)) {
       value = mapValue(value);
     }
     return nativeSetAttribute.call(this, name, value);
@@ -4151,13 +5823,7 @@
       var attr = String(name || "").toLowerCase();
       if (attr === "srcset") {
         value = mapSrcSet(value);
-      } else if (
-        attr === "src" ||
-        attr === "href" ||
-        attr === "data" ||
-        attr === "poster" ||
-        attr === "action"
-      ) {
+      } else if (isMappedAttributeName(attr)) {
         value = mapValue(value);
       }
       return nativeSetAttributeNS.call(this, namespace, name, value);
@@ -4297,7 +5963,7 @@
       subtree: true,
       childList: true,
       attributes: true,
-      attributeFilter: ["src", "href", "data", "poster", "action", "srcset"]
+      attributeFilter: ["src", "href", "xlink:href", "data", "poster", "action", "srcset"]
     });
   }
 
@@ -4620,6 +6286,31 @@
     return "<!DOCTYPE html>\n" + documentNode.documentElement.outerHTML;
   }
 
+  function canAccessPlayerWindow(win) {
+    if (!win || win.closed) {
+      return false;
+    }
+    try {
+      void win.document;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function openPlayerWindow() {
+    const reused = window.open("about:blank", "cbgamesOfflinePlayer");
+    if (canAccessPlayerWindow(reused)) {
+      return reused;
+    }
+    // Fallback: request a fresh unnamed window if named context is unavailable.
+    const fresh = window.open("about:blank");
+    if (canAccessPlayerWindow(fresh)) {
+      return fresh;
+    }
+    return null;
+  }
+
   async function launchSelectedGame() {
     const gameId = state.selectedGameId;
     const game = gameId ? state.gamesById.get(gameId) : null;
@@ -4640,8 +6331,8 @@
     try {
       setWorkProgress("Loading game data", 0, 4);
       log("Loading \"" + game.name + "\" from IndexedDB...");
-      if (!state.playerWindow || state.playerWindow.closed) {
-        state.playerWindow = window.open("about:blank", "cbgamesOfflinePlayer");
+      if (!canAccessPlayerWindow(state.playerWindow)) {
+        state.playerWindow = openPlayerWindow();
       }
       if (!state.playerWindow) {
         throw new Error("Popup blocked. Allow popups for this file page.");
@@ -4680,6 +6371,13 @@
         entryPath
       });
       setWorkProgress("Opening player window", 3, 4);
+
+      if (!canAccessPlayerWindow(state.playerWindow)) {
+        state.playerWindow = openPlayerWindow();
+      }
+      if (!state.playerWindow) {
+        throw new Error("Could not access the player window. Reopen and launch again.");
+      }
 
       state.playerWindow.document.open();
       state.playerWindow.document.write(rewrittenHtml);
@@ -4772,7 +6470,14 @@
       totalBytes: Number(source.totalBytes) || 0,
       htmlEntries,
       entryPath: typeof source.entryPath === "string" ? normalizePath(source.entryPath) : "",
-      thumbnailDataUrl: typeof source.thumbnailDataUrl === "string" ? source.thumbnailDataUrl : ""
+      thumbnailDataUrl: typeof source.thumbnailDataUrl === "string" ? source.thumbnailDataUrl : "",
+      githubSource: normalizeGithubSource(source.githubSource),
+      unityDetected: Boolean(source.unityDetected) || detectUnityByPaths(
+        Array.isArray(source.files) ? source.files.map((item) => normalizePath(item && item.path ? item.path : "")) : []
+      ),
+      flashDetected: Boolean(source.flashDetected) || detectFlashByPaths(
+        Array.isArray(source.files) ? source.files.map((item) => normalizePath(item && item.path ? item.path : "")) : []
+      )
     };
     normalized.entryPath = chooseBestEntryPath(normalized.htmlEntries, normalized.entryPath);
     return normalized;
@@ -4803,6 +6508,9 @@
         totalBytes: game.totalBytes,
         htmlEntries: Array.isArray(game.htmlEntries) ? game.htmlEntries : [],
         entryPath: game.entryPath || "",
+        githubSource: normalizeGithubSource(game.githubSource),
+        unityDetected: Boolean(game.unityDetected),
+        flashDetected: Boolean(game.flashDetected),
         files: []
       };
       if (typeof game.thumbnailDataUrl === "string" && game.thumbnailDataUrl) {
@@ -5233,6 +6941,51 @@
   });
 
   importZipButton.addEventListener("click", pickZipFile);
+  selectedPlayButton.addEventListener("click", async () => {
+    await launchSelectedGame();
+  });
+  selectedEditButton.addEventListener("click", () => {
+    if (!state.selectedGameId) {
+      return;
+    }
+    openGameEditModal(state.selectedGameId);
+  });
+  selectedDeleteButton.addEventListener("click", async () => {
+    await deleteSelectedGame();
+  });
+  replaceZipSelectedButton.addEventListener("click", async () => {
+    try {
+      await replaceGameWithZipFlow();
+    } catch (error) {
+      console.error(error);
+      log("Replace import failed: " + (error.message || String(error)), "error");
+    }
+  });
+  openOpsModalButton.addEventListener("click", showOpsModal);
+  closeOpsModalButton.addEventListener("click", () => {
+    hideOpsModal(false);
+  });
+  opsModal.addEventListener("click", (event) => {
+    if (event.target === opsModal) {
+      hideOpsModal(false);
+    }
+  });
+  importGithubButton.addEventListener("click", async () => {
+    try {
+      await importFromGithub();
+    } catch (error) {
+      console.error(error);
+      log("GitHub import failed: " + (error.message || String(error)), "error");
+    }
+  });
+  checkGithubUpdateButton.addEventListener("click", async () => {
+    try {
+      await checkAllGithubUpdates();
+    } catch (error) {
+      console.error(error);
+      log("GitHub update check failed: " + (error.message || String(error)), "error");
+    }
+  });
   exportAllGamesButton.addEventListener("click", async () => {
     try {
       await downloadAllGamesBundle();
@@ -5393,6 +7146,28 @@
       }
       return;
     }
+    if (event.key === "Escape" && githubImportModal.classList.contains("open")) {
+      const resolver = closeGithubImportModal();
+      if (resolver) {
+        resolver("");
+      }
+      return;
+    }
+    if (event.key === "Escape" && replaceTargetModal.classList.contains("open")) {
+      closeReplaceTargetModal();
+      return;
+    }
+    if (event.key === "Escape" && updatePromptModal.classList.contains("open")) {
+      const resolver = closeUpdatePromptModal();
+      if (resolver) {
+        resolver("skip");
+      }
+      return;
+    }
+    if (event.key === "Escape" && opsModal.classList.contains("open")) {
+      hideOpsModal(false);
+      return;
+    }
     if (event.key === "Escape" && gameEditModal.classList.contains("open")) {
       closeGameEditModal();
     }
@@ -5453,11 +7228,100 @@
       resolver("cancel");
     }
   });
+  githubImportSubmitButton.addEventListener("click", () => {
+    const resolver = closeGithubImportModal();
+    if (resolver) {
+      resolver(String(githubImportInput.value || "").trim());
+    }
+  });
+  githubImportCancelButton.addEventListener("click", () => {
+    const resolver = closeGithubImportModal();
+    if (resolver) {
+      resolver("");
+    }
+  });
+  replaceTargetChooseButton.addEventListener("click", () => {
+    const selectedId = String(state.replaceTargetSelectedId || "");
+    closeReplaceTargetModal();
+    if (!selectedId) {
+      log("Choose a game to replace first.", "error");
+      return;
+    }
+    pickReplaceZipForGameId(selectedId).catch((error) => {
+      console.error(error);
+      log("Replace import failed: " + (error.message || String(error)), "error");
+    });
+  });
+  replaceTargetCancelButton.addEventListener("click", () => {
+    closeReplaceTargetModal();
+    log("Replace import canceled.");
+  });
+  replaceTargetList.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const card = target.closest(".replace-target-card");
+    if (!card || !card.dataset || !card.dataset.gameId) {
+      return;
+    }
+    state.replaceTargetSelectedId = String(card.dataset.gameId);
+    renderReplaceTargetList();
+  });
+  githubImportInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+    event.preventDefault();
+    const resolver = closeGithubImportModal();
+    if (resolver) {
+      resolver(String(githubImportInput.value || "").trim());
+    }
+  });
+  updatePromptInstallButton.addEventListener("click", () => {
+    const resolver = closeUpdatePromptModal();
+    if (resolver) {
+      resolver("update");
+    }
+  });
+  updatePromptSkipButton.addEventListener("click", () => {
+    const resolver = closeUpdatePromptModal();
+    if (resolver) {
+      resolver("skip");
+    }
+  });
+  updatePromptStopButton.addEventListener("click", () => {
+    const resolver = closeUpdatePromptModal();
+    if (resolver) {
+      resolver("stop");
+    }
+  });
   importConflictModal.addEventListener("click", (event) => {
     if (event.target === importConflictModal) {
       const resolver = closeImportConflictModal();
       if (resolver) {
         resolver("cancel");
+      }
+    }
+  });
+  githubImportModal.addEventListener("click", (event) => {
+    if (event.target === githubImportModal) {
+      const resolver = closeGithubImportModal();
+      if (resolver) {
+        resolver("");
+      }
+    }
+  });
+  replaceTargetModal.addEventListener("click", (event) => {
+    if (event.target === replaceTargetModal) {
+      closeReplaceTargetModal();
+    }
+  });
+  updatePromptModal.addEventListener("click", (event) => {
+    if (event.target === updatePromptModal) {
+      const resolver = closeUpdatePromptModal();
+      if (resolver) {
+        resolver("skip");
       }
     }
   });
@@ -5604,6 +7468,16 @@
       return;
     }
     await importZipFile(zipInput.files[0]);
+  });
+  replaceZipInput.addEventListener("change", async () => {
+    if (!replaceZipInput.files || !replaceZipInput.files.length) {
+      return;
+    }
+    const replaceGameId = String(replaceZipInput.dataset.replaceGameId || "");
+    await importZipFile(replaceZipInput.files[0], {
+      importMode: "replace",
+      replaceGameId
+    });
   });
   bundleInput.addEventListener("change", async () => {
     if (!bundleInput.files || !bundleInput.files.length) {
