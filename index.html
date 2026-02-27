@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CBGames Offline Launcher</title>
 <link rel="icon" type="image/png" href="./favicon.png">
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=block" rel="stylesheet">
 <link rel="stylesheet" href="./lib/cropper.min.css">
 <style>
   :root {
@@ -199,6 +201,30 @@
     min-width: 0;
     position: relative;
     z-index: 0;
+  }
+  .game-item.is-entering {
+    opacity: 0;
+    transform: translate3d(0, 30px, 0);
+    animation: game-card-enter 1000ms cubic-bezier(0.2, 0.85, 0.25, 1) forwards;
+    animation-delay: var(--entry-delay, 0ms);
+    will-change: transform, opacity;
+  }
+  @keyframes game-card-enter {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 30px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .game-item.is-entering {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
   }
   .game-item.is-drag-source {
     opacity: 0.2;
@@ -1487,7 +1513,7 @@
   </aside>
   <div class="games-column">
     <div id="gamesGrid" class="container"></div>
-    <p id="emptyLibrary" class="empty-library visible">No saved games yet.</p>
+    <p id="emptyLibrary" class="empty-library" aria-hidden="true"></p>
   </div>
   <aside class="side-panel">
     <section class="panel-block">
@@ -1745,6 +1771,7 @@
 (() => {
   "use strict";
 
+  // IndexedDB schema and key names for persisted launcher data.
   const DB_NAME = "cbgamesOfflineZipDB";
   const DB_VERSION = 2; // DONT CHANGE THE DB VERSION
   const STORE_GAMES = "games";
@@ -1753,12 +1780,14 @@
   const STORE_ERROR_LOGS = "errorLogs";
   const SETTING_SELECTED_GAME = "selectedGameId";
 
+  // Virtual origin used to rewrite game file paths into same-origin object URLs.
   const VFS_ORIGIN = "https://loader.invalid/";
   const VFS_ORIGIN_URL = new URL(VFS_ORIGIN).origin;
   const UNITY_GPU_SAFE_MODE = true;
   const UNITY_FORCE_WEBGL1 = true;
   const UNITY_CLAMP_DEVICE_PIXEL_RATIO = 1;
 
+  // Main UI references used throughout the launcher.
   const importZipButton = document.getElementById("importZip");
   const replaceZipSelectedButton = document.getElementById("replaceZipSelected");
   const openOpsModalButton = document.getElementById("openOpsModal");
@@ -1847,8 +1876,10 @@
 
   const statusBox = document.getElementById("status");
   const reorderAnimations = new WeakMap();
+  // Hidden query param to force a one-time badge rescan on load.
   const BADGE_RESCAN_SECRET_PARAM = "__cbgames_rebadge";
 
+  // Central runtime state (loaded games, active selection, modal resolvers, etc.).
   const state = {
     db: null,
     gamesById: new Map(),
@@ -1891,7 +1922,11 @@
     updatePromptResolver: null,
     bundlePreviewResolver: null,
     bundlePreviewDraft: null,
-    badgeRescanCompleted: false
+    badgeRescanCompleted: false,
+    gameCardsEntryAnimated: false,
+    libraryChecked: false,
+    storageUsedPctDisplay: 0,
+    storagePctAnimationFrame: 0
   };
 
   function log(message, type = "info") {
@@ -1985,6 +2020,7 @@
       .replace(/[^a-z0-9]+/g, "");
   }
 
+  // Lightweight heuristics used to tag games with engine badges.
   function detectUnityByPaths(paths) {
     for (const rawPath of paths || []) {
       const path = normalizePath(rawPath).toLowerCase();
@@ -2035,6 +2071,7 @@
     }
   }
 
+  // GitHub source metadata normalization so every game stores one consistent format.
   function normalizeGithubSource(raw) {
     const source = raw && typeof raw === "object" ? raw : null;
     if (!source) {
@@ -2096,6 +2133,7 @@
     return null;
   }
 
+  // Accepts "owner/repo" or a full GitHub repo URL.
   function parseGithubRepoRef(input) {
     const raw = String(input || "").trim();
     if (!raw) {
@@ -2161,6 +2199,7 @@
     return "download.zip";
   }
 
+  // GitHub import path 1: latest release ZIP asset.
   async function fetchLatestGithubReleaseInfo(owner, repo, preferredAssetName) {
     const apiUrl = "https://api.github.com/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + "/releases/latest";
     const response = await fetch(apiUrl, {
@@ -2206,6 +2245,7 @@
     };
   }
 
+  // GitHub import path 2 (fallback): repo tree -> download blobs -> rebuild ZIP.
   async function fetchGithubRepoTreeSnapshot(owner, repo, branchHint) {
     const branchCandidate = String(branchHint || "").trim();
     let branch = branchCandidate;
@@ -2383,6 +2423,7 @@
     };
   }
 
+  // ZIP URL downloader with streaming progress so the circular loader updates continuously.
   async function downloadZipFromUrl(url, label) {
     const normalizedUrl = toHttpUrl(url);
     if (!normalizedUrl) {
@@ -2998,7 +3039,16 @@
   function renderGameCards() {
     const games = filteredGames();
     gamesGrid.innerHTML = "";
-    emptyLibrary.classList.toggle("visible", games.length === 0);
+    if (state.libraryChecked && state.gamesById.size === 0) {
+      emptyLibrary.textContent = "No saved games yet.";
+      emptyLibrary.classList.add("visible");
+      emptyLibrary.setAttribute("aria-hidden", "false");
+    } else {
+      emptyLibrary.textContent = "";
+      emptyLibrary.classList.remove("visible");
+      emptyLibrary.setAttribute("aria-hidden", "true");
+    }
+    const shouldAnimateEntry = !state.gameCardsEntryAnimated && games.length > 0;
 
     for (const game of games) {
       const selectedClass = game.id === state.selectedGameId ? " is-selected" : "";
@@ -3028,6 +3078,57 @@
         "</div>";
       gamesGrid.append(card);
     }
+
+    if (shouldAnimateEntry) {
+      queueGameCardEntryAnimation();
+      state.gameCardsEntryAnimated = true;
+    }
+  }
+
+  function queueGameCardEntryAnimation() {
+    const cards = Array.from(gamesGrid.querySelectorAll(".game-item"));
+    if (!cards.length) {
+      return;
+    }
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      const rowTops = [];
+      const cardMeta = cards.map((card) => {
+        const rect = card.getBoundingClientRect();
+        let rowIndex = rowTops.findIndex((top) => Math.abs(top - rect.top) < 6);
+        if (rowIndex === -1) {
+          rowTops.push(rect.top);
+          rowIndex = rowTops.length - 1;
+        }
+        return { card, rowIndex, left: rect.left };
+      });
+
+      const rowDelayStep = 100;
+      const colDelayStep = 55;
+      const rows = new Map();
+      for (const item of cardMeta) {
+        if (!rows.has(item.rowIndex)) {
+          rows.set(item.rowIndex, []);
+        }
+        rows.get(item.rowIndex).push(item);
+      }
+
+      for (const [rowIndex, items] of rows) {
+        items.sort((a, b) => a.left - b.left);
+        items.forEach((item, colIndex) => {
+          const delay = (rowIndex * rowDelayStep) + (colIndex * colDelayStep);
+          item.card.style.setProperty("--entry-delay", delay + "ms");
+          item.card.classList.add("is-entering");
+          item.card.addEventListener("animationend", () => {
+            item.card.classList.remove("is-entering");
+            item.card.style.removeProperty("--entry-delay");
+          }, { once: true });
+        });
+      }
+    });
   }
 
   function closeGameEditModal() {
@@ -3059,6 +3160,7 @@
     gameEditImageInput.value = "";
   }
 
+  // Renders icon badges that appear on cards and in edit previews.
   function buildGameBadgeItemsMarkup(game, withTitles) {
     const titleAttr = (text) => withTitles ? " title=\"" + escapeHtml(text) + "\"" : "";
     const githubBadge = game && game.githubSource
@@ -3434,6 +3536,7 @@
     return out;
   }
 
+  // Maps a rewritten game URL/src/href to the matching in-memory object URL.
   function requestToObjectUrl(rawValue, baseHref) {
     const raw = String(rawValue);
     const resolvedBase = normalizeResolverBase(baseHref);
@@ -4027,15 +4130,18 @@
     return chosen;
   }
 
-  async function refreshStorageSummary() {
-    const games = Array.from(state.gamesById.values());
-    const totalBytes = games.reduce((sum, game) => sum + (Number(game.totalBytes) || 0), 0);
+  function animateStorageDonutTo(targetPct) {
+    const clampedTarget = Math.max(0, Math.min(100, Number(targetPct) || 0));
+    const startPct = Math.max(0, Math.min(100, Number(state.storageUsedPctDisplay) || 0));
 
-    libraryCount.textContent = String(games.length);
-    libraryBytes.textContent = formatBytes(totalBytes);
+    if (state.storagePctAnimationFrame) {
+      cancelAnimationFrame(state.storagePctAnimationFrame);
+      state.storagePctAnimationFrame = 0;
+    }
 
-    const setDonut = (pct) => {
-      const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
+    const applyPct = (value) => {
+      const clamped = Math.max(0, Math.min(100, Number(value) || 0));
+      state.storageUsedPctDisplay = clamped;
       if (storageDonut) {
         storageDonut.style.setProperty("--used-pct", clamped.toFixed(1));
       }
@@ -4044,6 +4150,43 @@
       }
     };
 
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      applyPct(clampedTarget);
+      return;
+    }
+
+    const delta = clampedTarget - startPct;
+    if (Math.abs(delta) < 0.1) {
+      applyPct(clampedTarget);
+      return;
+    }
+
+    const duration = Math.max(360, Math.min(1100, Math.abs(delta) * 14));
+    const startedAt = performance.now();
+
+    const tick = (now) => {
+      const elapsed = now - startedAt;
+      const progress = Math.max(0, Math.min(1, elapsed / duration));
+      const eased = 1 - Math.pow(1 - progress, 3);
+      applyPct(startPct + (delta * eased));
+      if (progress < 1) {
+        state.storagePctAnimationFrame = requestAnimationFrame(tick);
+      } else {
+        state.storagePctAnimationFrame = 0;
+        applyPct(clampedTarget);
+      }
+    };
+
+    state.storagePctAnimationFrame = requestAnimationFrame(tick);
+  }
+
+  async function refreshStorageSummary() {
+    const games = Array.from(state.gamesById.values());
+    const totalBytes = games.reduce((sum, game) => sum + (Number(game.totalBytes) || 0), 0);
+
+    libraryCount.textContent = String(games.length);
+    libraryBytes.textContent = formatBytes(totalBytes);
+
     if (navigator.storage && navigator.storage.estimate) {
       try {
         const estimate = await navigator.storage.estimate();
@@ -4051,18 +4194,18 @@
         const hasQuota = estimate && typeof estimate.quota === "number";
         if (hasUsage && hasQuota) {
           quotaUsage.textContent = formatBytes(estimate.usage) + " / " + formatBytes(estimate.quota);
-          setDonut((estimate.usage / Math.max(1, estimate.quota)) * 100);
+          animateStorageDonutTo((estimate.usage / Math.max(1, estimate.quota)) * 100);
         } else {
           quotaUsage.textContent = "Unavailable";
-          setDonut(0);
+          animateStorageDonutTo(0);
         }
       } catch {
         quotaUsage.textContent = "Unavailable";
-        setDonut(0);
+        animateStorageDonutTo(0);
       }
     } else {
       quotaUsage.textContent = "Unsupported";
-      setDonut(0);
+      animateStorageDonutTo(0);
     }
   }
 
@@ -4110,6 +4253,7 @@
   }
 
   async function loadLibrary(preferredGameId) {
+    state.libraryChecked = false;
     const storedGames = await getAllGames();
     const games = storedGames.map((game) => ({
       ...game,
@@ -4182,6 +4326,7 @@
       }
     }
 
+    state.libraryChecked = true;
     const selectedId = renderGameOptions(preferredGameId || state.selectedGameId);
     state.selectedGameId = selectedId || null;
 
@@ -4290,6 +4435,7 @@
     openReplaceTargetGameModal();
   }
 
+  // Core ZIP import flow used by local import, replace import, and GitHub import.
   async function importZipFile(file, options) {
     const opts = options && typeof options === "object" ? options : {};
     const requestedMode = opts.importMode === "replace" || opts.importMode === "separate"
@@ -4438,6 +4584,7 @@
     }
   }
 
+  // Handles GitHub repo/ZIP input, then forwards the resolved ZIP to importZipFile().
   async function importFromGithub() {
     const input = await askGithubImportSource();
     if (!input) {
@@ -4512,6 +4659,7 @@
     }
   }
 
+  // Scans all GitHub-linked games and offers per-game update prompts.
   async function checkAllGithubUpdates() {
     const candidates = sortedGames().filter((game) => normalizeGithubSource(game.githubSource));
     if (!candidates.length) {
@@ -4917,6 +5065,7 @@
     return { mime, bytes: out };
   }
 
+  // Global "busy mode" toggle to prevent conflicting actions during import/update/export.
   function setActionButtonsDisabled(disabled) {
     const value = Boolean(disabled);
     state.actionInProgress = value;
@@ -4933,6 +5082,7 @@
     closeOpsModalButton.disabled = value;
   }
 
+  // Main operations modal (Manage Games) open/close handlers.
   function showOpsModal() {
     if (!opsModal) {
       return;
@@ -4959,6 +5109,7 @@
     return true;
   }
 
+  // Documentation modal open/close handlers.
   function showHowToModal() {
     if (!howToModal) {
       return;
@@ -6447,6 +6598,7 @@
     documentNode.head.prepend(script);
   }
 
+  // Rewrites launch HTML so all assets resolve to IndexedDB-backed object URLs.
   function rewriteDocumentHtml(htmlText, entryPath, runtimeBridgeOptions = {}) {
     const parser = new DOMParser();
     const documentNode = parser.parseFromString(htmlText, "text/html");
@@ -6521,6 +6673,7 @@
     return null;
   }
 
+  // Launch pipeline: load files, rewrite entry HTML, then write to player window.
   async function launchSelectedGame() {
     const gameId = state.selectedGameId;
     const game = gameId ? state.gamesById.get(gameId) : null;
@@ -7750,6 +7903,7 @@
       : []);
   });
 
+  // Listen for runtime errors posted from launched games and persist them for export.
   window.addEventListener("message", (event) => {
     const payload = event && event.data;
     if (!payload || typeof payload !== "object" || payload.__cbgamesPlayerLog !== true) {
@@ -7766,6 +7920,7 @@
 
   setEmptyEntryState("Loading...");
 
+  // App boot: open DB, load saved library, restore selection, then handle optional ?load=.
   (async () => {
     try {
       state.db = await openDatabase();
