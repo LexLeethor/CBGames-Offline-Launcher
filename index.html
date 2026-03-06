@@ -4957,11 +4957,11 @@
     state.objectUrlHost = window;
   }
 
-  function rewriteCssText(cssText, cssPath) {
+  function rewriteCssTextForBase(cssText, baseHref) {
     if (typeof cssText !== "string" || !cssText) {
       return cssText;
     }
-    const baseHref = toVirtualUrl(cssPath);
+    const resolvedBase = normalizeResolverBase(baseHref);
     return cssText.replace(/url\(\s*(['"]?)([^"')]+)\1\s*\)/gi, (full, quote, urlPath) => {
       const raw = String(urlPath || "").trim();
       if (!raw) {
@@ -4975,13 +4975,18 @@
       ) {
         return full;
       }
-      const mapped = requestToObjectUrl(raw, baseHref);
+      const mapped = requestToObjectUrl(raw, resolvedBase);
       if (!mapped) {
         return full;
       }
       const wrapped = quote || "\"";
       return "url(" + wrapped + mapped + wrapped + ")";
     });
+  }
+
+  function rewriteCssText(cssText, cssPath) {
+    const baseHref = toVirtualUrl(cssPath);
+    return rewriteCssTextForBase(cssText, baseHref);
   }
 
   function bytesToBase64(bytes) {
@@ -6140,6 +6145,13 @@
           el.setAttribute("srcset", mappedSrcSet);
         }
       }
+      if (el.hasAttribute("style")) {
+        var currentStyle = el.getAttribute("style");
+        var mappedStyle = rewriteCssRuntime(currentStyle);
+        if (mappedStyle !== currentStyle) {
+          el.setAttribute("style", mappedStyle);
+        }
+      }
       if (el.tagName === "STYLE") {
         var cssText = el.textContent || "";
         var cssMapped = rewriteCssRuntime(cssText);
@@ -6170,7 +6182,9 @@
   var nativeSetAttribute = Element.prototype.setAttribute;
   Element.prototype.setAttribute = function (name, value) {
     var attr = String(name || "").toLowerCase();
-    if (attr === "srcset") {
+    if (attr === "style") {
+      value = rewriteCssRuntime(String(value || ""));
+    } else if (attr === "srcset") {
       value = mapSrcSet(value);
     } else if (isMappedAttributeName(attr)) {
       value = mapValue(value);
@@ -6182,7 +6196,9 @@
     var nativeSetAttributeNS = Element.prototype.setAttributeNS;
     Element.prototype.setAttributeNS = function (namespace, name, value) {
       var attr = String(name || "").toLowerCase();
-      if (attr === "srcset") {
+      if (attr === "style") {
+        value = rewriteCssRuntime(String(value || ""));
+      } else if (attr === "srcset") {
         value = mapSrcSet(value);
       } else if (isMappedAttributeName(attr)) {
         value = mapValue(value);
@@ -6205,6 +6221,16 @@
   patchProperty(HTMLInputElement, "src");
   if (window.HTMLMediaElement) {
     patchProperty(HTMLMediaElement, "src");
+  }
+  if (window.Audio) {
+    var NativeAudio = window.Audio;
+    window.Audio = function (src) {
+      if (!arguments.length) {
+        return new NativeAudio();
+      }
+      return new NativeAudio(mapValue(src));
+    };
+    window.Audio.prototype = NativeAudio.prototype;
   }
 
   var nativeFetch = window.fetch.bind(window);
@@ -6302,6 +6328,8 @@
     }
   }
 
+  remapElementTree(document.documentElement || document);
+
   if (window.MutationObserver) {
     var observer = new MutationObserver(function (mutations) {
       for (var i = 0; i < mutations.length; i++) {
@@ -6324,7 +6352,7 @@
       subtree: true,
       childList: true,
       attributes: true,
-      attributeFilter: ["src", "href", "xlink:href", "data", "poster", "action", "srcset"]
+      attributeFilter: ["src", "href", "xlink:href", "data", "poster", "action", "srcset", "style"]
     });
   }
 
@@ -6417,10 +6445,55 @@
       document.body.style.margin = "0";
     }
 
+    var isLikelyPrimaryCanvas = function (canvas) {
+      if (!canvas || canvas.tagName !== "CANVAS") return false;
+      var id = String(canvas.id || "").toLowerCase();
+      var className = "";
+      try {
+        className = String(canvas.className || "").toLowerCase();
+      } catch (_error) {
+        className = "";
+      }
+      if (
+        id === "unity-canvas" ||
+        id === "canvas" ||
+        id === "gamecanvas" ||
+        id === "glcanvas" ||
+        id === "webgl-canvas" ||
+        id.indexOf("unity") !== -1
+      ) {
+        return true;
+      }
+      if (className.indexOf("unity") !== -1 || className.indexOf("webgl") !== -1) {
+        return true;
+      }
+      var styleWidth = String((canvas.style && canvas.style.width) || "").toLowerCase();
+      var styleHeight = String((canvas.style && canvas.style.height) || "").toLowerCase();
+      if (
+        styleWidth === "100%" ||
+        styleWidth === "100vw" ||
+        styleHeight === "100%" ||
+        styleHeight === "100vh"
+      ) {
+        return true;
+      }
+      try {
+        return document.querySelectorAll("canvas").length <= 1;
+      } catch (_error) {
+        return false;
+      }
+    };
+
     var fixBox = function (element) {
       if (!element || !element.getBoundingClientRect) return;
-      var rect = element.getBoundingClientRect();
       var isCanvas = element.tagName === "CANVAS";
+      if (isCanvas) {
+        var hasIntrinsicCanvasSize = Number(element.width) > 0 && Number(element.height) > 0;
+        if (hasIntrinsicCanvasSize && !isLikelyPrimaryCanvas(element)) {
+          return;
+        }
+      }
+      var rect = element.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0 && (!isCanvas || (element.width > 0 && element.height > 0))) {
         return;
       }
@@ -6467,6 +6540,9 @@
     var canvases = document.querySelectorAll("canvas");
     for (var c = 0; c < canvases.length; c++) {
       var canvas = canvases[c];
+      if (!isLikelyPrimaryCanvas(canvas)) {
+        continue;
+      }
       fixBox(canvas);
       if (canvas.parentElement) {
         fixBox(canvas.parentElement);
@@ -6613,6 +6689,42 @@
 
     for (const manifestLink of documentNode.querySelectorAll('link[rel="manifest"]')) {
       manifestLink.remove();
+    }
+
+    // Strip Cloudflare challenge snippets that are unusable offline.
+    for (const scriptElement of documentNode.querySelectorAll("script")) {
+      const src = String(scriptElement.getAttribute("src") || "").toLowerCase();
+      const inline = String(scriptElement.textContent || "").toLowerCase();
+      if (
+        src.includes("/cdn-cgi/challenge-platform/") ||
+        inline.includes("/cdn-cgi/challenge-platform/") ||
+        inline.includes("__cf$cv$params")
+      ) {
+        scriptElement.remove();
+      }
+    }
+
+    for (const styleElement of documentNode.querySelectorAll("style")) {
+      const originalCss = String(styleElement.textContent || "");
+      if (!originalCss) {
+        continue;
+      }
+      const rewrittenCss = rewriteCssTextForBase(originalCss, baseHref);
+      if (!rewrittenCss.trim()) {
+        styleElement.remove();
+        continue;
+      }
+      if (rewrittenCss !== originalCss) {
+        styleElement.textContent = rewrittenCss;
+      }
+    }
+
+    for (const element of documentNode.querySelectorAll("[style]")) {
+      const originalStyle = element.getAttribute("style");
+      const rewrittenStyle = rewriteCssTextForBase(originalStyle, baseHref);
+      if (rewrittenStyle !== originalStyle) {
+        element.setAttribute("style", rewrittenStyle);
+      }
     }
 
     const targets = [
