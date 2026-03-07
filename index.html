@@ -21,51 +21,26 @@
   body {
     height: 100%;
   }
-  * { box-sizing: border-box; }
-  .container,
-  .side-panel,
-  #status,
-  .game-edit-dialog,
-  .bundle-preview-dialog,
-  .bundle-preview-list {
+  * {
+    box-sizing: border-box;
     scrollbar-width: thin;
     scrollbar-color: var(--scroll-thumb) var(--scroll-track);
   }
-  .container::-webkit-scrollbar,
-  .side-panel::-webkit-scrollbar,
-  #status::-webkit-scrollbar,
-  .game-edit-dialog::-webkit-scrollbar,
-  .bundle-preview-dialog::-webkit-scrollbar,
-  .bundle-preview-list::-webkit-scrollbar {
+  *::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
-  .container::-webkit-scrollbar-track,
-  .side-panel::-webkit-scrollbar-track,
-  #status::-webkit-scrollbar-track,
-  .game-edit-dialog::-webkit-scrollbar-track,
-  .bundle-preview-dialog::-webkit-scrollbar-track,
-  .bundle-preview-list::-webkit-scrollbar-track {
+  *::-webkit-scrollbar-track {
     background: var(--scroll-track);
     border-radius: 999px;
     box-shadow: inset 0 0 0 1px var(--scroll-edge);
   }
-  .container::-webkit-scrollbar-thumb,
-  .side-panel::-webkit-scrollbar-thumb,
-  #status::-webkit-scrollbar-thumb,
-  .game-edit-dialog::-webkit-scrollbar-thumb,
-  .bundle-preview-dialog::-webkit-scrollbar-thumb,
-  .bundle-preview-list::-webkit-scrollbar-thumb {
+  *::-webkit-scrollbar-thumb {
     background: linear-gradient(180deg, #363636 0%, var(--scroll-thumb) 100%);
     border-radius: 999px;
     border: 1px solid #1a1a1a;
   }
-  .container::-webkit-scrollbar-thumb:hover,
-  .side-panel::-webkit-scrollbar-thumb:hover,
-  #status::-webkit-scrollbar-thumb:hover,
-  .game-edit-dialog::-webkit-scrollbar-thumb:hover,
-  .bundle-preview-dialog::-webkit-scrollbar-thumb:hover,
-  .bundle-preview-list::-webkit-scrollbar-thumb:hover {
+  *::-webkit-scrollbar-thumb:hover {
     background: linear-gradient(180deg, #4a4a4a 0%, var(--scroll-thumb-hover) 100%);
   }
   body {
@@ -1001,24 +976,6 @@
     grid-auto-rows: max-content;
     gap: 14px;
     align-content: start;
-    scrollbar-width: thin;
-    scrollbar-color: #3a3a3a #151515;
-  }
-  .replace-target-list::-webkit-scrollbar {
-    width: 11px;
-    height: 11px;
-  }
-  .replace-target-list::-webkit-scrollbar-track {
-    background: #151515;
-    border-radius: 999px;
-  }
-  .replace-target-list::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #4a4a4a 0%, #2f2f2f 100%);
-    border: 2px solid #151515;
-    border-radius: 999px;
-  }
-  .replace-target-list::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, #5b5b5b 0%, #3a3a3a 100%);
   }
   .replace-target-card {
     cursor: pointer;
@@ -1243,8 +1200,8 @@
     background: rgba(0, 0, 0, 0.45);
   }
   .ops-sheet {
-    width: min(1120px, 96vw);
-    max-height: min(88dvh, 900px);
+    width: min(1080px, 96vw);
+    max-height: min(88dvh, 860px);
     margin: 0 auto;
     border: 1px solid #323232;
     border-radius: 16px;
@@ -1253,9 +1210,9 @@
     opacity: 0;
     transition: transform 0.28s ease;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
-    gap: 16px;
-    padding: 16px;
+    grid-template-columns: minmax(0, 1fr) minmax(270px, 310px);
+    gap: 12px;
+    padding: 14px;
     overflow: auto;
   }
   .ops-modal.open .ops-sheet {
@@ -1264,7 +1221,7 @@
   }
   .ops-actions {
     display: grid;
-    gap: 12px;
+    gap: 10px;
     align-content: start;
   }
   .ops-head {
@@ -1278,9 +1235,9 @@
     font-size: 19px;
   }
   .ops-head p {
-    margin: 4px 0 0;
+    margin: 2px 0 0;
     color: #c0c0c0;
-    font-size: 13px;
+    font-size: 12px;
   }
   #closeOpsModal {
     width: 34px;
@@ -1292,46 +1249,230 @@
   }
   .ops-controls {
     display: grid;
-    gap: 10px;
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .ops-group {
     border: 1px solid #2c2c2c;
     border-radius: 12px;
     background: #121212;
-    padding: 12px;
-    display: grid;
-    gap: 8px;
+    padding: 10px;
   }
-  .ops-group h4 {
+  .ops-group-head {
+    display: grid;
+    gap: 2px;
+  }
+  .ops-group > summary {
+    display: grid;
+    gap: 2px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    position: relative;
+    padding-right: 20px;
+  }
+  .ops-group > summary::-webkit-details-marker {
+    display: none;
+  }
+  .ops-group > summary::after {
+    content: "+";
+    position: absolute;
+    right: 0;
+    top: 0;
+    color: #9e9e9e;
+    font-size: 15px;
+    line-height: 1;
+    font-weight: 600;
+  }
+  .ops-group[open] > summary::after {
+    content: "-";
+  }
+  .ops-group-title {
     margin: 0;
     font-size: 14px;
     color: #f2f2f2;
+    font-weight: 600;
+  }
+  .ops-group-hint {
+    margin: 0;
+    color: #a9a9a9;
+    font-size: 11px;
+  }
+  .ops-group-body {
+    display: grid;
+    gap: 8px;
+  }
+  .ops-group-fixed > .ops-group-body {
+    margin-top: 8px;
+  }
+  details.ops-group-collapsible > .ops-group-body {
+    margin-top: 0;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.26s ease, opacity 0.2s ease, margin-top 0.26s ease;
+  }
+  details.ops-group-collapsible[open] > .ops-group-body {
+    margin-top: 8px;
+    max-height: 760px;
+    opacity: 1;
+  }
+  .ops-group-body.compact {
+    gap: 6px;
+  }
+  .ops-group-body.compact p {
+    font-size: 10px;
+    line-height: 1.3;
   }
   .ops-group p {
     margin: 0;
-    font-size: 12px;
+    font-size: 11px;
     color: #bebebe;
     line-height: 1.35;
   }
   .ops-row {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    gap: 7px;
   }
   .ops-row.one {
     grid-template-columns: 1fr;
   }
   .ops-controls button {
     width: 100%;
+    min-height: 36px;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  .ops-row.lan-connect-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  #lanHostUrl {
+    width: 100%;
     min-height: 40px;
+    border: 1px solid #343434;
+    border-radius: 10px;
+    background: #0f0f0f;
+    color: #f2f2f2;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  #lanHostUrl:focus {
+    outline: none;
+    border-color: #6ea5ff;
+    box-shadow: 0 0 0 2px rgba(110, 165, 255, 0.18);
+  }
+  #lanUploadCode {
+    width: 100%;
+    min-height: 40px;
+    border: 1px solid #343434;
+    border-radius: 10px;
+    background: #0f0f0f;
+    color: #f2f2f2;
+    padding: 8px 10px;
+    font-size: 13px;
+    text-transform: uppercase;
+  }
+  #lanUploadCode:focus {
+    outline: none;
+    border-color: #6ea5ff;
+    box-shadow: 0 0 0 2px rgba(110, 165, 255, 0.18);
+  }
+  .lan-transfer-status {
+    min-height: 16px;
+  }
+  .lan-transfer-status.is-error {
+    color: #ffb3b3;
+  }
+  .lan-transfer-status.is-success {
+    color: #a8e0a8;
+  }
+  .lan-transfer-list {
+    border: 1px solid #2f2f2f;
+    border-radius: 10px;
+    background: #101010;
+    padding: 6px;
+    max-height: 132px;
+    overflow: auto;
+    display: grid;
+    gap: 5px;
+  }
+  .lan-transfer-item {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px;
+    align-items: start;
+    border: 1px solid #262626;
+    border-radius: 8px;
+    background: #151515;
+    padding: 6px 8px;
+    cursor: pointer;
+  }
+  .lan-transfer-item input[type="checkbox"] {
+    margin-top: 2px;
+  }
+  .lan-transfer-item strong {
+    display: block;
+    font-size: 12px;
+    color: #efefef;
+  }
+  .lan-transfer-item small {
+    display: block;
+    margin-top: 1px;
+    color: #b3b3b3;
+    font-size: 11px;
+  }
+  .lan-upload-details {
+    border: 1px dashed #2f2f2f;
+    border-radius: 10px;
+    background: #101010;
+    padding: 8px;
+  }
+  .lan-upload-details > summary {
+    cursor: pointer;
+    list-style: none;
+    position: relative;
+    padding-right: 18px;
+    font-size: 11px;
+    color: #d0d0d0;
+    font-weight: 600;
+  }
+  .lan-upload-details > summary::-webkit-details-marker {
+    display: none;
+  }
+  .lan-upload-details > summary::after {
+    content: "+";
+    position: absolute;
+    right: 0;
+    top: 0;
+    color: #9e9e9e;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .lan-upload-details[open] > summary::after {
+    content: "-";
+  }
+  .lan-upload-body {
+    margin-top: 0;
+    display: grid;
+    gap: 6px;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.25s ease, opacity 0.2s ease, margin-top 0.25s ease;
+  }
+  .lan-upload-details[open] .lan-upload-body {
+    margin-top: 8px;
+    max-height: 260px;
+    opacity: 1;
   }
   .ops-progress {
     border: 1px solid #2b2b2b;
     border-radius: 12px;
     background: #101010;
-    padding: 14px;
+    padding: 12px;
     display: grid;
-    gap: 10px;
+    gap: 8px;
     align-content: start;
     justify-items: center;
   }
@@ -1467,6 +1608,9 @@
       gap: 12px;
       max-height: 92dvh;
     }
+    .ops-controls {
+      grid-template-columns: 1fr;
+    }
     .ops-row {
       grid-template-columns: 1fr;
     }
@@ -1578,34 +1722,79 @@
         <button id="closeOpsModal" type="button" aria-label="Close">×</button>
       </div>
       <div class="ops-controls">
-        <section class="ops-group">
-          <h4>Add Games</h4>
-          <p>Bring in individual games from local ZIP files or directly from GitHub.</p>
-          <div class="ops-row">
-            <button id="importZip">Import ZIP</button>
-            <button id="importGithub" type="button">Import from GitHub</button>
+        <section class="ops-group ops-group-fixed">
+          <div class="ops-group-head">
+            <span class="ops-group-title">Add Games</span>
+            <span class="ops-group-hint">Import from ZIP or GitHub</span>
           </div>
-          <div class="ops-row one">
-            <button id="replaceZipSelected" type="button">Replace Game with ZIP</button>
+          <div class="ops-group-body">
+            <p>Bring in individual games from local ZIP files or directly from GitHub.</p>
+            <div class="ops-row">
+              <button id="importZip">Import ZIP</button>
+              <button id="importGithub" type="button">Import from GitHub</button>
+            </div>
+            <div class="ops-row one">
+              <button id="replaceZipSelected" type="button">Replace Game with ZIP</button>
+            </div>
           </div>
         </section>
-        <section class="ops-group">
-          <h4>Updates</h4>
-          <p>Scan every GitHub-linked game and choose which updates to install.</p>
-          <div class="ops-row one">
-            <button id="checkGithubUpdate" type="button">Check All GitHub Updates</button>
+        <section class="ops-group ops-group-fixed">
+          <div class="ops-group-head">
+            <span class="ops-group-title">Updates</span>
+            <span class="ops-group-hint">Check all GitHub-linked games</span>
           </div>
-          <p id="updateScanStatus">Update status: Not checked yet.</p>
+          <div class="ops-group-body">
+            <p>Scan every GitHub-linked game and choose which updates to install.</p>
+            <div class="ops-row one">
+              <button id="checkGithubUpdate" type="button">Check All GitHub Updates</button>
+            </div>
+            <p id="updateScanStatus">Update status: Not checked yet.</p>
+          </div>
         </section>
-        <section class="ops-group">
-          <h4>Backup & Restore</h4>
-          <p>Export your whole library, import a bundle, or save error logs for troubleshooting.</p>
-          <div class="ops-row">
-            <button id="exportAllGames" type="button">Export All Games</button>
-            <button id="importBundle" type="button">Import Bundle</button>
+        <section class="ops-group ops-group-fixed">
+          <div class="ops-group-head">
+            <span class="ops-group-title">Backup & Restore</span>
+            <span class="ops-group-hint">Export/import bundles and logs</span>
           </div>
-          <div class="ops-row one">
-            <button id="exportErrorLogs" type="button">Export Error Logs</button>
+          <div class="ops-group-body">
+            <p>Export your whole library, import a bundle, or save error logs for troubleshooting.</p>
+            <div class="ops-row">
+              <button id="exportAllGames" type="button">Export All Games</button>
+              <button id="importBundle" type="button">Import Bundle</button>
+            </div>
+            <div class="ops-row one">
+              <button id="exportErrorLogs" type="button">Export Error Logs</button>
+            </div>
+          </div>
+        </section>
+        <section class="ops-group ops-group-fixed">
+          <div class="ops-group-head">
+            <span class="ops-group-title">LAN Transfer</span>
+            <span class="ops-group-hint">Load shared files or upload all games</span>
+          </div>
+          <div class="ops-group-body compact">
+            <p>1) Enter a LAN host URL, then load and import shared files.</p>
+            <div class="ops-row lan-connect-row">
+              <input id="lanHostUrl" type="text" spellcheck="false" autocomplete="off" placeholder="http://192.168.1.10:8941">
+              <button id="lanLoadManifest" type="button">Load Shared</button>
+            </div>
+            <p id="lanTransferStatus" class="lan-transfer-status">Enter a host URL, then click Load Shared.</p>
+            <div id="lanTransferList" class="lan-transfer-list" hidden></div>
+            <div class="ops-row one">
+              <button id="lanImportSelected" type="button" disabled>Import Checked</button>
+            </div>
+            <details class="lan-upload-details">
+              <summary>Host-only upload tools</summary>
+              <div class="lan-upload-body">
+                <p>Paste a one-time code from the host terminal to upload all saved games.</p>
+                <div class="ops-row one">
+                  <input id="lanUploadCode" type="text" spellcheck="false" autocomplete="off" placeholder="One-time code">
+                </div>
+                <div class="ops-row one">
+                  <button id="lanUploadToHost" type="button">Upload All Games</button>
+                </div>
+              </div>
+            </details>
           </div>
         </section>
       </div>
@@ -1808,6 +1997,13 @@
   const bundleInput = document.getElementById("bundleInput");
   const exportAllGamesButton = document.getElementById("exportAllGames");
   const importBundleButton = document.getElementById("importBundle");
+  const lanHostUrlInput = document.getElementById("lanHostUrl");
+  const lanLoadManifestButton = document.getElementById("lanLoadManifest");
+  const lanTransferStatus = document.getElementById("lanTransferStatus");
+  const lanTransferList = document.getElementById("lanTransferList");
+  const lanImportSelectedButton = document.getElementById("lanImportSelected");
+  const lanUploadCodeInput = document.getElementById("lanUploadCode");
+  const lanUploadToHostButton = document.getElementById("lanUploadToHost");
   const importGithubButton = document.getElementById("importGithub");
   const checkGithubUpdateButton = document.getElementById("checkGithubUpdate");
   const updateScanStatus = document.getElementById("updateScanStatus");
@@ -1878,6 +2074,7 @@
   const reorderAnimations = new WeakMap();
   // Hidden query param to force a one-time badge rescan on load.
   const BADGE_RESCAN_SECRET_PARAM = "__cbgames_rebadge";
+  const LAN_TRANSFER_DEFAULT_HOST_URL = "http://localhost:8941";
 
   // Central runtime state (loaded games, active selection, modal resolvers, etc.).
   const state = {
@@ -1922,6 +2119,10 @@
     updatePromptResolver: null,
     bundlePreviewResolver: null,
     bundlePreviewDraft: null,
+    lanTransfer: {
+      hostUrl: LAN_TRANSFER_DEFAULT_HOST_URL,
+      items: []
+    },
     badgeRescanCompleted: false,
     gameCardsEntryAnimated: false,
     libraryChecked: false,
@@ -1946,6 +2147,346 @@
     }
     const message = String(text || "").trim();
     updateScanStatus.textContent = "Update status: " + (message || "Not checked yet.");
+  }
+
+  function normalizeLanHostUrl(rawValue) {
+    let value = String(rawValue || "").trim();
+    if (!value) {
+      return "";
+    }
+    if (!/^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\//.test(value)) {
+      value = "http://" + value;
+    }
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return "";
+      }
+      parsed.hash = "";
+      parsed.search = "";
+      parsed.pathname = "";
+      return parsed.toString().replace(/\/$/, "");
+    } catch {
+      return "";
+    }
+  }
+
+  function setLanTransferStatus(message, tone = "info") {
+    if (!lanTransferStatus) {
+      return;
+    }
+    const text = String(message || "").trim();
+    lanTransferStatus.textContent = text || "Enter a host URL, then click Load Shared.";
+    lanTransferStatus.classList.toggle("is-error", tone === "error");
+    lanTransferStatus.classList.toggle("is-success", tone === "success");
+  }
+
+  function getLanTransferSelectedItems() {
+    const items = Array.isArray(state.lanTransfer.items) ? state.lanTransfer.items : [];
+    return items.filter((item) => item && item.selected !== false);
+  }
+
+  function syncLanImportButtonState() {
+    if (!lanImportSelectedButton) {
+      return;
+    }
+    if (state.actionInProgress) {
+      lanImportSelectedButton.disabled = true;
+      return;
+    }
+    lanImportSelectedButton.disabled = getLanTransferSelectedItems().length === 0;
+  }
+
+  function renderLanTransferList() {
+    if (!lanTransferList) {
+      return;
+    }
+    lanTransferList.innerHTML = "";
+    const items = Array.isArray(state.lanTransfer.items) ? state.lanTransfer.items : [];
+    if (!items.length) {
+      lanTransferList.hidden = true;
+      syncLanImportButtonState();
+      return;
+    }
+    lanTransferList.hidden = false;
+    for (const item of items) {
+      const row = document.createElement("label");
+      row.className = "lan-transfer-item";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = item.selected !== false;
+      checkbox.disabled = state.actionInProgress;
+      checkbox.setAttribute("data-lan-item-id", item.id);
+
+      const meta = document.createElement("span");
+      const name = document.createElement("strong");
+      name.textContent = item.name;
+      const details = document.createElement("small");
+      details.textContent =
+        (item.type === "bundle" ? "Bundle ZIP" : "Game ZIP") +
+        " • " +
+        formatBytes(item.size || 0);
+      meta.append(name, details);
+
+      row.append(checkbox, meta);
+      lanTransferList.append(row);
+    }
+    syncLanImportButtonState();
+  }
+
+  async function loadLanTransferManifest() {
+    if (!lanHostUrlInput) {
+      return;
+    }
+    const normalizedHost = normalizeLanHostUrl(
+      lanHostUrlInput.value || state.lanTransfer.hostUrl || LAN_TRANSFER_DEFAULT_HOST_URL
+    );
+    if (!normalizedHost) {
+      setLanTransferStatus("Enter a valid host URL (example: http://192.168.1.10:8941).", "error");
+      return;
+    }
+
+    lanHostUrlInput.value = normalizedHost;
+    state.lanTransfer.hostUrl = normalizedHost;
+    setLanTransferStatus("Loading shared files from " + normalizedHost + "...", "info");
+    setWorkProgress("Loading LAN host manifest", 0, 0);
+
+    try {
+      const response = await fetch(normalizedHost + "/api/manifest", {
+        method: "GET",
+        cache: "no-store"
+      });
+      if (!response.ok) {
+        throw new Error("Host returned HTTP " + response.status + ".");
+      }
+      const payload = await response.json();
+      const rawItems = Array.isArray(payload && payload.items) ? payload.items : [];
+      const knownIds = new Set();
+      const mapped = [];
+      for (let i = 0; i < rawItems.length; i += 1) {
+        const rawItem = rawItems[i];
+        if (!rawItem || typeof rawItem !== "object") {
+          continue;
+        }
+        const fallbackId = "shared-" + (i + 1);
+        const sourceId = String(rawItem.id || "").trim() || fallbackId;
+        let id = sourceId;
+        let dedupe = 1;
+        while (knownIds.has(id)) {
+          dedupe += 1;
+          id = sourceId + "-" + dedupe;
+        }
+        knownIds.add(id);
+
+        const rawName = String(rawItem.name || "").trim();
+        const name = rawName || ("shared-" + (i + 1) + ".zip");
+        const rawType = String(rawItem.type || "").toLowerCase();
+        const type = rawType === "bundle" ? "bundle" : "zip";
+        const rawSize = Number(rawItem.size);
+        const size = Number.isFinite(rawSize) && rawSize >= 0 ? rawSize : 0;
+
+        let downloadUrl = "";
+        try {
+          const rawDownload = String(rawItem.downloadUrl || "").trim();
+          if (rawDownload) {
+            downloadUrl = String(new URL(rawDownload, normalizedHost));
+          }
+        } catch {
+          downloadUrl = "";
+        }
+        if (!downloadUrl) {
+          downloadUrl = normalizedHost + "/download/" + encodeURIComponent(id);
+        }
+
+        mapped.push({
+          id,
+          name,
+          type,
+          size,
+          downloadUrl,
+          selected: true
+        });
+      }
+
+      state.lanTransfer.items = mapped;
+      renderLanTransferList();
+
+      if (!mapped.length) {
+        setLanTransferStatus("Connected, but no shared files are currently available.", "info");
+        log("LAN host connected. No shared files were returned.");
+      } else {
+        setLanTransferStatus("Loaded " + mapped.length + " shared file(s).", "success");
+        log("Loaded " + mapped.length + " shared file(s) from LAN host.");
+      }
+    } catch (error) {
+      console.error(error);
+      state.lanTransfer.items = [];
+      renderLanTransferList();
+      setLanTransferStatus("Could not load shared files: " + (error.message || String(error)), "error");
+      log("LAN manifest load failed: " + (error.message || String(error)), "error");
+    } finally {
+      clearWorkProgress();
+    }
+  }
+
+  async function downloadLanTransferItem(item, current, total) {
+    const name = String(item && item.name ? item.name : "shared-" + current + ".zip");
+    setWorkProgress("Downloading " + name, Math.max(0, current - 1), total || 1);
+    const response = await fetch(item.downloadUrl, {
+      method: "GET",
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      throw new Error(name + " failed with HTTP " + response.status + ".");
+    }
+    const blob = await response.blob();
+    setWorkProgress("Downloaded " + name, current, total || 1);
+    return new File([blob], name, {
+      type: blob.type || "application/zip",
+      lastModified: Date.now()
+    });
+  }
+
+  async function importSelectedLanTransfers() {
+    const selectedItems = getLanTransferSelectedItems();
+    if (!selectedItems.length) {
+      setLanTransferStatus("Select at least one shared file first.", "error");
+      return;
+    }
+
+    let processedCount = 0;
+    let failedDownloads = 0;
+    for (let index = 0; index < selectedItems.length; index += 1) {
+      const item = selectedItems[index];
+      const label = String(item && item.name ? item.name : "shared-" + (index + 1) + ".zip");
+      try {
+        setActionButtonsDisabled(true);
+        const downloaded = await downloadLanTransferItem(item, index + 1, selectedItems.length);
+        setActionButtonsDisabled(false);
+        clearWorkProgress();
+        if (item.type === "bundle") {
+          await importBundleFile(downloaded);
+        } else {
+          await importZipFile(downloaded);
+        }
+        processedCount += 1;
+      } catch (error) {
+        failedDownloads += 1;
+        console.error(error);
+        log("LAN transfer failed for " + label + ": " + (error.message || String(error)), "error");
+      } finally {
+        setActionButtonsDisabled(false);
+        clearWorkProgress();
+      }
+    }
+
+    if (processedCount > 0 && failedDownloads === 0) {
+      setLanTransferStatus(
+        "Processed " + processedCount + " file(s). Check the Activity Log for each import result.",
+        "success"
+      );
+      return;
+    }
+    if (processedCount > 0) {
+      setLanTransferStatus(
+        "Processed " + processedCount + " file(s), but " + failedDownloads + " download(s) failed.",
+        "error"
+      );
+      return;
+    }
+    setLanTransferStatus("No selected files could be downloaded from the host.", "error");
+  }
+
+  function sanitizeLanBundleName(input, fallback) {
+    const base = String(input || "").trim() || fallback;
+    const cleaned = base
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80);
+    return (cleaned || fallback) + ".zip";
+  }
+
+  async function buildLanUploadBundle() {
+    const games = await getAllGames();
+    if (!games.length) {
+      throw new Error("No saved games are available to upload.");
+    }
+    const suggestedName = "cbgames-upload-all-" + new Date().toISOString().slice(0, 10);
+
+    const bundleBlob = await exportGamesBundle(games, (current, total) => {
+      setWorkProgress("Preparing upload bundle", current, total);
+    });
+    return {
+      gameCount: games.length,
+      fileName: sanitizeLanBundleName(suggestedName, "cbgames-upload"),
+      bundleBlob
+    };
+  }
+
+  async function uploadLanBundleWithOtc() {
+    if (!lanHostUrlInput || !lanUploadCodeInput) {
+      return;
+    }
+    const normalizedHost = normalizeLanHostUrl(
+      lanHostUrlInput.value || state.lanTransfer.hostUrl || LAN_TRANSFER_DEFAULT_HOST_URL
+    );
+    if (!normalizedHost) {
+      setLanTransferStatus("Enter a valid host URL before uploading.", "error");
+      return;
+    }
+    const otc = String(lanUploadCodeInput.value || "").trim().toUpperCase();
+    if (!otc) {
+      setLanTransferStatus("Enter the one-time code from the host terminal.", "error");
+      return;
+    }
+    state.lanTransfer.hostUrl = normalizedHost;
+    lanHostUrlInput.value = normalizedHost;
+
+    setActionButtonsDisabled(true);
+    try {
+      const uploadBundle = await buildLanUploadBundle();
+      setWorkProgress("Uploading bundle to host", 0, 0);
+      const uploadUrl =
+        normalizedHost +
+        "/api/client-upload?otc=" + encodeURIComponent(otc) +
+        "&name=" + encodeURIComponent(uploadBundle.fileName) +
+        "&type=bundle&shared=1";
+      const response = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/zip"
+        },
+        body: uploadBundle.bundleBlob
+      });
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+      if (!response.ok) {
+        const message = payload && payload.error
+          ? payload.error
+          : "Host upload failed with HTTP " + response.status + ".";
+        throw new Error(message);
+      }
+
+      setLanTransferStatus(
+        "Uploaded bundle to host (" + uploadBundle.gameCount + " game(s)). Load shared list to pull it.",
+        "success"
+      );
+      log("Uploaded bundle to LAN host with one-time code.");
+      lanUploadCodeInput.value = "";
+    } catch (error) {
+      console.error(error);
+      setLanTransferStatus("Host upload failed: " + (error.message || String(error)), "error");
+      log("LAN host upload failed: " + (error.message || String(error)), "error");
+    } finally {
+      setActionButtonsDisabled(false);
+      clearWorkProgress();
+    }
   }
 
   function normalizePath(path) {
@@ -5085,6 +5626,29 @@
     checkGithubUpdateButton.disabled = value;
     exportErrorLogsButton.disabled = value;
     closeOpsModalButton.disabled = value;
+    if (lanHostUrlInput) {
+      lanHostUrlInput.disabled = value;
+    }
+    if (lanLoadManifestButton) {
+      lanLoadManifestButton.disabled = value;
+    }
+    if (lanUploadCodeInput) {
+      lanUploadCodeInput.disabled = value;
+    }
+    if (lanUploadToHostButton) {
+      lanUploadToHostButton.disabled = value;
+    }
+    if (lanTransferList) {
+      const checkboxes = lanTransferList.querySelectorAll("input[type=\"checkbox\"][data-lan-item-id]");
+      for (const checkbox of checkboxes) {
+        checkbox.disabled = value;
+      }
+    }
+    if (!value) {
+      syncLanImportButtonState();
+    } else if (lanImportSelectedButton) {
+      lanImportSelectedButton.disabled = true;
+    }
   }
 
   // Main operations modal (Manage Games) open/close handlers.
@@ -7169,9 +7733,9 @@
     return normalized;
   }
 
-  async function exportAllGamesBundle(progressCallback) {
-    const games = await getAllGames();
-    if (!games.length) {
+  async function exportGamesBundle(games, progressCallback) {
+    const list = Array.isArray(games) ? games.filter(Boolean) : [];
+    if (!list.length) {
       throw new Error("No saved games to export.");
     }
     const zipEntries = [];
@@ -7181,7 +7745,7 @@
       games: []
     };
     let processedGames = 0;
-    for (const game of games) {
+    for (const game of list) {
       const files = await getAllFilesForGame(game.id);
       const gameFolder = "games/" + encodeURIComponent(game.id);
       const manifestGame = {
@@ -7230,7 +7794,7 @@
       manifest.games.push(manifestGame);
       processedGames += 1;
       if (typeof progressCallback === "function") {
-        progressCallback(processedGames, games.length);
+        progressCallback(processedGames, list.length);
       }
     }
 
@@ -7241,6 +7805,11 @@
     });
 
     return createZipStoreArchive(zipEntries);
+  }
+
+  async function exportAllGamesBundle(progressCallback) {
+    const games = await getAllGames();
+    return exportGamesBundle(games, progressCallback);
   }
 
   async function downloadAllGamesBundle() {
@@ -7688,6 +8257,63 @@
     }
   });
   importBundleButton.addEventListener("click", pickBundleFile);
+  if (lanLoadManifestButton) {
+    lanLoadManifestButton.addEventListener("click", async () => {
+      try {
+        await loadLanTransferManifest();
+      } catch (error) {
+        console.error(error);
+        setLanTransferStatus("Could not load host manifest.", "error");
+      }
+    });
+  }
+  if (lanImportSelectedButton) {
+    lanImportSelectedButton.addEventListener("click", async () => {
+      try {
+        await importSelectedLanTransfers();
+      } catch (error) {
+        console.error(error);
+        setLanTransferStatus("LAN import failed: " + (error.message || String(error)), "error");
+      }
+    });
+  }
+  if (lanUploadToHostButton) {
+    lanUploadToHostButton.addEventListener("click", async () => {
+      try {
+        await uploadLanBundleWithOtc();
+      } catch (error) {
+        console.error(error);
+        setLanTransferStatus("Host upload failed: " + (error.message || String(error)), "error");
+      }
+    });
+  }
+  if (lanTransferList) {
+    lanTransferList.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
+        return;
+      }
+      const itemId = String(target.getAttribute("data-lan-item-id") || "");
+      if (!itemId) {
+        return;
+      }
+      const item = state.lanTransfer.items.find((entry) => entry && entry.id === itemId);
+      if (!item) {
+        return;
+      }
+      item.selected = target.checked;
+      syncLanImportButtonState();
+    });
+  }
+  if (lanHostUrlInput) {
+    lanHostUrlInput.addEventListener("keydown", async (event) => {
+      if (event.key !== "Enter") {
+        return;
+      }
+      event.preventDefault();
+      await loadLanTransferManifest();
+    });
+  }
   exportErrorLogsButton.addEventListener("click", async () => {
     try {
       await downloadErrorLogs();
@@ -8240,6 +8866,12 @@
       log("Could not save game error log.", "error");
     });
   });
+
+  if (lanHostUrlInput && !lanHostUrlInput.value) {
+    lanHostUrlInput.value = state.lanTransfer.hostUrl || LAN_TRANSFER_DEFAULT_HOST_URL;
+  }
+  setLanTransferStatus("Enter a host URL, then click Load Shared.");
+  renderLanTransferList();
 
   setEmptyEntryState("Loading...");
 
