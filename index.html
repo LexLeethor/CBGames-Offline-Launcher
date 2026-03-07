@@ -5952,6 +5952,7 @@
     script.textContent = `
 (function () {
   var __launcherBridgeMeta = ${JSON.stringify(bridgeMeta)};
+  var __launcherVfsOrigin = ${JSON.stringify(VFS_ORIGIN)};
   var __errorArgToString = function (value) {
     if (value == null) return String(value);
     if (value instanceof Error) {
@@ -6044,11 +6045,142 @@
     }
   };
 
+  // Block Network Requests for SDK Games:
+  // - Currently only used for AZ Games.
+  // - blockedHostSuffixes: block requests to these host suffixes for all games.
+  // - blockAllNetworkForGames: optional per-game full network block (HTTP(S)/WS(S)).
+  // Add entries here to extend blocking for more vendors/games.
+  var NETWORK_BLOCK_POLICY = {
+    blockedHostSuffixes: [
+      "azgame.io",
+      "azgames.io"
+    ],
+    blockAllNetworkForGames: [
+      // Example: "escape-road-city-2"
+      // Example wildcard: "escape-road-*"
+    ]
+  };
+
+  var __normalizeLower = function (value) {
+    return String(value == null ? "" : value).trim().toLowerCase();
+  };
+
+  var __currentGameId = __normalizeLower(__launcherBridgeMeta.gameId || "");
+
+  var __matchesGameToken = function (gameId, token) {
+    var cleanToken = __normalizeLower(token);
+    if (!cleanToken) {
+      return false;
+    }
+    if (cleanToken.endsWith("*")) {
+      return gameId.indexOf(cleanToken.slice(0, -1)) === 0;
+    }
+    return gameId === cleanToken;
+  };
+
+  var __blockAllNetworkForCurrentGame = (function () {
+    var rules = Array.isArray(NETWORK_BLOCK_POLICY.blockAllNetworkForGames)
+      ? NETWORK_BLOCK_POLICY.blockAllNetworkForGames
+      : [];
+    for (var i = 0; i < rules.length; i++) {
+      if (__matchesGameToken(__currentGameId, rules[i])) {
+        return true;
+      }
+    }
+    return false;
+  })();
+
+  var __launcherVfsOriginParsed = (function () {
+    try {
+      return new URL(__launcherVfsOrigin);
+    } catch (_error) {
+      return null;
+    }
+  })();
+
+  var __isBlockedHost = function (hostname) {
+    var host = __normalizeLower(hostname);
+    if (!host) {
+      return false;
+    }
+    var suffixes = Array.isArray(NETWORK_BLOCK_POLICY.blockedHostSuffixes)
+      ? NETWORK_BLOCK_POLICY.blockedHostSuffixes
+      : [];
+    for (var i = 0; i < suffixes.length; i++) {
+      var suffix = __normalizeLower(suffixes[i]);
+      if (!suffix) {
+        continue;
+      }
+      if (host === suffix || host.endsWith("." + suffix)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  var __parseNetworkUrl = function (value) {
+    try {
+      if (value instanceof URL) {
+        return value;
+      }
+    } catch (_error) {
+      // continue
+    }
+    var text = String(value == null ? "" : value).trim();
+    if (!text) {
+      return null;
+    }
+    var lower = text.toLowerCase();
+    if (
+      lower.startsWith("data:") ||
+      lower.startsWith("blob:") ||
+      lower.startsWith("about:") ||
+      lower.startsWith("javascript:")
+    ) {
+      return null;
+    }
+    try {
+      return new URL(text, getBaseHref());
+    } catch (_error) {
+      return null;
+    }
+  };
+
+  var __isRemoteProtocol = function (protocol) {
+    var p = __normalizeLower(protocol);
+    return p === "http:" || p === "https:" || p === "ws:" || p === "wss:";
+  };
+
+  var __getBlockedNetworkTarget = function (value) {
+    var parsed = __parseNetworkUrl(value);
+    if (!parsed || !__isRemoteProtocol(parsed.protocol)) {
+      return "";
+    }
+    if (__launcherVfsOriginParsed && parsed.origin === __launcherVfsOriginParsed.origin) {
+      return "";
+    }
+    if (__blockAllNetworkForCurrentGame) {
+      return parsed.href;
+    }
+    if (__isBlockedHost(parsed.hostname)) {
+      return parsed.href;
+    }
+    return "";
+  };
+
+  var __reportBlockedNetwork = function (kind, targetUrl) {
+    __reportLauncherError({
+      level: "warn",
+      kind: "blocked-network",
+      message: String(kind || "network") + " blocked by launcher policy: " + String(targetUrl || "")
+    });
+  };
+
   var normalizeVirtualDataUrl = function (value) {
-    var text = String(value || "");
+    var text = String(value == null ? "" : value);
     var marker = "data:application/";
     var markerIndex = text.indexOf(marker);
-    if (markerIndex > 0) {
+    if (markerIndex > 0 && text.indexOf(__launcherVfsOrigin) === 0) {
       return text.slice(markerIndex);
     }
     return value;
@@ -6057,7 +6189,12 @@
   var mapValue = function (value) {
     var normalized = normalizeVirtualDataUrl(value);
     var mapped = resolver(normalized);
-    return mapped || normalized;
+    var candidate = mapped || normalized;
+    var blockedTarget = __getBlockedNetworkTarget(candidate) || __getBlockedNetworkTarget(normalized);
+    if (blockedTarget) {
+      return "about:blank#cbgames-blocked-network";
+    }
+    return candidate;
   };
 
   var isMappedAttributeName = function (name) {
@@ -6238,6 +6375,11 @@
     if (typeof input === "string" || input instanceof URL) {
       var originalInput = input;
       var mappedInput = mapValue(input);
+      var blockedTarget = __getBlockedNetworkTarget(mappedInput) || __getBlockedNetworkTarget(originalInput);
+      if (blockedTarget) {
+        __reportBlockedNetwork("fetch", blockedTarget);
+        return Promise.reject(new TypeError("Network request blocked by launcher policy."));
+      }
       if (mappedInput === originalInput) {
         return nativeFetch(originalInput, init);
       }
@@ -6246,8 +6388,18 @@
       });
     }
     if (input instanceof Request) {
+      var blockedRequestTarget = __getBlockedNetworkTarget(input.url);
+      if (blockedRequestTarget) {
+        __reportBlockedNetwork("fetch", blockedRequestTarget);
+        return Promise.reject(new TypeError("Network request blocked by launcher policy."));
+      }
       var mapped = resolver(input.url);
       if (mapped) {
+        var blockedMappedTarget = __getBlockedNetworkTarget(mapped);
+        if (blockedMappedTarget) {
+          __reportBlockedNetwork("fetch", blockedMappedTarget);
+          return Promise.reject(new TypeError("Network request blocked by launcher policy."));
+        }
         try {
           return nativeFetch(new Request(mapped, input), init).catch(function () {
             return nativeFetch(input, init);
@@ -6261,10 +6413,65 @@
   };
 
   var nativeOpen = XMLHttpRequest.prototype.open;
+  var nativeSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (method, url) {
     var rest = Array.prototype.slice.call(arguments, 2);
-    return nativeOpen.apply(this, [method, mapValue(url)].concat(rest));
+    var mappedUrl = mapValue(url);
+    var blockedTarget = __getBlockedNetworkTarget(mappedUrl) || __getBlockedNetworkTarget(url);
+    this.__cbgamesBlockedNetworkTarget = blockedTarget || "";
+    if (this.__cbgamesBlockedNetworkTarget) {
+      return nativeOpen.apply(this, [method, "about:blank"].concat(rest));
+    }
+    try {
+      return nativeOpen.apply(this, [method, mappedUrl].concat(rest));
+    } catch (mappedOpenError) {
+      if (mappedUrl !== url) {
+        try {
+          return nativeOpen.apply(this, [method, url].concat(rest));
+        } catch (_originalOpenError) {
+          // rethrow mapped error below
+        }
+      }
+      throw mappedOpenError;
+    }
   };
+  XMLHttpRequest.prototype.send = function (body) {
+    if (this.__cbgamesBlockedNetworkTarget) {
+      var blockedTarget = this.__cbgamesBlockedNetworkTarget;
+      this.__cbgamesBlockedNetworkTarget = "";
+      __reportBlockedNetwork("xhr", blockedTarget);
+      throw new TypeError("Network request blocked by launcher policy.");
+    }
+    return nativeSend.call(this, body);
+  };
+
+  if (window.navigator && typeof window.navigator.sendBeacon === "function") {
+    var nativeSendBeacon = window.navigator.sendBeacon.bind(window.navigator);
+    window.navigator.sendBeacon = function (url, data) {
+      var blockedTarget = __getBlockedNetworkTarget(url);
+      if (blockedTarget) {
+        __reportBlockedNetwork("sendBeacon", blockedTarget);
+        return false;
+      }
+      return nativeSendBeacon(url, data);
+    };
+  }
+
+  if (window.WebSocket) {
+    var NativeWebSocket = window.WebSocket;
+    window.WebSocket = function (url, protocols) {
+      var blockedTarget = __getBlockedNetworkTarget(url);
+      if (blockedTarget) {
+        __reportBlockedNetwork("websocket", blockedTarget);
+        throw new TypeError("Network request blocked by launcher policy.");
+      }
+      if (typeof protocols === "undefined") {
+        return new NativeWebSocket(url);
+      }
+      return new NativeWebSocket(url, protocols);
+    };
+    window.WebSocket.prototype = NativeWebSocket.prototype;
+  }
 
   if (window.Worker) {
     var NativeWorker = window.Worker;
@@ -6691,14 +6898,18 @@
       manifestLink.remove();
     }
 
-    // Strip Cloudflare challenge snippets that are unusable offline.
+    // Strip Cloudflare challenge/telemetry snippets that are unusable offline.
     for (const scriptElement of documentNode.querySelectorAll("script")) {
       const src = String(scriptElement.getAttribute("src") || "").toLowerCase();
       const inline = String(scriptElement.textContent || "").toLowerCase();
+      const hasCfBeaconAttr = scriptElement.hasAttribute("data-cf-beacon");
       if (
         src.includes("/cdn-cgi/challenge-platform/") ||
         inline.includes("/cdn-cgi/challenge-platform/") ||
-        inline.includes("__cf$cv$params")
+        inline.includes("__cf$cv$params") ||
+        src.includes("static.cloudflareinsights.com/beacon.min.js") ||
+        inline.includes("static.cloudflareinsights.com/beacon.min.js") ||
+        hasCfBeaconAttr
       ) {
         scriptElement.remove();
       }
