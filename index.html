@@ -2330,9 +2330,41 @@
     }
   }
 
+  async function getLanDownloadHeadInfo(url) {
+    const response = await fetch(url, {
+      method: "HEAD",
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      throw new Error("HEAD failed with HTTP " + response.status + ".");
+    }
+    return {
+      contentLength: Number(response.headers.get("content-length")) || 0
+    };
+  }
+
   async function downloadLanTransferItem(item, current, total) {
     const name = String(item && item.name ? item.name : "shared-" + current + ".zip");
-    setWorkProgress("Downloading " + name, Math.max(0, current - 1), total || 1);
+    let expectedTotal = Number(item && item.size) || 0;
+    try {
+      const head = await getLanDownloadHeadInfo(item.downloadUrl);
+      expectedTotal = Number(head.contentLength) || expectedTotal;
+    } catch {
+      // Some hosts or proxies may not allow HEAD; fall back to GET headers/manifest size.
+    }
+
+    const progressLabel = "Downloading " + name;
+    if (expectedTotal > 0) {
+      setWorkProgress(
+        progressLabel,
+        0,
+        expectedTotal,
+        { currentText: formatBytes(0), totalText: formatBytes(expectedTotal) }
+      );
+    } else {
+      setWorkProgress(progressLabel, 0, 0);
+    }
+
     const response = await fetch(item.downloadUrl, {
       method: "GET",
       cache: "no-store"
@@ -2340,8 +2372,83 @@
     if (!response.ok) {
       throw new Error(name + " failed with HTTP " + response.status + ".");
     }
-    const blob = await response.blob();
-    setWorkProgress("Downloaded " + name, current, total || 1);
+
+    const contentLength = Number(response.headers.get("content-length")) || 0;
+    const totalBytes = contentLength || expectedTotal;
+    const reader = response.body && typeof response.body.getReader === "function"
+      ? response.body.getReader()
+      : null;
+
+    if (!reader) {
+      const blob = await response.blob();
+      const byteLength = Number(blob.size) || 0;
+      if (byteLength > 0) {
+        setWorkProgress(
+          progressLabel,
+          byteLength,
+          byteLength,
+          { currentText: formatBytes(byteLength), totalText: formatBytes(byteLength) }
+        );
+      } else {
+        setWorkProgress(progressLabel, 1, 1);
+      }
+      return new File([blob], name, {
+        type: blob.type || "application/zip",
+        lastModified: Date.now()
+      });
+    }
+
+    let loaded = 0;
+    let lastReported = 0;
+    const chunks = [];
+    while (true) {
+      const part = await reader.read();
+      if (part.done) {
+        break;
+      }
+      const chunk = part.value;
+      if (!chunk) {
+        continue;
+      }
+      chunks.push(chunk);
+      loaded += chunk.byteLength;
+
+      if (loaded - lastReported >= 131072 || (totalBytes > 0 && loaded >= totalBytes)) {
+        if (totalBytes > 0) {
+          setWorkProgress(
+            progressLabel,
+            loaded,
+            totalBytes,
+            { currentText: formatBytes(loaded), totalText: formatBytes(totalBytes) }
+          );
+        } else {
+          setWorkProgress(progressLabel + " (" + formatBytes(loaded) + ")", 0, 0);
+        }
+        lastReported = loaded;
+      }
+    }
+
+    if (totalBytes > 0) {
+      setWorkProgress(
+        progressLabel,
+        loaded,
+        totalBytes,
+        { currentText: formatBytes(loaded), totalText: formatBytes(totalBytes) }
+      );
+    } else if (loaded > 0) {
+      setWorkProgress(
+        progressLabel,
+        loaded,
+        loaded,
+        { currentText: formatBytes(loaded), totalText: formatBytes(loaded) }
+      );
+    } else {
+      setWorkProgress(progressLabel, 1, 1);
+    }
+
+    const blob = new Blob(chunks, {
+      type: response.headers.get("content-type") || "application/zip"
+    });
     return new File([blob], name, {
       type: blob.type || "application/zip",
       lastModified: Date.now()
