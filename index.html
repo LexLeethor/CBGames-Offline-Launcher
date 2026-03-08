@@ -1344,10 +1344,10 @@
     padding: 8px 10px;
     font-size: 13px;
   }
-  .ops-row.lan-connect-row {
+  .ops-row.network-connect-row {
     grid-template-columns: minmax(0, 1fr) auto;
   }
-  #lanHostUrl {
+  #networkHostUrl {
     width: 100%;
     min-height: 40px;
     border: 1px solid #343434;
@@ -1357,12 +1357,12 @@
     padding: 8px 10px;
     font-size: 13px;
   }
-  #lanHostUrl:focus {
+  #networkHostUrl:focus {
     outline: none;
     border-color: #6ea5ff;
     box-shadow: 0 0 0 2px rgba(110, 165, 255, 0.18);
   }
-  #lanUploadCode {
+  #networkUploadCode {
     width: 100%;
     min-height: 40px;
     border: 1px solid #343434;
@@ -1373,21 +1373,21 @@
     font-size: 13px;
     text-transform: uppercase;
   }
-  #lanUploadCode:focus {
+  #networkUploadCode:focus {
     outline: none;
     border-color: #6ea5ff;
     box-shadow: 0 0 0 2px rgba(110, 165, 255, 0.18);
   }
-  .lan-transfer-status {
+  .network-transfer-status {
     min-height: 16px;
   }
-  .lan-transfer-status.is-error {
+  .network-transfer-status.is-error {
     color: #ffb3b3;
   }
-  .lan-transfer-status.is-success {
+  .network-transfer-status.is-success {
     color: #a8e0a8;
   }
-  .lan-transfer-list {
+  .network-transfer-list {
     border: 1px solid #2f2f2f;
     border-radius: 10px;
     background: #101010;
@@ -1397,7 +1397,7 @@
     display: grid;
     gap: 5px;
   }
-  .lan-transfer-item {
+  .network-transfer-item {
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 8px;
@@ -1408,27 +1408,27 @@
     padding: 6px 8px;
     cursor: pointer;
   }
-  .lan-transfer-item input[type="checkbox"] {
+  .network-transfer-item input[type="checkbox"] {
     margin-top: 2px;
   }
-  .lan-transfer-item strong {
+  .network-transfer-item strong {
     display: block;
     font-size: 12px;
     color: #efefef;
   }
-  .lan-transfer-item small {
+  .network-transfer-item small {
     display: block;
     margin-top: 1px;
     color: #b3b3b3;
     font-size: 11px;
   }
-  .lan-upload-details {
+  .network-upload-details {
     border: 1px dashed #2f2f2f;
     border-radius: 10px;
     background: #101010;
     padding: 8px;
   }
-  .lan-upload-details > summary {
+  .network-upload-details > summary {
     cursor: pointer;
     list-style: none;
     position: relative;
@@ -1437,10 +1437,10 @@
     color: #d0d0d0;
     font-weight: 600;
   }
-  .lan-upload-details > summary::-webkit-details-marker {
+  .network-upload-details > summary::-webkit-details-marker {
     display: none;
   }
-  .lan-upload-details > summary::after {
+  .network-upload-details > summary::after {
     content: "+";
     position: absolute;
     right: 0;
@@ -1449,10 +1449,10 @@
     font-size: 14px;
     line-height: 1;
   }
-  .lan-upload-details[open] > summary::after {
+  .network-upload-details[open] > summary::after {
     content: "-";
   }
-  .lan-upload-body {
+  .network-upload-body {
     margin-top: 0;
     display: grid;
     gap: 6px;
@@ -1461,7 +1461,7 @@
     overflow: hidden;
     transition: max-height 0.25s ease, opacity 0.2s ease, margin-top 0.25s ease;
   }
-  .lan-upload-details[open] .lan-upload-body {
+  .network-upload-details[open] .network-upload-body {
     margin-top: 8px;
     max-height: 260px;
     opacity: 1;
@@ -1769,29 +1769,29 @@
         </section>
         <section class="ops-group ops-group-fixed">
           <div class="ops-group-head">
-            <span class="ops-group-title">LAN Transfer</span>
-            <span class="ops-group-hint">Load shared files or upload all games</span>
+            <span class="ops-group-title">Import from Host</span>
+            <span class="ops-group-hint">Import games from a host</span>
           </div>
           <div class="ops-group-body compact">
-            <p>1) Enter a LAN host URL, then load and import shared files.</p>
-            <div class="ops-row lan-connect-row">
-              <input id="lanHostUrl" type="text" spellcheck="false" autocomplete="off" placeholder="http://192.168.1.10:8941">
-              <button id="lanLoadManifest" type="button">Load Shared</button>
+            <p>1) Enter a network host URL, then load and import shared files.</p>
+            <div class="ops-row network-connect-row">
+              <input id="networkHostUrl" type="text" spellcheck="false" autocomplete="off" placeholder="http://192.168.1.10:8941">
+              <button id="networkLoadManifest" type="button">Load Shared</button>
             </div>
-            <p id="lanTransferStatus" class="lan-transfer-status">Enter a host URL, then click Load Shared.</p>
-            <div id="lanTransferList" class="lan-transfer-list" hidden></div>
+            <p id="networkTransferStatus" class="network-transfer-status">Enter a host URL, then click Load Shared.</p>
+            <div id="networkTransferList" class="network-transfer-list" hidden></div>
             <div class="ops-row one">
-              <button id="lanImportSelected" type="button" disabled>Import Checked</button>
+              <button id="networkImportSelected" type="button" disabled>Import Checked</button>
             </div>
-            <details class="lan-upload-details">
+            <details class="network-upload-details">
               <summary>Host-only upload tools</summary>
-              <div class="lan-upload-body">
+              <div class="network-upload-body">
                 <p>Paste a one-time code from the host terminal to upload all saved games.</p>
                 <div class="ops-row one">
-                  <input id="lanUploadCode" type="text" spellcheck="false" autocomplete="off" placeholder="One-time code">
+                  <input id="networkUploadCode" type="text" spellcheck="false" autocomplete="off" placeholder="One-time code">
                 </div>
                 <div class="ops-row one">
-                  <button id="lanUploadToHost" type="button">Upload All Games</button>
+                  <button id="networkUploadToHost" type="button">Upload All Games</button>
                 </div>
               </div>
             </details>
@@ -1997,13 +1997,13 @@
   const bundleInput = document.getElementById("bundleInput");
   const exportAllGamesButton = document.getElementById("exportAllGames");
   const importBundleButton = document.getElementById("importBundle");
-  const lanHostUrlInput = document.getElementById("lanHostUrl");
-  const lanLoadManifestButton = document.getElementById("lanLoadManifest");
-  const lanTransferStatus = document.getElementById("lanTransferStatus");
-  const lanTransferList = document.getElementById("lanTransferList");
-  const lanImportSelectedButton = document.getElementById("lanImportSelected");
-  const lanUploadCodeInput = document.getElementById("lanUploadCode");
-  const lanUploadToHostButton = document.getElementById("lanUploadToHost");
+  const networkHostUrlInput = document.getElementById("networkHostUrl");
+  const networkLoadManifestButton = document.getElementById("networkLoadManifest");
+  const networkTransferStatus = document.getElementById("networkTransferStatus");
+  const networkTransferList = document.getElementById("networkTransferList");
+  const networkImportSelectedButton = document.getElementById("networkImportSelected");
+  const networkUploadCodeInput = document.getElementById("networkUploadCode");
+  const networkUploadToHostButton = document.getElementById("networkUploadToHost");
   const importGithubButton = document.getElementById("importGithub");
   const checkGithubUpdateButton = document.getElementById("checkGithubUpdate");
   const updateScanStatus = document.getElementById("updateScanStatus");
@@ -2074,7 +2074,7 @@
   const reorderAnimations = new WeakMap();
   // Hidden query param to force a one-time badge rescan on load.
   const BADGE_RESCAN_SECRET_PARAM = "__cbgames_rebadge";
-  const LAN_TRANSFER_DEFAULT_HOST_URL = "http://localhost:8941";
+  const NETWORK_TRANSFER_DEFAULT_HOST_URL = "http://localhost:8941";
 
   // Central runtime state (loaded games, active selection, modal resolvers, etc.).
   const state = {
@@ -2119,8 +2119,8 @@
     updatePromptResolver: null,
     bundlePreviewResolver: null,
     bundlePreviewDraft: null,
-    lanTransfer: {
-      hostUrl: LAN_TRANSFER_DEFAULT_HOST_URL,
+    networkTransfer: {
+      hostUrl: NETWORK_TRANSFER_DEFAULT_HOST_URL,
       items: []
     },
     badgeRescanCompleted: false,
@@ -2149,7 +2149,7 @@
     updateScanStatus.textContent = "Update status: " + (message || "Not checked yet.");
   }
 
-  function normalizeLanHostUrl(rawValue) {
+  function normalizeNetworkHostUrl(rawValue) {
     let value = String(rawValue || "").trim();
     if (!value) {
       return "";
@@ -2171,53 +2171,53 @@
     }
   }
 
-  function setLanTransferStatus(message, tone = "info") {
-    if (!lanTransferStatus) {
+  function setNetworkTransferStatus(message, tone = "info") {
+    if (!networkTransferStatus) {
       return;
     }
     const text = String(message || "").trim();
-    lanTransferStatus.textContent = text || "Enter a host URL, then click Load Shared.";
-    lanTransferStatus.classList.toggle("is-error", tone === "error");
-    lanTransferStatus.classList.toggle("is-success", tone === "success");
+    networkTransferStatus.textContent = text || "Enter a host URL, then click Load Shared.";
+    networkTransferStatus.classList.toggle("is-error", tone === "error");
+    networkTransferStatus.classList.toggle("is-success", tone === "success");
   }
 
-  function getLanTransferSelectedItems() {
-    const items = Array.isArray(state.lanTransfer.items) ? state.lanTransfer.items : [];
+  function getNetworkTransferSelectedItems() {
+    const items = Array.isArray(state.networkTransfer.items) ? state.networkTransfer.items : [];
     return items.filter((item) => item && item.selected !== false);
   }
 
-  function syncLanImportButtonState() {
-    if (!lanImportSelectedButton) {
+  function syncNetworkImportButtonState() {
+    if (!networkImportSelectedButton) {
       return;
     }
     if (state.actionInProgress) {
-      lanImportSelectedButton.disabled = true;
+      networkImportSelectedButton.disabled = true;
       return;
     }
-    lanImportSelectedButton.disabled = getLanTransferSelectedItems().length === 0;
+    networkImportSelectedButton.disabled = getNetworkTransferSelectedItems().length === 0;
   }
 
-  function renderLanTransferList() {
-    if (!lanTransferList) {
+  function renderNetworkTransferList() {
+    if (!networkTransferList) {
       return;
     }
-    lanTransferList.innerHTML = "";
-    const items = Array.isArray(state.lanTransfer.items) ? state.lanTransfer.items : [];
+    networkTransferList.innerHTML = "";
+    const items = Array.isArray(state.networkTransfer.items) ? state.networkTransfer.items : [];
     if (!items.length) {
-      lanTransferList.hidden = true;
-      syncLanImportButtonState();
+      networkTransferList.hidden = true;
+      syncNetworkImportButtonState();
       return;
     }
-    lanTransferList.hidden = false;
+    networkTransferList.hidden = false;
     for (const item of items) {
       const row = document.createElement("label");
-      row.className = "lan-transfer-item";
+      row.className = "network-transfer-item";
 
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.checked = item.selected !== false;
       checkbox.disabled = state.actionInProgress;
-      checkbox.setAttribute("data-lan-item-id", item.id);
+      checkbox.setAttribute("data-network-item-id", item.id);
 
       const meta = document.createElement("span");
       const name = document.createElement("strong");
@@ -2230,27 +2230,27 @@
       meta.append(name, details);
 
       row.append(checkbox, meta);
-      lanTransferList.append(row);
+      networkTransferList.append(row);
     }
-    syncLanImportButtonState();
+    syncNetworkImportButtonState();
   }
 
-  async function loadLanTransferManifest() {
-    if (!lanHostUrlInput) {
+  async function loadNetworkTransferManifest() {
+    if (!networkHostUrlInput) {
       return;
     }
-    const normalizedHost = normalizeLanHostUrl(
-      lanHostUrlInput.value || state.lanTransfer.hostUrl || LAN_TRANSFER_DEFAULT_HOST_URL
+    const normalizedHost = normalizeNetworkHostUrl(
+      networkHostUrlInput.value || state.networkTransfer.hostUrl || NETWORK_TRANSFER_DEFAULT_HOST_URL
     );
     if (!normalizedHost) {
-      setLanTransferStatus("Enter a valid host URL (example: http://192.168.1.10:8941).", "error");
+      setNetworkTransferStatus("Enter a valid host URL (example: http://192.168.1.10:8941).", "error");
       return;
     }
 
-    lanHostUrlInput.value = normalizedHost;
-    state.lanTransfer.hostUrl = normalizedHost;
-    setLanTransferStatus("Loading shared files from " + normalizedHost + "...", "info");
-    setWorkProgress("Loading LAN host manifest", 0, 0);
+    networkHostUrlInput.value = normalizedHost;
+    state.networkTransfer.hostUrl = normalizedHost;
+    setNetworkTransferStatus("Loading shared files from " + normalizedHost + "...", "info");
+    setWorkProgress("Loading network host manifest", 0, 0);
 
     try {
       const response = await fetch(normalizedHost + "/api/manifest", {
@@ -2309,28 +2309,28 @@
         });
       }
 
-      state.lanTransfer.items = mapped;
-      renderLanTransferList();
+      state.networkTransfer.items = mapped;
+      renderNetworkTransferList();
 
       if (!mapped.length) {
-        setLanTransferStatus("Connected, but no shared files are currently available.", "info");
-        log("LAN host connected. No shared files were returned.");
+        setNetworkTransferStatus("Connected, but no shared files are currently available.", "info");
+        log("Network host connected. No shared files were returned.");
       } else {
-        setLanTransferStatus("Loaded " + mapped.length + " shared file(s).", "success");
-        log("Loaded " + mapped.length + " shared file(s) from LAN host.");
+        setNetworkTransferStatus("Loaded " + mapped.length + " shared file(s).", "success");
+        log("Loaded " + mapped.length + " shared file(s) from network host.");
       }
     } catch (error) {
       console.error(error);
-      state.lanTransfer.items = [];
-      renderLanTransferList();
-      setLanTransferStatus("Could not load shared files: " + (error.message || String(error)), "error");
-      log("LAN manifest load failed: " + (error.message || String(error)), "error");
+      state.networkTransfer.items = [];
+      renderNetworkTransferList();
+      setNetworkTransferStatus("Could not load shared files: " + (error.message || String(error)), "error");
+      log("Network manifest load failed: " + (error.message || String(error)), "error");
     } finally {
       clearWorkProgress();
     }
   }
 
-  async function getLanDownloadHeadInfo(url) {
+  async function getNetworkDownloadHeadInfo(url) {
     const response = await fetch(url, {
       method: "HEAD",
       cache: "no-store"
@@ -2343,11 +2343,11 @@
     };
   }
 
-  async function downloadLanTransferItem(item, current, total) {
+  async function downloadNetworkTransferItem(item, current, total) {
     const name = String(item && item.name ? item.name : "shared-" + current + ".zip");
     let expectedTotal = Number(item && item.size) || 0;
     try {
-      const head = await getLanDownloadHeadInfo(item.downloadUrl);
+      const head = await getNetworkDownloadHeadInfo(item.downloadUrl);
       expectedTotal = Number(head.contentLength) || expectedTotal;
     } catch {
       // Some hosts or proxies may not allow HEAD; fall back to GET headers/manifest size.
@@ -2455,10 +2455,10 @@
     });
   }
 
-  async function importSelectedLanTransfers() {
-    const selectedItems = getLanTransferSelectedItems();
+  async function importSelectedNetworkTransfers() {
+    const selectedItems = getNetworkTransferSelectedItems();
     if (!selectedItems.length) {
-      setLanTransferStatus("Select at least one shared file first.", "error");
+      setNetworkTransferStatus("Select at least one shared file first.", "error");
       return;
     }
 
@@ -2469,7 +2469,7 @@
       const label = String(item && item.name ? item.name : "shared-" + (index + 1) + ".zip");
       try {
         setActionButtonsDisabled(true);
-        const downloaded = await downloadLanTransferItem(item, index + 1, selectedItems.length);
+        const downloaded = await downloadNetworkTransferItem(item, index + 1, selectedItems.length);
         setActionButtonsDisabled(false);
         clearWorkProgress();
         if (item.type === "bundle") {
@@ -2481,7 +2481,7 @@
       } catch (error) {
         failedDownloads += 1;
         console.error(error);
-        log("LAN transfer failed for " + label + ": " + (error.message || String(error)), "error");
+        log("Network transfer failed for " + label + ": " + (error.message || String(error)), "error");
       } finally {
         setActionButtonsDisabled(false);
         clearWorkProgress();
@@ -2489,23 +2489,23 @@
     }
 
     if (processedCount > 0 && failedDownloads === 0) {
-      setLanTransferStatus(
+      setNetworkTransferStatus(
         "Processed " + processedCount + " file(s). Check the Activity Log for each import result.",
         "success"
       );
       return;
     }
     if (processedCount > 0) {
-      setLanTransferStatus(
+      setNetworkTransferStatus(
         "Processed " + processedCount + " file(s), but " + failedDownloads + " download(s) failed.",
         "error"
       );
       return;
     }
-    setLanTransferStatus("No selected files could be downloaded from the host.", "error");
+    setNetworkTransferStatus("No selected files could be downloaded from the host.", "error");
   }
 
-  function sanitizeLanBundleName(input, fallback) {
+  function sanitizeNetworkBundleName(input, fallback) {
     const base = String(input || "").trim() || fallback;
     const cleaned = base
       .toLowerCase()
@@ -2515,7 +2515,7 @@
     return (cleaned || fallback) + ".zip";
   }
 
-  async function buildLanUploadBundle() {
+  async function buildNetworkUploadBundle() {
     const games = await getAllGames();
     if (!games.length) {
       throw new Error("No saved games are available to upload.");
@@ -2527,33 +2527,33 @@
     });
     return {
       gameCount: games.length,
-      fileName: sanitizeLanBundleName(suggestedName, "cbgames-upload"),
+      fileName: sanitizeNetworkBundleName(suggestedName, "cbgames-upload"),
       bundleBlob
     };
   }
 
-  async function uploadLanBundleWithOtc() {
-    if (!lanHostUrlInput || !lanUploadCodeInput) {
+  async function uploadNetworkBundleWithOtc() {
+    if (!networkHostUrlInput || !networkUploadCodeInput) {
       return;
     }
-    const normalizedHost = normalizeLanHostUrl(
-      lanHostUrlInput.value || state.lanTransfer.hostUrl || LAN_TRANSFER_DEFAULT_HOST_URL
+    const normalizedHost = normalizeNetworkHostUrl(
+      networkHostUrlInput.value || state.networkTransfer.hostUrl || NETWORK_TRANSFER_DEFAULT_HOST_URL
     );
     if (!normalizedHost) {
-      setLanTransferStatus("Enter a valid host URL before uploading.", "error");
+      setNetworkTransferStatus("Enter a valid host URL before uploading.", "error");
       return;
     }
-    const otc = String(lanUploadCodeInput.value || "").trim().toUpperCase();
+    const otc = String(networkUploadCodeInput.value || "").trim().toUpperCase();
     if (!otc) {
-      setLanTransferStatus("Enter the one-time code from the host terminal.", "error");
+      setNetworkTransferStatus("Enter the one-time code from the host terminal.", "error");
       return;
     }
-    state.lanTransfer.hostUrl = normalizedHost;
-    lanHostUrlInput.value = normalizedHost;
+    state.networkTransfer.hostUrl = normalizedHost;
+    networkHostUrlInput.value = normalizedHost;
 
     setActionButtonsDisabled(true);
     try {
-      const uploadBundle = await buildLanUploadBundle();
+      const uploadBundle = await buildNetworkUploadBundle();
       setWorkProgress("Uploading bundle to host", 0, 0);
       const uploadUrl =
         normalizedHost +
@@ -2580,16 +2580,16 @@
         throw new Error(message);
       }
 
-      setLanTransferStatus(
+      setNetworkTransferStatus(
         "Uploaded bundle to host (" + uploadBundle.gameCount + " game(s)). Load shared list to pull it.",
         "success"
       );
-      log("Uploaded bundle to LAN host with one-time code.");
-      lanUploadCodeInput.value = "";
+      log("Uploaded bundle to network host with one-time code.");
+      networkUploadCodeInput.value = "";
     } catch (error) {
       console.error(error);
-      setLanTransferStatus("Host upload failed: " + (error.message || String(error)), "error");
-      log("LAN host upload failed: " + (error.message || String(error)), "error");
+      setNetworkTransferStatus("Host upload failed: " + (error.message || String(error)), "error");
+      log("Network host upload failed: " + (error.message || String(error)), "error");
     } finally {
       setActionButtonsDisabled(false);
       clearWorkProgress();
@@ -5733,28 +5733,28 @@
     checkGithubUpdateButton.disabled = value;
     exportErrorLogsButton.disabled = value;
     closeOpsModalButton.disabled = value;
-    if (lanHostUrlInput) {
-      lanHostUrlInput.disabled = value;
+    if (networkHostUrlInput) {
+      networkHostUrlInput.disabled = value;
     }
-    if (lanLoadManifestButton) {
-      lanLoadManifestButton.disabled = value;
+    if (networkLoadManifestButton) {
+      networkLoadManifestButton.disabled = value;
     }
-    if (lanUploadCodeInput) {
-      lanUploadCodeInput.disabled = value;
+    if (networkUploadCodeInput) {
+      networkUploadCodeInput.disabled = value;
     }
-    if (lanUploadToHostButton) {
-      lanUploadToHostButton.disabled = value;
+    if (networkUploadToHostButton) {
+      networkUploadToHostButton.disabled = value;
     }
-    if (lanTransferList) {
-      const checkboxes = lanTransferList.querySelectorAll("input[type=\"checkbox\"][data-lan-item-id]");
+    if (networkTransferList) {
+      const checkboxes = networkTransferList.querySelectorAll("input[type=\"checkbox\"][data-network-item-id]");
       for (const checkbox of checkboxes) {
         checkbox.disabled = value;
       }
     }
     if (!value) {
-      syncLanImportButtonState();
-    } else if (lanImportSelectedButton) {
-      lanImportSelectedButton.disabled = true;
+      syncNetworkImportButtonState();
+    } else if (networkImportSelectedButton) {
+      networkImportSelectedButton.disabled = true;
     }
   }
 
@@ -8364,61 +8364,61 @@
     }
   });
   importBundleButton.addEventListener("click", pickBundleFile);
-  if (lanLoadManifestButton) {
-    lanLoadManifestButton.addEventListener("click", async () => {
+  if (networkLoadManifestButton) {
+    networkLoadManifestButton.addEventListener("click", async () => {
       try {
-        await loadLanTransferManifest();
+        await loadNetworkTransferManifest();
       } catch (error) {
         console.error(error);
-        setLanTransferStatus("Could not load host manifest.", "error");
+        setNetworkTransferStatus("Could not load host manifest.", "error");
       }
     });
   }
-  if (lanImportSelectedButton) {
-    lanImportSelectedButton.addEventListener("click", async () => {
+  if (networkImportSelectedButton) {
+    networkImportSelectedButton.addEventListener("click", async () => {
       try {
-        await importSelectedLanTransfers();
+        await importSelectedNetworkTransfers();
       } catch (error) {
         console.error(error);
-        setLanTransferStatus("LAN import failed: " + (error.message || String(error)), "error");
+        setNetworkTransferStatus("Network import failed: " + (error.message || String(error)), "error");
       }
     });
   }
-  if (lanUploadToHostButton) {
-    lanUploadToHostButton.addEventListener("click", async () => {
+  if (networkUploadToHostButton) {
+    networkUploadToHostButton.addEventListener("click", async () => {
       try {
-        await uploadLanBundleWithOtc();
+        await uploadNetworkBundleWithOtc();
       } catch (error) {
         console.error(error);
-        setLanTransferStatus("Host upload failed: " + (error.message || String(error)), "error");
+        setNetworkTransferStatus("Host upload failed: " + (error.message || String(error)), "error");
       }
     });
   }
-  if (lanTransferList) {
-    lanTransferList.addEventListener("change", (event) => {
+  if (networkTransferList) {
+    networkTransferList.addEventListener("change", (event) => {
       const target = event.target;
       if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
         return;
       }
-      const itemId = String(target.getAttribute("data-lan-item-id") || "");
+      const itemId = String(target.getAttribute("data-network-item-id") || "");
       if (!itemId) {
         return;
       }
-      const item = state.lanTransfer.items.find((entry) => entry && entry.id === itemId);
+      const item = state.networkTransfer.items.find((entry) => entry && entry.id === itemId);
       if (!item) {
         return;
       }
       item.selected = target.checked;
-      syncLanImportButtonState();
+      syncNetworkImportButtonState();
     });
   }
-  if (lanHostUrlInput) {
-    lanHostUrlInput.addEventListener("keydown", async (event) => {
+  if (networkHostUrlInput) {
+    networkHostUrlInput.addEventListener("keydown", async (event) => {
       if (event.key !== "Enter") {
         return;
       }
       event.preventDefault();
-      await loadLanTransferManifest();
+      await loadNetworkTransferManifest();
     });
   }
   exportErrorLogsButton.addEventListener("click", async () => {
@@ -8974,11 +8974,11 @@
     });
   });
 
-  if (lanHostUrlInput && !lanHostUrlInput.value) {
-    lanHostUrlInput.value = state.lanTransfer.hostUrl || LAN_TRANSFER_DEFAULT_HOST_URL;
+  if (networkHostUrlInput && !networkHostUrlInput.value) {
+    networkHostUrlInput.value = state.networkTransfer.hostUrl || NETWORK_TRANSFER_DEFAULT_HOST_URL;
   }
-  setLanTransferStatus("Enter a host URL, then click Load Shared.");
-  renderLanTransferList();
+  setNetworkTransferStatus("Enter a host URL, then click Load Shared.");
+  renderNetworkTransferList();
 
   setEmptyEntryState("Loading...");
 
