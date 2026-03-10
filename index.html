@@ -6554,6 +6554,24 @@
             recordsByPath,
             dataUrlCache
           );
+          if (rewrittenText && rewrittenText.indexOf("document.baseURI||self.location.href") !== -1) {
+            const baseDir = (() => {
+              const dir = dirnamePath(record.path);
+              if (!dir) {
+                return VFS_ORIGIN;
+              }
+              const encoded = dir.split("/").map(encodeURIComponent).join("/");
+              return VFS_ORIGIN + encoded + "/";
+            })();
+            const prefix =
+              "(function(){try{if(typeof self!=='undefined'){self.__launcherBaseHref=" +
+              JSON.stringify(baseDir) +
+              ";}}catch(_e){}})();";
+            rewrittenText = prefix + rewrittenText.replaceAll(
+              "document.baseURI||self.location.href",
+              "(self.__launcherBaseHref||document.baseURI||self.location.href)"
+            );
+          }
           if (rewrittenText === originalText) {
             continue;
           }
@@ -6810,8 +6828,23 @@
     ) {
       return null;
     }
+    var isAbsolute = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(text) || text.startsWith("//");
+    var baseHref = "";
     try {
-      return new URL(text, getBaseHref());
+      baseHref = getBaseHref();
+    } catch (_error) {
+      baseHref = "";
+    }
+    if (!isAbsolute) {
+      return null;
+    }
+    try {
+      if (typeof URL !== "undefined" && typeof URL.canParse === "function") {
+        if (!URL.canParse(text, baseHref || undefined)) {
+          return null;
+        }
+      }
+      return new URL(text, baseHref || undefined);
     } catch (_error) {
       return null;
     }
@@ -7083,12 +7116,41 @@
     return nativeFetch(input, init);
   };
 
+  if (window.Request) {
+    var NativeRequest = window.Request;
+    window.Request = function (input, init) {
+      if (typeof input === "string" || input instanceof URL) {
+        var mapped = mapValue(input);
+        try {
+          return new NativeRequest(mapped, init);
+        } catch (_mappedError) {
+          return new NativeRequest(input, init);
+        }
+      }
+      if (input instanceof NativeRequest) {
+        return new NativeRequest(input, init);
+      }
+      return new NativeRequest(input, init);
+    };
+    window.Request.prototype = NativeRequest.prototype;
+  }
+
   var nativeOpen = XMLHttpRequest.prototype.open;
   var nativeSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (method, url) {
     var rest = Array.prototype.slice.call(arguments, 2);
+    var originalUrl = url;
     var mappedUrl = mapValue(url);
-    var blockedTarget = __getBlockedNetworkTarget(mappedUrl) || __getBlockedNetworkTarget(url);
+    if (typeof mappedUrl !== "string") {
+      mappedUrl = String(mappedUrl == null ? "" : mappedUrl);
+    }
+    if (!mappedUrl) {
+      mappedUrl = typeof originalUrl === "string" ? originalUrl : "";
+    }
+    if (!mappedUrl) {
+      mappedUrl = "about:blank";
+    }
+    var blockedTarget = __getBlockedNetworkTarget(mappedUrl) || __getBlockedNetworkTarget(originalUrl);
     this.__cbgamesBlockedNetworkTarget = blockedTarget || "";
     if (this.__cbgamesBlockedNetworkTarget) {
       return nativeOpen.apply(this, [method, "about:blank"].concat(rest));
@@ -7096,14 +7158,14 @@
     try {
       return nativeOpen.apply(this, [method, mappedUrl].concat(rest));
     } catch (mappedOpenError) {
-      if (mappedUrl !== url) {
-        try {
-          return nativeOpen.apply(this, [method, url].concat(rest));
-        } catch (_originalOpenError) {
-          // rethrow mapped error below
-        }
+      var fallbackUrl = typeof originalUrl === "string" && originalUrl.trim()
+        ? originalUrl
+        : "about:blank";
+      try {
+        return nativeOpen.apply(this, [method, fallbackUrl].concat(rest));
+      } catch (_originalOpenError) {
+        return nativeOpen.apply(this, [method, "about:blank"].concat(rest));
       }
-      throw mappedOpenError;
     }
   };
   XMLHttpRequest.prototype.send = function (body) {
@@ -7310,6 +7372,19 @@
   installWebGLSafetyPatch();
 
   var ensureVisibleSurface = function () {
+    try {
+      if (
+        typeof window.createUnityInstance !== "function" &&
+        typeof window.UnityLoader === "undefined" &&
+        !document.querySelector(
+          'script[src*="UnityLoader"], script[src*="unityloader"], script[src*="/Build/"], script[src*="framework"]'
+        )
+      ) {
+        return;
+      }
+    } catch (_error) {
+      return;
+    }
     if (!document.documentElement || !document.body) {
       return;
     }
