@@ -2378,6 +2378,7 @@
     const reader = response.body && typeof response.body.getReader === "function"
       ? response.body.getReader()
       : null;
+    const downloadStart = performance.now();
 
     if (!reader) {
       const blob = await response.blob();
@@ -2415,11 +2416,12 @@
 
       if (loaded - lastReported >= 131072 || (totalBytes > 0 && loaded >= totalBytes)) {
         if (totalBytes > 0) {
+          const etaText = formatEtaSeconds(estimateEtaSeconds(downloadStart, loaded, totalBytes));
           setWorkProgress(
             progressLabel,
             loaded,
             totalBytes,
-            { currentText: formatBytes(loaded), totalText: formatBytes(totalBytes) }
+            { currentText: formatBytes(loaded), totalText: formatBytes(totalBytes), etaText }
           );
         } else {
           setWorkProgress(progressLabel + " (" + formatBytes(loaded) + ")", 0, 0);
@@ -2429,11 +2431,12 @@
     }
 
     if (totalBytes > 0) {
+      const etaText = formatEtaSeconds(estimateEtaSeconds(downloadStart, loaded, totalBytes));
       setWorkProgress(
         progressLabel,
         loaded,
         totalBytes,
-        { currentText: formatBytes(loaded), totalText: formatBytes(totalBytes) }
+        { currentText: formatBytes(loaded), totalText: formatBytes(totalBytes), etaText }
       );
     } else if (loaded > 0) {
       setWorkProgress(
@@ -2522,14 +2525,56 @@
     }
     const suggestedName = "cbgames-upload-all-" + new Date().toISOString().slice(0, 10);
 
+    const exportStart = performance.now();
     const bundleBlob = await exportGamesBundle(games, (current, total) => {
-      setWorkProgress("Preparing upload bundle", current, total);
+      const etaText = formatEtaSeconds(estimateEtaSeconds(exportStart, current, total));
+      setWorkProgress(
+        "Preparing upload bundle",
+        current,
+        total,
+        { currentText: String(current), totalText: String(total), etaText }
+      );
     });
     return {
       gameCount: games.length,
       fileName: sanitizeNetworkBundleName(suggestedName, "cbgames-upload"),
       bundleBlob
     };
+  }
+
+  function uploadBlobWithProgress(url, blob, headers, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", url, true);
+      if (headers && typeof headers === "object") {
+        for (const [key, value] of Object.entries(headers)) {
+          if (typeof value === "string") {
+            xhr.setRequestHeader(key, value);
+          }
+        }
+      }
+      xhr.responseType = "text";
+      if (xhr.upload && typeof xhr.upload.addEventListener === "function") {
+        xhr.upload.addEventListener("progress", (event) => {
+          if (typeof onProgress === "function") {
+            const loaded = Number(event.loaded) || 0;
+            const total = event.lengthComputable ? Number(event.total) || 0 : 0;
+            onProgress(loaded, total);
+          }
+        });
+      }
+      xhr.addEventListener("load", () => {
+        resolve({
+          ok: xhr.status >= 200 && xhr.status < 300,
+          status: xhr.status,
+          text: xhr.responseText || ""
+        });
+      });
+      xhr.addEventListener("error", () => {
+        reject(new Error("Upload failed due to a network error."));
+      });
+      xhr.send(blob);
+    });
   }
 
   async function uploadNetworkBundleWithOtc() {
@@ -2554,24 +2599,51 @@
     setActionButtonsDisabled(true);
     try {
       const uploadBundle = await buildNetworkUploadBundle();
-      setWorkProgress("Uploading bundle to host", 0, 0);
+      const uploadStart = performance.now();
+      if (uploadBundle.bundleBlob && typeof uploadBundle.bundleBlob.size === "number" && uploadBundle.bundleBlob.size > 0) {
+        setWorkProgress(
+          "Uploading bundle to host",
+          0,
+          uploadBundle.bundleBlob.size,
+          { currentText: formatBytes(0), totalText: formatBytes(uploadBundle.bundleBlob.size) }
+        );
+      } else {
+        setWorkProgress("Uploading bundle to host", 0, 0);
+      }
       const uploadUrl =
         normalizedHost +
         "/api/client-upload?otc=" + encodeURIComponent(otc) +
         "&name=" + encodeURIComponent(uploadBundle.fileName) +
         "&type=bundle&shared=1";
-      const response = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: {
+      const response = await uploadBlobWithProgress(
+        uploadUrl,
+        uploadBundle.bundleBlob,
+        {
           "Content-Type": "application/zip"
         },
-        body: uploadBundle.bundleBlob
-      });
+        (loaded, total) => {
+          const etaText = total > 0
+            ? formatEtaSeconds(estimateEtaSeconds(uploadStart, loaded, total))
+            : "";
+          if (total > 0) {
+            setWorkProgress(
+              "Uploading bundle to host",
+              loaded,
+              total,
+              { currentText: formatBytes(loaded), totalText: formatBytes(total), etaText }
+            );
+          } else {
+            setWorkProgress("Uploading bundle to host (" + formatBytes(loaded) + ")", 0, 0);
+          }
+        }
+      );
       let payload = null;
-      try {
-        payload = await response.json();
-      } catch {
-        payload = null;
+      if (response.text) {
+        try {
+          payload = JSON.parse(response.text);
+        } catch {
+          payload = null;
+        }
       }
       if (!response.ok) {
         const message = payload && payload.error
@@ -2639,11 +2711,126 @@
     return scaled.toFixed(scaled >= 100 || exponent === 0 ? 0 : 1) + " " + units[exponent];
   }
 
+  function formatEtaSeconds(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) {
+      return "";
+    }
+    const rounded = Math.max(0, Math.round(seconds));
+    if (rounded <= 1) {
+      return "ETA <1s";
+    }
+    const hours = Math.floor(rounded / 3600);
+    const minutes = Math.floor((rounded % 3600) / 60);
+    const secs = rounded % 60;
+    if (hours > 0) {
+      return "ETA " + hours + "h " + String(minutes).padStart(2, "0") + "m";
+    }
+    if (minutes > 0) {
+      return "ETA " + minutes + "m " + String(secs).padStart(2, "0") + "s";
+    }
+    return "ETA " + secs + "s";
+  }
+
+  function estimateEtaSeconds(startMs, current, total) {
+    if (!Number.isFinite(startMs) || !Number.isFinite(current) || !Number.isFinite(total)) {
+      return null;
+    }
+    if (total <= 0 || current <= 0 || current > total) {
+      return null;
+    }
+    const elapsedSeconds = (performance.now() - startMs) / 1000;
+    if (!Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0) {
+      return null;
+    }
+    const rate = current / elapsedSeconds;
+    if (!Number.isFinite(rate) || rate <= 0) {
+      return null;
+    }
+    return Math.max(0, (total - current) / rate);
+  }
+
   function formatDate(ts) {
     if (!ts) {
       return "unknown";
     }
     return new Date(ts).toLocaleString();
+  }
+
+  async function readFileArrayBufferWithProgress(file, label) {
+    if (!file || typeof file.arrayBuffer !== "function") {
+      return new ArrayBuffer(0);
+    }
+    const total = Number(file.size) || 0;
+    const displayLabel = String(label || "Reading file");
+    if (!file.stream || typeof file.stream !== "function") {
+      setWorkProgress(displayLabel, 0, 0);
+      return file.arrayBuffer();
+    }
+    const reader = file.stream().getReader();
+    const chunks = [];
+    let loaded = 0;
+    let lastReported = 0;
+    const start = performance.now();
+
+    if (total > 0) {
+      setWorkProgress(
+        displayLabel,
+        0,
+        total,
+        { currentText: formatBytes(0), totalText: formatBytes(total) }
+      );
+    } else {
+      setWorkProgress(displayLabel, 0, 0);
+    }
+
+    while (true) {
+      const part = await reader.read();
+      if (part.done) {
+        break;
+      }
+      const chunk = part.value;
+      if (!chunk) {
+        continue;
+      }
+      chunks.push(chunk);
+      loaded += chunk.byteLength;
+      if (loaded - lastReported >= 262144 || (total > 0 && loaded >= total)) {
+        if (total > 0) {
+          const etaText = formatEtaSeconds(estimateEtaSeconds(start, loaded, total));
+          setWorkProgress(
+            displayLabel,
+            loaded,
+            total,
+            { currentText: formatBytes(loaded), totalText: formatBytes(total), etaText }
+          );
+        } else {
+          setWorkProgress(displayLabel + " (" + formatBytes(loaded) + ")", 0, 0);
+        }
+        lastReported = loaded;
+      }
+    }
+
+    if (total > 0) {
+      const etaText = formatEtaSeconds(estimateEtaSeconds(start, loaded, total));
+      setWorkProgress(
+        displayLabel,
+        loaded,
+        total,
+        { currentText: formatBytes(loaded), totalText: formatBytes(total), etaText }
+      );
+    } else if (loaded > 0) {
+      setWorkProgress(
+        displayLabel,
+        loaded,
+        loaded,
+        { currentText: formatBytes(loaded), totalText: formatBytes(loaded) }
+      );
+    } else {
+      setWorkProgress(displayLabel, 1, 1);
+    }
+
+    const blob = new Blob(chunks, { type: file.type || "application/octet-stream" });
+    return blob.arrayBuffer();
   }
 
   function makeId() {
@@ -6134,8 +6321,12 @@
       const totalText = hasDisplayValues && typeof displayValues.totalText === "string"
         ? displayValues.totalText
         : String(safeTotal);
+      const etaText = hasDisplayValues && typeof displayValues.etaText === "string"
+        ? displayValues.etaText
+        : "";
+      const etaSuffix = etaText ? " • " + etaText : "";
       workProgress.classList.remove("indeterminate");
-      workProgressLabel.textContent = text + " (" + currentText + "/" + totalText + ")";
+      workProgressLabel.textContent = text + " (" + currentText + "/" + totalText + ")" + etaSuffix;
       workProgressCircle.style.setProperty("--progress-pct", pct.toFixed(1));
       workProgressValue.textContent = Math.round(pct) + "%";
       return;
@@ -7999,8 +8190,15 @@
     try {
       setWorkProgress("Preparing game bundle", 0, 0);
       log("Preparing game bundle...");
+      const exportStart = performance.now();
       const bundleZip = await exportAllGamesBundle((current, total) => {
-        setWorkProgress("Reading saved games", current, total);
+        const etaText = formatEtaSeconds(estimateEtaSeconds(exportStart, current, total));
+        setWorkProgress(
+          "Reading saved games",
+          current,
+          total,
+          { currentText: String(current), totalText: String(total), etaText }
+        );
       });
       setWorkProgress("Writing bundle file", 1, 1);
       const filename = "cbgames-bundle.zip";
@@ -8059,9 +8257,8 @@
   }
 
   async function parseBundlePreviewData(file) {
-    setWorkProgress("Reading bundle", 0, 0);
     log("Reading bundle: " + file.name);
-    const buffer = await file.arrayBuffer();
+    const buffer = await readFileArrayBufferWithProgress(file, "Reading bundle");
     let parsedZip;
     try {
       parsedZip = parseZipArchive(buffer);
@@ -8190,6 +8387,7 @@
 
     let metadataImported = 0;
     setWorkProgress("Importing game metadata", 0, selected.length || 1);
+    const metadataStart = performance.now();
     for (const item of selected) {
       const preview = item.preview;
       const rawGame = preview.rawGame;
@@ -8245,12 +8443,19 @@
 
       metadataImported += 1;
       if (metadataImported % 5 === 0 || metadataImported === selected.length) {
-        setWorkProgress("Importing game metadata", metadataImported, selected.length || 1);
+        const etaText = formatEtaSeconds(estimateEtaSeconds(metadataStart, metadataImported, selected.length || 1));
+        setWorkProgress(
+          "Importing game metadata",
+          metadataImported,
+          selected.length || 1,
+          { currentText: String(metadataImported), totalText: String(selected.length || 1), etaText }
+        );
       }
     }
 
     let importedFiles = 0;
     setWorkProgress("Importing game files", 0, totalFiles || 1);
+    const filesStart = performance.now();
     for (const item of metadataOut) {
       const rawGame = item.preview.rawGame;
       const fileList = Array.isArray(rawGame && rawGame.files) ? rawGame.files : [];
@@ -8279,7 +8484,13 @@
         });
         importedFiles += 1;
         if (importedFiles % 25 === 0 || importedFiles === totalFiles) {
-          setWorkProgress("Importing game files", importedFiles, totalFiles || 1);
+          const etaText = formatEtaSeconds(estimateEtaSeconds(filesStart, importedFiles, totalFiles || 1));
+          setWorkProgress(
+            "Importing game files",
+            importedFiles,
+            totalFiles || 1,
+            { currentText: String(importedFiles), totalText: String(totalFiles || 1), etaText }
+          );
         }
       }
     }
