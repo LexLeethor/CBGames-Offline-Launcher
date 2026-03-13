@@ -4340,6 +4340,27 @@
     }
   }
 
+  function resolveFileSchemePath(rawValue) {
+    if (typeof rawValue !== "string") {
+      return null;
+    }
+    const value = rawValue.trim();
+    if (!value || !/^file:/i.test(value)) {
+      return null;
+    }
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol !== "file:") {
+        return null;
+      }
+      const decoded = decodeURIComponent(parsed.pathname || "");
+      const normalized = normalizePath(decoded);
+      return normalized || null;
+    } catch {
+      return null;
+    }
+  }
+
   function buildAssetFallbackCandidates(path) {
     const normalized = normalizePath(path);
     if (!normalized) {
@@ -4375,7 +4396,10 @@
   function requestToObjectUrl(rawValue, baseHref) {
     const raw = String(rawValue);
     const resolvedBase = normalizeResolverBase(baseHref);
-    const path = resolveToPath(raw, resolvedBase) || resolveMediaSchemePath(raw);
+    const path =
+      resolveToPath(raw, resolvedBase) ||
+      resolveMediaSchemePath(raw) ||
+      resolveFileSchemePath(raw);
     if (!path) {
       return null;
     }
@@ -7081,9 +7105,49 @@
     return value;
   };
 
+  var __fileUrlToCandidates = function (value) {
+    if (typeof value !== "string") return [];
+    var text = value.trim();
+    if (!/^file:/i.test(text)) return [];
+    try {
+      var parsed = new URL(text);
+      if (parsed.protocol !== "file:") return [];
+      var pathname = decodeURIComponent(parsed.pathname || "");
+      if (!pathname) return [];
+      var normalized = pathname.replace(/\\\\/g, "/");
+      var out = [];
+      var base = normalized.replace(/^\\/+/, "");
+      if (base) out.push(base);
+      var lower = normalized.toLowerCase();
+      var markers = ["/streamingassets/", "/build/", "/templatedata/"];
+      for (var i = 0; i < markers.length; i++) {
+        var idx = lower.lastIndexOf(markers[i]);
+        if (idx >= 0) {
+          var candidate = normalized.slice(idx + 1).replace(/^\\/+/, "");
+          if (candidate && out.indexOf(candidate) === -1) {
+            out.push(candidate);
+          }
+        }
+      }
+      return out;
+    } catch (_error) {
+      return [];
+    }
+  };
+
   var mapValue = function (value) {
     var normalized = normalizeVirtualDataUrl(value);
     var mapped = resolver(normalized);
+    if (!mapped && typeof normalized === "string" && /^file:/i.test(normalized)) {
+      var candidates = __fileUrlToCandidates(normalized);
+      for (var i = 0; i < candidates.length; i++) {
+        var attempt = resolver(candidates[i]);
+        if (attempt) {
+          mapped = attempt;
+          break;
+        }
+      }
+    }
     var candidate = mapped || normalized;
     var blockedTarget = __getBlockedNetworkTarget(candidate) || __getBlockedNetworkTarget(normalized);
     if (blockedTarget) {
