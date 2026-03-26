@@ -1,0 +1,42 @@
+name: Build Launcher Bundles
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "index.dev.html"
+      - "src/**"
+      - "scripts/build_bundle.py"
+      - ".github/workflows/build-single-file.yml"
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Build debug bundle
+        run: python scripts/build_bundle.py --out dist/index.debug.html
+
+      - name: Build minified bundle
+        run: python scripts/build_bundle.py --minify --out dist/index.min.html
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cbgames-offline-launcher-bundles
+          path: dist/*.html
+
+      - name: Upload release assets
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.html
