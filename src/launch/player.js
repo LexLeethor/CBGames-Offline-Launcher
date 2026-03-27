@@ -169,10 +169,10 @@ function replaceFirstWasmRef(scriptText, rawRef, dataUrl) {
     return scriptText;
   }
 
-function shouldInlineWasmForScript(scriptPath, scriptText) {
-    const path = String(scriptPath || "");
-    const text = String(scriptText || "");
-    return /(?:^|\/)ammo\.wasm\.js$/i.test(path) || /ammo\.wasm\.wasm/i.test(text);
+function shouldInlineWasmForScript(_scriptPath, scriptText) {
+    // Only match .wasm binaries (and the double-extension .wasm.wasm pattern),
+    // NOT .wasm.js or other JS loaders — those are handled via importScripts rewrite.
+    return /['"][^'"]*\.wasm(?:\.wasm)?['"]/i.test(String(scriptText || ""));
   }
 
 async function patchEmscriptenWasmScriptText(scriptText, scriptPath, recordsByPath, dataUrlCache) {
@@ -450,6 +450,27 @@ function rewriteUnityWebConfigText(jsonText, path) {
     };
   }
 
+// Scan all JS records for new Worker("...") / new SharedWorker("...") calls and
+// return the set of resolved paths that will run in a worker context.
+async function collectWorkerScriptPaths(recordsByPath) {
+    const workerPaths = new Set();
+    const workerRe = /\bnew\s+(?:Shared)?Worker\s*\(\s*(['"])((?:[^'"\\]|\\.)*?)\1/g;
+    for (const [path, record] of recordsByPath.entries()) {
+      if (!/\.(?:js|mjs|cjs|html)$/i.test(path)) continue;
+      let text;
+      try { text = await record.blob.text(); } catch { continue; }
+      workerRe.lastIndex = 0;
+      let m;
+      while ((m = workerRe.exec(text)) !== null) {
+        const specifier = m[2];
+        const baseHref = toVirtualUrl(path);
+        const resolved = resolveToPath(specifier, baseHref);
+        if (resolved && recordsByPath.has(resolved)) workerPaths.add(resolved);
+      }
+    }
+    return workerPaths;
+  }
+
 async function buildObjectUrlCacheFromRecords(records, hostWindow) {
     let host = window;
     try {
@@ -468,6 +489,7 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
     state.objectUrlHost = host;
     const recordsByPath = new Map(records.map((record) => [record.path, record]));
     const dataUrlCache = new Map();
+    const workerPaths = await collectWorkerScriptPaths(recordsByPath);
 
     async function maybeDecompressBrotli(record) {
       if (!/\.br$/i.test(record.path)) {
@@ -496,12 +518,9 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
 
         if (/\.(?:js|mjs|cjs)$/i.test(decodedPath)) {
           const originalText = new TextDecoder().decode(new Uint8Array(buffer));
-          const emsPatchedText = await patchEmscriptenWasmScriptText(
-            originalText,
-            decodedPath,
-            recordsByPath,
-            dataUrlCache
-          );
+          const emsPatchedText = workerPaths.has(decodedPath)
+            ? await patchEmscriptenWasmScriptText(originalText, decodedPath, recordsByPath, dataUrlCache)
+            : originalText;
           let rewrittenText = await rewriteImportScriptsText(
             emsPatchedText,
             decodedPath,
@@ -591,12 +610,9 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
           rewrittenUnityConfigCount += 1;
         } else if (/\.(?:js|mjs|cjs)$/i.test(record.path)) {
           const originalText = await record.blob.text();
-          const emsPatchedText = await patchEmscriptenWasmScriptText(
-            originalText,
-            record.path,
-            recordsByPath,
-            dataUrlCache
-          );
+          const emsPatchedText = workerPaths.has(record.path)
+            ? await patchEmscriptenWasmScriptText(originalText, record.path, recordsByPath, dataUrlCache)
+            : originalText;
           rewrittenText = await rewriteImportScriptsText(
             emsPatchedText,
             record.path,
