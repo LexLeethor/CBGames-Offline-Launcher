@@ -141,36 +141,58 @@ function findAllReferencedWasmPaths(scriptText, scriptPath, recordsByPath) {
     // Stable sort: non-comment occurrences first.
     rawMatches.sort((a, b) => (a.inComment ? 1 : 0) - (b.inComment ? 1 : 0));
 
-    // Resolve each ref, deduplicate by resolved path.
+    function resolveRef(rawRef) {
+      const fromBase = resolveToPath(rawRef, baseHref);
+      if (fromBase && recordsByPath.has(fromBase)) return { rawRef, path: fromBase };
+      const fromRoot = resolveToPath(rawRef, VFS_ORIGIN);
+      if (fromRoot && recordsByPath.has(fromRoot)) return { rawRef, path: fromRoot };
+      if (fromRoot) {
+        const basePath = resolveToPath(baseHref, VFS_ORIGIN);
+        let probeDir = basePath ? dirnamePath(basePath) : "";
+        while (probeDir) {
+          const candidate = normalizePath(probeDir + "/" + fromRoot);
+          if (recordsByPath.has(candidate)) return { rawRef, path: candidate };
+          probeDir = dirnamePath(probeDir);
+        }
+      }
+      return null;
+    }
+
+    // First pass: single-extension .wasm only (not .wasm.js, not .wasm.wasm).
     const seen = new Set();
     const results = [];
     for (const { rawRef } of rawMatches) {
-      let resolved = null;
-      const fromBase = resolveToPath(rawRef, baseHref);
-      if (fromBase && recordsByPath.has(fromBase)) {
-        resolved = { rawRef, path: fromBase };
-      } else {
-        const fromRoot = resolveToPath(rawRef, VFS_ORIGIN);
-        if (fromRoot && recordsByPath.has(fromRoot)) {
-          resolved = { rawRef, path: fromRoot };
-        } else if (fromRoot) {
-          const basePath = resolveToPath(baseHref, VFS_ORIGIN);
-          let probeDir = basePath ? dirnamePath(basePath) : "";
-          while (probeDir) {
-            const candidate = normalizePath(probeDir + "/" + fromRoot);
-            if (recordsByPath.has(candidate)) {
-              resolved = { rawRef, path: candidate };
-              break;
-            }
-            probeDir = dirnamePath(probeDir);
-          }
-        }
-      }
-      if (resolved && !seen.has(resolved.path)) {
+      const resolved = resolveRef(rawRef);
+      if (resolved && !seen.has(resolved.path) && /\.wasm$/i.test(resolved.path)) {
         seen.add(resolved.path);
-        results.push(resolved);
+        results.push({ ...resolved, aliases: [] });
       }
     }
+
+    // Second pass: .wasm.wasm — only if no plain .wasm was found.
+    if (results.length === 0) {
+      for (const { rawRef } of rawMatches) {
+        const resolved = resolveRef(rawRef);
+        if (resolved && !seen.has(resolved.path) && /\.wasm\.wasm$/i.test(resolved.path)) {
+          seen.add(resolved.path);
+          results.push({ ...resolved, aliases: [] });
+        }
+      }
+    }
+
+    // For each result, collect every source-text literal (including comment-only ones)
+    // that resolves to the same VFS path. These aliases are needed so the prelude
+    // wasmMap can intercept fetch() calls using any form of the path string.
+    for (const result of results) {
+      for (const { rawRef } of rawMatches) {
+        if (rawRef === result.rawRef) continue;
+        const resolved = resolveRef(rawRef);
+        if (resolved && resolved.path === result.path && !result.aliases.includes(rawRef)) {
+          result.aliases.push(rawRef);
+        }
+      }
+    }
+
     return results;
   }
 
@@ -253,7 +275,7 @@ async function buildEmscriptenInlineDataUrl(scriptPath, recordsByPath, dataUrlCa
 
     // Build data URLs for all wasm refs.
     const wasmEntries = [];
-    for (const { rawRef, path: wasmPath } of wasmRefs) {
+    for (const { rawRef, path: wasmPath, aliases } of wasmRefs) {
       const wasmRecord = recordsByPath.get(wasmPath);
       if (!wasmRecord) continue;
       let wasmDataUrl = dataUrlCache.get(wasmPath) || "";
@@ -262,7 +284,7 @@ async function buildEmscriptenInlineDataUrl(scriptPath, recordsByPath, dataUrlCa
         wasmDataUrl = "data:application/wasm;base64," + bytesToBase64(wasmBytes);
         dataUrlCache.set(wasmPath, wasmDataUrl);
       }
-      wasmEntries.push({ rawRef, path: wasmPath, dataUrl: wasmDataUrl });
+      wasmEntries.push({ rawRef, path: wasmPath, dataUrl: wasmDataUrl, aliases: aliases || [] });
     }
     if (!wasmEntries.length) return null;
 
@@ -273,12 +295,23 @@ async function buildEmscriptenInlineDataUrl(scriptPath, recordsByPath, dataUrlCa
       scriptText, scriptPath, recordsByPath, dataUrlCache
     );
 
-    // Build a lookup map: rawRef and basename both point to their data URL.
+    // Build a lookup map covering all keys the runtime code might fetch by:
+    // rawRef (string as it appears in source), path (resolved VFS path),
+    // and basenames of both — any of these may appear in fetch/XHR calls.
     const wasmMap = {};
-    for (const { rawRef, path: wasmPath, dataUrl } of wasmEntries) {
-      wasmMap[rawRef] = dataUrl;
-      const basename = String(wasmPath).split("/").pop() || "";
-      if (basename && !(basename in wasmMap)) wasmMap[basename] = dataUrl;
+    const addWasmKey = (key, dataUrl) => { if (key && !(key in wasmMap)) wasmMap[key] = dataUrl; };
+    for (const { rawRef, path: wasmPath, dataUrl, aliases } of wasmEntries) {
+      addWasmKey(rawRef, dataUrl);
+      addWasmKey(wasmPath, dataUrl);
+      addWasmKey(String(rawRef).split("/").pop(), dataUrl);
+      addWasmKey(String(wasmPath).split("/").pop(), dataUrl);
+      // Also add source-text aliases (e.g. "lib/ammo.wasm.wasm" when the canonical
+      // rawRef is the filename-derived "Polytrack/lib/ammo.wasm.wasm") so the prelude
+      // interceptor catches fetch() calls using the in-source literal form.
+      for (const alias of (aliases || [])) {
+        addWasmKey(alias, dataUrl);
+        addWasmKey(String(alias).split("/").pop(), dataUrl);
+      }
     }
     const prelude =
       "(function(){var __loaderWasmMap=" + JSON.stringify(wasmMap) + ";" +
