@@ -14,25 +14,25 @@ The GitHub Actions workflow `Build Launcher Bundles` runs the same script, uploa
 
 Tested Games (Working)
 
-| Game |
-| --- |
-| Escape Road City 2 |
-| Burrito Bison |
-| 10 Minutes Till Dawn |
-| Happy Wheels |
-| Cookie Clicker |
-| Sandboxels |
-| n-gon |
-| Turbowarp |
-| Drift Hunters |
-| sm64 |
-| a dance of fire and ice |
-| crossyroad |
-| Drive Mad |
-| Polytrack |
-| rocketpult |
-| bitlife |
-| Escape Road City |
-| Ultrakill |
-| Bad Piggies |
-| Clover Pit |
+| Game | Status |
+| :---: | :---: |
+| Escape Road City 2 | ✓ |
+| Burrito Bison | ✓ |
+| 10 Minutes Till Dawn | ✓ |
+| Happy Wheels | ✓ |
+| Cookie Clicker | ✓ |
+| Sandboxels | ✓ |
+| n-gon | ✓ |
+| Turbowarp | ✓ |
+| Drift Hunters | ✓ |
+| sm64 | ✓ |
+| a dance of fire and ice | ✓ |
+| crossyroad | ✓ |
+| Drive Mad | ✓ |
+| Polytrack | ✓ |
+| rocketpult | ✓ |
+| bitlife | ✓ |
+| Escape Road City | ✓ |
+| Ultrakill | ✓ |
+| Bad Piggies | ✓ |
+| Clover Pit | ✓ |
