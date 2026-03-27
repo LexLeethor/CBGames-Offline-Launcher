@@ -112,59 +112,88 @@ function parseDataUrlToBytes(dataUrl) {
     return { mime, bytes: out };
   }
 
-function findReferencedWasmPath(scriptText, scriptPath, recordsByPath) {
-    if (typeof scriptText !== "string" || !scriptText) {
-      return null;
-    }
-    const baseHref = toVirtualUrl(scriptPath);
-    const candidates = [];
-    const refMatches = scriptText.matchAll(/(["'])([^"'\\]*?\.wasm(?:\.[^"'\\\/?#]+)?)\1/g);
-    for (const match of refMatches) {
-      const rawRef = match[2];
-      if (rawRef) {
-        candidates.push(rawRef);
-      }
-    }
-    candidates.push(scriptPath.replace(/\.wasm\.js$/i, ".wasm.wasm"));
-    candidates.push(scriptPath.replace(/\.js$/i, ".wasm"));
-    candidates.push(scriptPath.replace(/\.js$/i, ".wasm.wasm"));
-
-    for (const rawRef of candidates) {
-      const resolvedFromBase = resolveToPath(rawRef, baseHref);
-      if (resolvedFromBase && recordsByPath.has(resolvedFromBase)) {
-        return { rawRef, path: resolvedFromBase };
-      }
-      const resolvedFromRoot = resolveToPath(rawRef, VFS_ORIGIN);
-      if (resolvedFromRoot && recordsByPath.has(resolvedFromRoot)) {
-        return { rawRef, path: resolvedFromRoot };
-      }
-      if (resolvedFromRoot) {
-        const basePath = resolveToPath(baseHref, VFS_ORIGIN);
-        let probeDir = basePath ? dirnamePath(basePath) : "";
-        while (probeDir) {
-          const candidate = normalizePath(probeDir + "/" + resolvedFromRoot);
-          if (recordsByPath.has(candidate)) {
-            return { rawRef, path: candidate };
-          }
-          probeDir = dirnamePath(probeDir);
-        }
-      }
-    }
-    return null;
+function isPositionInLineComment(text, pos) {
+    const lineStart = text.lastIndexOf("\n", pos - 1) + 1;
+    return text.slice(lineStart, pos).includes("//");
   }
 
-function replaceFirstWasmRef(scriptText, rawRef, dataUrl) {
-    if (typeof scriptText !== "string") {
-      return scriptText;
+function findAllReferencedWasmPaths(scriptText, scriptPath, recordsByPath) {
+    if (typeof scriptText !== "string" || !scriptText) return [];
+    const baseHref = toVirtualUrl(scriptPath);
+
+    // Collect all quoted wasm refs with comment status (preserving order).
+    const rawMatches = [];
+    const refRe = /(["'])([^"'\\]*?\.wasm(?:\.[^"'\\\/?#]+)?)\1/g;
+    let m;
+    while ((m = refRe.exec(scriptText)) !== null) {
+      const rawRef = m[2];
+      if (rawRef) rawMatches.push({ rawRef, inComment: isPositionInLineComment(scriptText, m.index) });
     }
+    // Filename-derived fallbacks always treated as code-level.
+    for (const derived of [
+      scriptPath.replace(/\.wasm\.js$/i, ".wasm.wasm"),
+      scriptPath.replace(/\.js$/i, ".wasm"),
+      scriptPath.replace(/\.js$/i, ".wasm.wasm"),
+    ]) {
+      rawMatches.push({ rawRef: derived, inComment: false });
+    }
+
+    // Stable sort: non-comment occurrences first.
+    rawMatches.sort((a, b) => (a.inComment ? 1 : 0) - (b.inComment ? 1 : 0));
+
+    // Resolve each ref, deduplicate by resolved path.
+    const seen = new Set();
+    const results = [];
+    for (const { rawRef } of rawMatches) {
+      let resolved = null;
+      const fromBase = resolveToPath(rawRef, baseHref);
+      if (fromBase && recordsByPath.has(fromBase)) {
+        resolved = { rawRef, path: fromBase };
+      } else {
+        const fromRoot = resolveToPath(rawRef, VFS_ORIGIN);
+        if (fromRoot && recordsByPath.has(fromRoot)) {
+          resolved = { rawRef, path: fromRoot };
+        } else if (fromRoot) {
+          const basePath = resolveToPath(baseHref, VFS_ORIGIN);
+          let probeDir = basePath ? dirnamePath(basePath) : "";
+          while (probeDir) {
+            const candidate = normalizePath(probeDir + "/" + fromRoot);
+            if (recordsByPath.has(candidate)) {
+              resolved = { rawRef, path: candidate };
+              break;
+            }
+            probeDir = dirnamePath(probeDir);
+          }
+        }
+      }
+      if (resolved && !seen.has(resolved.path)) {
+        seen.add(resolved.path);
+        results.push(resolved);
+      }
+    }
+    return results;
+  }
+
+function replaceWasmRef(scriptText, rawRef, dataUrl) {
+    if (typeof scriptText !== "string") return scriptText;
     const replacement = JSON.stringify(dataUrl);
-    const doubleQuoted = JSON.stringify(rawRef);
-    if (scriptText.includes(doubleQuoted)) {
-      return scriptText.replace(doubleQuoted, replacement);
-    }
-    const singleQuoted = "'" + String(rawRef).replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'";
-    if (scriptText.includes(singleQuoted)) {
-      return scriptText.replace(singleQuoted, replacement);
+    for (const quoted of [
+      JSON.stringify(rawRef),
+      "'" + String(rawRef).replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'",
+    ]) {
+      let firstIdx = -1;
+      let idx = scriptText.indexOf(quoted);
+      while (idx !== -1) {
+        if (!isPositionInLineComment(scriptText, idx)) {
+          return scriptText.slice(0, idx) + replacement + scriptText.slice(idx + quoted.length);
+        }
+        if (firstIdx === -1) firstIdx = idx;
+        idx = scriptText.indexOf(quoted, idx + quoted.length);
+      }
+      // All occurrences were in comments — fall back to first one.
+      if (firstIdx !== -1) {
+        return scriptText.slice(0, firstIdx) + replacement + scriptText.slice(firstIdx + quoted.length);
+      }
     }
     return scriptText;
   }
@@ -182,91 +211,86 @@ async function patchEmscriptenWasmScriptText(scriptText, scriptPath, recordsByPa
     if (!shouldInlineWasmForScript(scriptPath, scriptText)) {
       return scriptText;
     }
-    const wasmRef = findReferencedWasmPath(scriptText, scriptPath, recordsByPath);
-    if (!wasmRef) {
+    const wasmRefs = findAllReferencedWasmPaths(scriptText, scriptPath, recordsByPath);
+    if (!wasmRefs.length) {
       return scriptText;
     }
 
-    const wasmPath = wasmRef.path;
-    const wasmRecord = recordsByPath.get(wasmPath);
-    if (!wasmRecord) {
-      return scriptText;
-    }
+    let result = scriptText;
+    for (const { rawRef, path: wasmPath } of wasmRefs) {
+      const wasmRecord = recordsByPath.get(wasmPath);
+      if (!wasmRecord) continue;
 
-    let wasmDataUrl = dataUrlCache.get(wasmPath) || "";
-    if (!wasmDataUrl) {
-      const wasmBytes = new Uint8Array(await wasmRecord.blob.arrayBuffer());
-      wasmDataUrl = "data:application/wasm;base64," + bytesToBase64(wasmBytes);
-      dataUrlCache.set(wasmPath, wasmDataUrl);
-    }
+      let wasmDataUrl = dataUrlCache.get(wasmPath) || "";
+      if (!wasmDataUrl) {
+        const wasmBytes = new Uint8Array(await wasmRecord.blob.arrayBuffer());
+        wasmDataUrl = "data:application/wasm;base64," + bytesToBase64(wasmBytes);
+        dataUrlCache.set(wasmPath, wasmDataUrl);
+      }
 
-    const wasmRefRaw = String(wasmRef.rawRef || "");
-    const marker = "if(!F(O=" + JSON.stringify(wasmRefRaw) + ")){var L=O;O=n.locateFile?n.locateFile(L,u):u+L}";
-    const forcedWasmAssign = "O=" + JSON.stringify(wasmDataUrl) + ";";
-    if (scriptText.includes(marker)) {
-      return scriptText.replace(marker, forcedWasmAssign);
+      const wasmRefRaw = String(rawRef || "");
+      const marker = "if(!F(O=" + JSON.stringify(wasmRefRaw) + ")){var L=O;O=n.locateFile?n.locateFile(L,u):u+L}";
+      const forcedWasmAssign = "O=" + JSON.stringify(wasmDataUrl) + ";";
+      if (result.includes(marker)) {
+        result = result.replace(marker, forcedWasmAssign);
+      } else {
+        result = replaceWasmRef(result, wasmRefRaw, wasmDataUrl);
+      }
     }
-    return replaceFirstWasmRef(scriptText, wasmRefRaw, wasmDataUrl);
+    return result;
   }
 
 async function buildEmscriptenInlineDataUrl(scriptPath, recordsByPath, dataUrlCache) {
-    if (!scriptPath) {
-      return null;
-    }
+    if (!scriptPath) return null;
     const scriptRecord = recordsByPath.get(scriptPath);
-    if (!scriptRecord) {
-      return null;
-    }
+    if (!scriptRecord) return null;
 
     const scriptText = await scriptRecord.blob.text();
-    if (!shouldInlineWasmForScript(scriptPath, scriptText)) {
-      return null;
-    }
-    const wasmRef = findReferencedWasmPath(scriptText, scriptPath, recordsByPath);
-    if (!wasmRef) {
-      return null;
-    }
+    if (!shouldInlineWasmForScript(scriptPath, scriptText)) return null;
 
-    const wasmPath = wasmRef.path;
-    const wasmRecord = recordsByPath.get(wasmPath);
-    if (!wasmRecord) {
-      return null;
-    }
+    const wasmRefs = findAllReferencedWasmPaths(scriptText, scriptPath, recordsByPath);
+    if (!wasmRefs.length) return null;
 
-    const cacheKey = "__ems_inline__:" + scriptPath + ":" + wasmPath;
-    if (dataUrlCache.has(cacheKey)) {
-      return dataUrlCache.get(cacheKey);
+    // Build data URLs for all wasm refs.
+    const wasmEntries = [];
+    for (const { rawRef, path: wasmPath } of wasmRefs) {
+      const wasmRecord = recordsByPath.get(wasmPath);
+      if (!wasmRecord) continue;
+      let wasmDataUrl = dataUrlCache.get(wasmPath) || "";
+      if (!wasmDataUrl) {
+        const wasmBytes = new Uint8Array(await wasmRecord.blob.arrayBuffer());
+        wasmDataUrl = "data:application/wasm;base64," + bytesToBase64(wasmBytes);
+        dataUrlCache.set(wasmPath, wasmDataUrl);
+      }
+      wasmEntries.push({ rawRef, path: wasmPath, dataUrl: wasmDataUrl });
     }
+    if (!wasmEntries.length) return null;
 
-    let wasmDataUrl = dataUrlCache.get(wasmPath) || "";
-    if (!wasmDataUrl) {
-      const wasmBytes = new Uint8Array(await wasmRecord.blob.arrayBuffer());
-      wasmDataUrl = "data:application/wasm;base64," + bytesToBase64(wasmBytes);
-      dataUrlCache.set(wasmPath, wasmDataUrl);
-    }
+    const cacheKey = "__ems_inline__:" + scriptPath + ":" + wasmEntries.map(e => e.path).join(":");
+    if (dataUrlCache.has(cacheKey)) return dataUrlCache.get(cacheKey);
 
-    const wasmRefRaw = String(wasmRef.rawRef || "");
     const patchedScriptText = await patchEmscriptenWasmScriptText(
-      scriptText,
-      scriptPath,
-      recordsByPath,
-      dataUrlCache
+      scriptText, scriptPath, recordsByPath, dataUrlCache
     );
 
-    const wasmBasename = String(wasmPath).split("/").pop() || "";
-    const loaderKeys = [wasmRefRaw, wasmBasename].filter((value, index, arr) => value && arr.indexOf(value) === index);
+    // Build a lookup map: rawRef and basename both point to their data URL.
+    const wasmMap = {};
+    for (const { rawRef, path: wasmPath, dataUrl } of wasmEntries) {
+      wasmMap[rawRef] = dataUrl;
+      const basename = String(wasmPath).split("/").pop() || "";
+      if (basename && !(basename in wasmMap)) wasmMap[basename] = dataUrl;
+    }
     const prelude =
-      "(function(){var __loaderWasmUrl=" + JSON.stringify(wasmDataUrl) + ";" +
-      "var __loaderWasmKeys=" + JSON.stringify(loaderKeys) + ";" +
-      "function __isLoaderWasmPath(path){if(typeof path!=='string'){return false;}for(var i=0;i<__loaderWasmKeys.length;i++){if(path===__loaderWasmKeys[i]){return true;}}return false;}" +
+      "(function(){var __loaderWasmMap=" + JSON.stringify(wasmMap) + ";" +
+      "function __resolveLoaderWasm(p){return typeof p==='string'&&Object.prototype.hasOwnProperty.call(__loaderWasmMap,p)?__loaderWasmMap[p]:null;}" +
       "self.Module=self.Module||{};" +
       "var __prevLocate=self.Module.locateFile;" +
       "self.Module.locateFile=function(path,prefix){" +
-      "if(__isLoaderWasmPath(path)){return __loaderWasmUrl;}" +
+      "var mapped=__resolveLoaderWasm(path);if(mapped){return mapped;}" +
       "if(typeof __prevLocate==='function'){return __prevLocate(path,prefix);}" +
       "return (prefix||'')+path;};" +
-      "if(typeof self.fetch==='function'){var __prevFetch=self.fetch.bind(self);self.fetch=function(input,init){if(__isLoaderWasmPath(input)){input=__loaderWasmUrl;}return __prevFetch(input,init);};}" +
-      "if(typeof XMLHttpRequest==='function'){var __prevOpen=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(method,url){if(__isLoaderWasmPath(url)){url=__loaderWasmUrl;}return __prevOpen.apply(this,[method,url].concat(Array.prototype.slice.call(arguments,2)));};}" +
+      "if(typeof self.fetch==='function'){var __prevFetch=self.fetch.bind(self);self.fetch=function(input,init){var mapped=__resolveLoaderWasm(input);if(mapped){input=mapped;}return __prevFetch(input,init);};}" +
+      "if(typeof XMLHttpRequest==='function'){var __prevOpen=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(method,url){var mapped=__resolveLoaderWasm(url);if(mapped){url=mapped;}return __prevOpen.apply(this,[method,url].concat(Array.prototype.slice.call(arguments,2)));};}" +
       "})();\n";
     const dataUrl = "data:application/javascript;base64," + textToBase64(prelude + patchedScriptText);
     dataUrlCache.set(cacheKey, dataUrl);
