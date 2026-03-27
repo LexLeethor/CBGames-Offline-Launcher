@@ -655,6 +655,126 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
     }
   }
 
+// ---------------------------------------------------------------------------
+// Dynamic import() patching
+//
+// Problem: import('./relative.js') is a JS language keyword, not a function —
+//   it cannot be intercepted at runtime the way fetch() or Worker() can.
+//   When the game runs in the launcher's about:blank popup with base URL set to
+//   a blob: URL, relative specifiers like './module.js' resolve to dead URLs
+//   (e.g. blob:null/module.js) and the import fails.
+//
+// Fix: After all blob: URLs are created (buildObjectUrlCacheFromRecords), scan
+//   every JS file for import('string-literal') calls and rewrite them to use
+//   the absolute blob: URLs already in state.objectUrls.  Because we process
+//   ALL JS files (not just the entry), the fix propagates transitively: if
+//   module A imports B and B imports C, A→B's blob URL, B→C's blob URL — no
+//   further resolution is needed at runtime.
+//
+// Limitations: only string-literal specifiers are handled (not dynamic
+//   expressions like import(getPath()) or template literals).
+// ---------------------------------------------------------------------------
+async function patchDynamicImports() {
+    const host = state.objectUrlHost;
+    if (!host) return;
+
+    const jsPathRe = /\.(?:js|mjs|cjs)$/i;
+    const importRe = /\bimport\s*\(\s*(['"])((?:[^'"\\]|\\.)*?)\1\s*\)/g;
+
+    const jsPaths = [];
+    for (const [key, url] of state.objectUrls.entries()) {
+      if (!jsPathRe.test(key) || key.toLowerCase().endsWith(".br")) continue;
+      if (url && url.startsWith("blob:")) jsPaths.push(key);
+    }
+
+    if (!jsPaths.length) return;
+
+    let patchedCount = 0;
+
+    for (const modulePath of jsPaths) {
+      // Skip Unity build artifacts — minified code contains import() patterns
+      // inside strings/comments that cause false positives in the regex.
+      if (/^Build\//i.test(modulePath)) continue;
+      const blobUrl = state.objectUrls.get(modulePath);
+      if (!blobUrl) continue;
+
+      let text;
+      try {
+        const resp = await fetch(blobUrl);
+        if (!resp.ok) continue;
+        text = await resp.text();
+      } catch {
+        continue;
+      }
+
+      if (!text.includes("import(")) continue;
+
+      const moduleDir = dirnamePath(modulePath);
+      const moduleBase = moduleDir ? VFS_ORIGIN + moduleDir + "/" : VFS_ORIGIN;
+
+      const replacements = [];
+      let m;
+      importRe.lastIndex = 0;
+      while ((m = importRe.exec(text)) !== null) {
+        const specifier = m[2];
+        const resolvedPath = resolveToPath(specifier, moduleBase);
+        if (!resolvedPath) continue;
+
+        let targetUrl = state.objectUrls.get(resolvedPath);
+        if (!targetUrl) {
+          const candidates = buildAssetFallbackCandidates(resolvedPath);
+          for (const c of candidates) {
+            targetUrl = state.objectUrls.get(c);
+            if (targetUrl) break;
+          }
+        }
+        if (!targetUrl) continue;
+
+        // blob: URLs created cross-window cannot be dynamically import()-ed from
+        // a null-origin context (Chromium blocks it). Use a data: URL instead —
+        // fetch the module content here in the launcher context and inline it.
+        let dataUrl;
+        try {
+          const targetResp = await fetch(targetUrl);
+          if (!targetResp.ok) continue;
+          const targetText = await targetResp.text();
+          const b64 = btoa(unescape(encodeURIComponent(targetText)));
+          dataUrl = "data:application/javascript;base64," + b64;
+        } catch {
+          continue;
+        }
+
+        replacements.push({
+          start: m.index,
+          end: m.index + m[0].length,
+          replacement: "import('" + dataUrl + "')",
+        });
+      }
+
+      if (!replacements.length) continue;
+
+      let result = "";
+      let pos = 0;
+      for (const r of replacements) {
+        result += text.slice(pos, r.start) + r.replacement;
+        pos = r.end;
+      }
+      result += text.slice(pos);
+
+      const newBlob = new Blob([result], { type: "application/javascript" });
+      const newUrl = host.URL.createObjectURL(newBlob);
+      host.URL.revokeObjectURL(blobUrl);
+      state.objectUrls.set(modulePath, newUrl);
+      patchedCount++;
+    }
+
+    if (patchedCount > 0) {
+      log(
+        "Patched dynamic import() in " + patchedCount + " script(s) \u2192 blob: URLs."
+      );
+    }
+  }
+
 function rewriteSrcSet(value, baseHref) {
     if (typeof value !== "string") {
       return value;

@@ -102,6 +102,7 @@ async function launchSelectedGame() {
       }
 
       await buildObjectUrlCacheFromRecords(files, state.playerWindow);
+      await patchDynamicImports();
       setWorkProgress("Preparing game assets", 2, 4);
       state.activeEntryPath = chosenEntry;
 

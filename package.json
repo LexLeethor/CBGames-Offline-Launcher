@@ -1,0 +1,11 @@
+{
+  "name": "cbgames-offline-launcher",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node playwright-launcher-test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.50.0"
+  }
+}

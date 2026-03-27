@@ -1,0 +1,38 @@
+name: Launcher Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test:
+    name: Playwright (file://)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install chromium --with-deps
+
+      - name: Run launcher autotest
+        run: node playwright-launcher-test.mjs
+        env:
+          CI: "1"
+          HEADLESS: "1"
+          PAUSE_MS: "0"
+          # Uses test-fixtures/webgl-test-game.zip (committed) since Unity build
+          # dir is not present in CI. To override, set TEST_GAME_ZIP to a path.
