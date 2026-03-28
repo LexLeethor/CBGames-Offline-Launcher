@@ -22,13 +22,8 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
       - name: Build launcher bundle
-        run: python scripts/build_bundle.py --out dist/index.debug.html
+        run: node scripts/build_bundle.mjs --out dist/index.debug.html
 
       - name: Install dependencies
         run: npm ci

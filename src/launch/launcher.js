@@ -94,6 +94,7 @@ async function launchSelectedGame() {
       if (!state.playerWindow) {
         throw new Error("Popup blocked. Allow popups for this file page.");
       }
+      showPlayerLoadingScreen(state.playerWindow, game.name);
 
       const files = await getAllFilesForGame(game.id);
       setWorkProgress("Preparing game assets", 1, 4);
@@ -126,6 +127,7 @@ async function launchSelectedGame() {
       const rewrittenHtml = rewriteDocumentHtml(htmlText, entryPath, {
         gameId: game.id,
         gameName: game.name || "",
+        zipName: game.zipName || "",
         entryPath
       });
       setWorkProgress("Opening player window", 3, 4);

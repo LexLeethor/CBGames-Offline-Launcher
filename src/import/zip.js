@@ -529,6 +529,25 @@ async function importZipFile(file, options) {
         throw new Error("ZIP contains no importable files.");
       }
 
+      const entryPaths = new Set(zip.entries.map((e) => normalizePath(e.path)));
+      if (entryPaths.has("bundle.json")) {
+        throw new Error("This looks like a Bundle ZIP. Use 'Import Bundle' to import it.");
+      }
+      if (entryPaths.has("manifest.json")) {
+        const mEntry = zip.entries.find((e) => normalizePath(e.path) === "manifest.json");
+        if (mEntry) {
+          try {
+            const mBytes = await extractEntryBytes(zip, mEntry);
+            const mData = JSON.parse(new TextDecoder().decode(mBytes));
+            if (mData && (mData.version === "cbgames-save-v1" || mData.version === "cbgames-save-v2")) {
+              throw new Error("This looks like a Save Data ZIP. Use 'Import Saves' to import it.");
+            }
+          } catch (e) {
+            if (e.message && e.message.startsWith("This looks like")) throw e;
+          }
+        }
+      }
+
       const processedEntries = [];
       const brotliDecodedPaths = new Set();
       const seenPaths = new Map();
@@ -672,14 +691,19 @@ async function importZipFile(file, options) {
       }
     } catch (error) {
       console.error(error);
-      log("Import failed: " + (error.message || String(error)), "error");
-      try {
-        if (importMode !== "replace") {
-          await deleteFilesByGameId(gameId);
-          await deleteGameRecord(gameId);
+      const msg = error.message || String(error);
+      if (msg.startsWith("This looks like")) {
+        openWrongZipTypeModal(msg);
+      } else {
+        log("Import failed: " + msg, "error");
+        try {
+          if (importMode !== "replace") {
+            await deleteFilesByGameId(gameId);
+            await deleteGameRecord(gameId);
+          }
+        } catch {
+          // best effort cleanup
         }
-      } catch {
-        // best effort cleanup
       }
     } finally {
       if (manageUi) {

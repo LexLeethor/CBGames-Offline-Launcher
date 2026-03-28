@@ -93,4 +93,17 @@ const quotaUsage = document.getElementById("quotaUsage");
 const storageDonut = document.getElementById("storageDonut");
 const storageUsedPct = document.getElementById("storageUsedPct");
 
+const exportSaveDataButton = document.getElementById("exportSaveData");
+const importSaveDataButton = document.getElementById("importSaveData");
+const saveImportInput = document.getElementById("saveImportInput");
+const saveImportModal = document.getElementById("saveImportModal");
+const saveImportSummary = document.getElementById("saveImportSummary");
+const saveImportList = document.getElementById("saveImportList");
+const saveImportCancelButton = document.getElementById("saveImportCancel");
+const saveImportConfirmButton = document.getElementById("saveImportConfirm");
+
+const wrongZipTypeModal = document.getElementById("wrongZipTypeModal");
+const wrongZipTypeMessage = document.getElementById("wrongZipTypeMessage");
+const wrongZipTypeOkButton = document.getElementById("wrongZipTypeOk");
+
 const statusBox = document.getElementById("status");

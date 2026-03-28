@@ -14,7 +14,7 @@ on:
     paths:
       - "index.html"
       - "src/**"
-      - "scripts/build_bundle.py"
+      - "scripts/build_bundle.mjs"
       - ".github/workflows/build-single-file.yml"
 
 jobs:
@@ -24,22 +24,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.x"
+          node-version: "20"
 
       - name: Build debug bundle
         if: github.event_name == 'push'
-        run: python scripts/build_bundle.py --out dist/index.debug.html
+        run: node scripts/build_bundle.mjs --out dist/index.debug.html
 
       - name: Build minified bundle
         if: github.event_name == 'push'
-        run: python scripts/build_bundle.py --minify --out dist/index.min.html
+        run: node scripts/build_bundle.mjs --minify --out dist/index.min.html
 
-      - name: Build release bundle (minified index.html)
+      - name: Build release bundle (minified)
         if: github.event_name == 'workflow_dispatch'
-        run: python scripts/build_bundle.py --minify --out dist/index.html
+        run: node scripts/build_bundle.mjs --minify --out dist/index.html
 
       - name: Upload build artifacts
         if: github.event_name == 'push'

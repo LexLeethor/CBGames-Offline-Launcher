@@ -80,6 +80,11 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     }
   });
   importBundleButton.addEventListener("click", pickBundleFile);
+  exportSaveDataButton.addEventListener("click", exportSaveData);
+  importSaveDataButton.addEventListener("click", () => {
+    saveImportInput.value = "";
+    saveImportInput.click();
+  });
   if (networkLoadManifestButton) {
     networkLoadManifestButton.addEventListener("click", async () => {
       try {
@@ -274,6 +279,10 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     }
   });
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && saveImportModal.classList.contains("open")) {
+      closeSaveImportModal();
+      return;
+    }
     if (event.key === "Escape" && bundlePreviewModal.classList.contains("open")) {
       const resolver = closeBundlePreviewModal();
       if (resolver) {
@@ -630,6 +639,73 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       return;
     }
     await importBundleFile(bundleInput.files[0]);
+  });
+
+  saveImportInput.addEventListener("change", async () => {
+    if (!saveImportInput.files || !saveImportInput.files.length) return;
+    await handleSaveImportFile(saveImportInput.files[0]);
+    saveImportInput.value = "";
+  });
+
+  saveImportList.addEventListener("change", (event) => {
+    const select = event.target.closest("select[data-save-import-type]");
+    if (!select || !state.saveImportDraft) return;
+    const type = select.dataset.saveImportType;
+    const draft = state.saveImportDraft;
+    if (type === "localstorage") {
+      draft.localStorageAction = select.value;
+    } else if (type === "unity") {
+      const index = parseInt(select.dataset.saveImportIndex, 10);
+      if (!isNaN(index) && draft.unityRows[index]) draft.unityRows[index].action = select.value;
+    } else if (type === "db") {
+      const index = parseInt(select.dataset.saveImportIndex, 10);
+      if (!isNaN(index) && draft.otherDbRows[index]) draft.otherDbRows[index].action = select.value;
+    }
+    renderSaveImportList();
+  });
+
+  wrongZipTypeOkButton.addEventListener("click", closeWrongZipTypeModal);
+
+  saveImportCancelButton.addEventListener("click", closeSaveImportModal);
+
+  saveImportConfirmButton.addEventListener("click", async () => {
+    const draft = state.saveImportDraft;
+    if (!draft) return;
+    const plan = {
+      localStorageAction: draft.localStorageAction,
+      localStorageData: draft.localStorageData,
+      unityGames: (draft.unityRows || []).map((row) => ({
+        sourceHash: row.sourceHash,
+        action: row.action,
+        records: row.records
+      })),
+      otherDbs: (draft.otherDbRows || []).map((row) => ({
+        dbName: row.dbName,
+        stores: row.stores,
+        action: row.action
+      }))
+    };
+    closeSaveImportModal();
+    setActionButtonsDisabled(true);
+    try {
+      await applySaveImport(plan);
+      const parts = [];
+      if (plan.localStorageAction === "import") parts.push("localStorage");
+      const unityCount = plan.unityGames.filter((g) => g.action !== "ignore").length;
+      if (unityCount) parts.push(unityCount + " Unity game(s)");
+      const dbCount = plan.otherDbs.filter((d) => d.action !== "ignore").length;
+      if (dbCount) parts.push(dbCount + " other DB(s)");
+      log("Imported: " + (parts.length ? parts.join(", ") : "nothing") + ".");
+    } catch (err) {
+      console.error(err);
+      log("Save import failed: " + (err.message || String(err)), "error");
+    } finally {
+      setActionButtonsDisabled(false);
+    }
+  });
+
+  saveImportModal.addEventListener("click", (event) => {
+    if (event.target === saveImportModal) closeSaveImportModal();
   });
 
   window.addEventListener("dragenter", (event) => {

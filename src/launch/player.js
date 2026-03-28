@@ -573,7 +573,7 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
         }
         const decodedPath = record.path.replace(/\.br$/i, "");
 
-        if (/\.(?:js|mjs|cjs)$/i.test(decodedPath)) {
+        if (/\.(?:js|mjs|cjs|unityweb)$/i.test(decodedPath)) {
           const originalText = new TextDecoder().decode(new Uint8Array(buffer));
           const emsPatchedText = workerPaths.has(decodedPath)
             ? await patchEmscriptenWasmScriptText(originalText, decodedPath, recordsByPath, dataUrlCache)
@@ -600,6 +600,12 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
             rewrittenText = prefix + rewrittenText.replaceAll(
               "document.baseURI||self.location.href",
               "(self.__launcherBaseHref||document.baseURI||self.location.href)"
+            );
+          }
+          if (rewrittenText && rewrittenText.indexOf("_JS_SystemInfo_GetDocumentURL") !== -1) {
+            rewrittenText = rewrittenText.replace(
+              "GetDocumentURL(buffer,bufferSize){if(buffer)stringToUTF8(document.URL,buffer,bufferSize);return lengthBytesUTF8(document.URL)",
+              "GetDocumentURL(buffer,bufferSize){var _u=self.__unityDocUrl||document.URL;if(buffer)stringToUTF8(_u,buffer,bufferSize);return lengthBytesUTF8(_u)"
             );
           }
           const jsBlob = new Blob([rewrittenText], { type: "application/javascript" });
@@ -665,8 +671,25 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
           rewrittenText = rewrite.text;
           rewrittenMime = "application/json";
           rewrittenUnityConfigCount += 1;
-        } else if (/\.(?:js|mjs|cjs)$/i.test(record.path)) {
-          const originalText = await record.blob.text();
+        } else if (/\.(?:js|mjs|cjs|unityweb)$/i.test(record.path)) {
+          let sourceBlob = record.blob;
+          let gzipDecompressed = false;
+          if (/\.unityweb$/i.test(record.path) && /framework/i.test(record.path)) {
+            const header = new Uint8Array(await record.blob.slice(0, 2).arrayBuffer());
+            if (header[0] === 0x1f && header[1] === 0x8b) {
+              try {
+                const gzStream = record.blob.stream().pipeThrough(new DecompressionStream("gzip"));
+                const gzBuf = await new Response(gzStream).arrayBuffer();
+                const decoded = new TextDecoder().decode(new Uint8Array(gzBuf));
+                if (decoded.indexOf("_JS_SystemInfo_GetDocumentURL") !== -1 ||
+                    decoded.indexOf("document.baseURI||self.location.href") !== -1) {
+                  sourceBlob = new Blob([decoded], { type: "application/javascript" });
+                  gzipDecompressed = true;
+                }
+              } catch (_gzErr) { /* leave compressed, load will handle it */ }
+            }
+          }
+          const originalText = await sourceBlob.text();
           const emsPatchedText = workerPaths.has(record.path)
             ? await patchEmscriptenWasmScriptText(originalText, record.path, recordsByPath, dataUrlCache)
             : originalText;
@@ -694,7 +717,13 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
               "(self.__launcherBaseHref||document.baseURI||self.location.href)"
             );
           }
-          if (rewrittenText === originalText) {
+          if (rewrittenText && rewrittenText.indexOf("_JS_SystemInfo_GetDocumentURL") !== -1) {
+            rewrittenText = rewrittenText.replace(
+              "GetDocumentURL(buffer,bufferSize){if(buffer)stringToUTF8(document.URL,buffer,bufferSize);return lengthBytesUTF8(document.URL)",
+              "GetDocumentURL(buffer,bufferSize){var _u=self.__unityDocUrl||document.URL;if(buffer)stringToUTF8(_u,buffer,bufferSize);return lengthBytesUTF8(_u)"
+            );
+          }
+          if (!gzipDecompressed && rewrittenText === originalText) {
             continue;
           }
           rewrittenMime = "application/javascript";
@@ -874,16 +903,23 @@ function rewriteSrcSet(value, baseHref) {
   }
 
 function injectRuntimeBridge(documentNode, options = {}) {
+    const rawZipName = typeof options.zipName === "string" ? options.zipName : "";
+    const zipSlug = rawZipName
+      .replace(/\.zip$/i, "")
+      .replace(/[^A-Za-z0-9._-]/g, "_")
+      .slice(0, 128) || (typeof options.gameId === "string" ? options.gameId : "game");
     const bridgeMeta = {
       gameId: typeof options.gameId === "string" ? options.gameId : "",
       gameName: typeof options.gameName === "string" ? options.gameName : "",
-      entryPath: typeof options.entryPath === "string" ? normalizePath(options.entryPath) : ""
+      entryPath: typeof options.entryPath === "string" ? normalizePath(options.entryPath) : "",
+      zipSlug
     };
     const script = documentNode.createElement("script");
     script.textContent = `
 (function () {
   var __launcherBridgeMeta = ${JSON.stringify(bridgeMeta)};
   var __launcherVfsOrigin = ${JSON.stringify(VFS_ORIGIN)};
+  self.__unityDocUrl = __launcherVfsOrigin + __launcherBridgeMeta.zipSlug + "/index.html";
   var __errorArgToString = function (value) {
     if (value == null) return String(value);
     if (value instanceof Error) {
@@ -2008,6 +2044,27 @@ function canAccessPlayerWindow(win) {
     } catch {
       return false;
     }
+  }
+
+function showPlayerLoadingScreen(win, gameName) {
+    try {
+      win.document.open();
+      win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>${gameName.replace(/</g, "&lt;") || "Loading…"}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#0d0d0d;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;color:#ccc}
+.wrap{display:flex;flex-direction:column;align-items:center;gap:20px;user-select:none}
+.name{font-size:18px;font-weight:600;opacity:.85;max-width:360px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-track{width:260px;height:4px;background:#222;border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;width:30%;background:#5b8dd9;border-radius:2px;animation:slide 1.2s ease-in-out infinite}
+@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}</style>
+</head><body><div class="wrap">
+<div class="name">${gameName.replace(/</g, "&lt;") || "Loading…"}</div>
+<div class="bar-track"><div class="bar-fill"></div></div>
+</div></body></html>`);
+      win.document.close();
+    } catch (_) { /* popup not accessible — ignore */ }
   }
 
 function openPlayerWindow() {

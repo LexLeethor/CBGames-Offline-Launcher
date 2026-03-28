@@ -164,6 +164,19 @@
         </section>
         <section class="ops-group ops-group-fixed">
           <div class="ops-group-head">
+            <span class="ops-group-title">Save Data</span>
+            <span class="ops-group-hint">Export / import Unity game saves</span>
+          </div>
+          <div class="ops-group-body">
+            <p>Back up Unity game saves or restore them from a save ZIP. Saves are matched by game name.</p>
+            <div class="ops-row">
+              <button id="exportSaveData" type="button">Export Saves</button>
+              <button id="importSaveData" type="button">Import Saves</button>
+            </div>
+          </div>
+        </section>
+        <section class="ops-group ops-group-fixed">
+          <div class="ops-group-head">
             <span class="ops-group-title">Import from Host</span>
             <span class="ops-group-hint">Import games from a host</span>
           </div>
@@ -210,6 +223,7 @@
 <input id="zipInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 <input id="replaceZipInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 <input id="bundleInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
+<input id="saveImportInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 <input id="gameEditImageInput" type="file" accept="image/*" hidden>
 <div id="importConflictModal" class="confirm-modal" aria-hidden="true">
   <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="importConflictTitle" aria-describedby="importConflictMessage">
@@ -252,6 +266,17 @@
       <button id="updatePromptStop" type="button">Stop Checking</button>
       <button id="updatePromptSkip" type="button">Skip This Game</button>
       <button id="updatePromptInstall" type="button" data-variant="replace">Update Game</button>
+    </div>
+  </div>
+</div>
+<div id="saveImportModal" class="confirm-modal" aria-hidden="true">
+  <div class="confirm-dialog save-import-dialog" role="dialog" aria-modal="true" aria-labelledby="saveImportTitle" aria-describedby="saveImportSummary">
+    <h3 id="saveImportTitle">Import Save Data</h3>
+    <p id="saveImportSummary" class="save-import-summary"></p>
+    <div id="saveImportList" class="save-import-list"></div>
+    <div class="actions">
+      <button id="saveImportCancel" type="button">Cancel</button>
+      <button id="saveImportConfirm" type="button" data-variant="replace">Import Selected</button>
     </div>
   </div>
 </div>
@@ -310,6 +335,15 @@
           <button id="saveGameEditChanges" type="button" data-role="save">Save Changes</button>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+<div id="wrongZipTypeModal" class="confirm-modal" aria-hidden="true">
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="wrongZipTypeTitle" aria-describedby="wrongZipTypeMessage">
+    <h3 id="wrongZipTypeTitle">Wrong ZIP Type</h3>
+    <p id="wrongZipTypeMessage"></p>
+    <div class="actions">
+      <button id="wrongZipTypeOk" type="button" data-variant="replace">OK</button>
     </div>
   </div>
 </div>
@@ -385,6 +419,7 @@
 <script src="./src/state/mutations.js"></script>
 <script src="./src/storage/db.js"></script>
 <script src="./src/storage/settings.js"></script>
+<script src="./src/storage/save-transfer.js"></script>
 <script src="./src/network/transfer.js"></script>
 <script src="./src/network/host.js"></script>
 <script src="./src/import/zip.js"></script>

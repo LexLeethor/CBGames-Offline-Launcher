@@ -1,4 +1,91 @@
 "use strict";
+function renderSaveImportList() {
+  const draft = state.saveImportDraft;
+  if (!draft) return;
+  const games = sortedGames();
+  const rows = [];
+
+  // --- localStorage row ---
+  if (draft.localStorageData) {
+    const action = draft.localStorageAction;
+    rows.push(
+      "<div class=\"save-import-row\">" +
+        "<div class=\"save-import-row-info\">" +
+          "<p class=\"save-import-row-slug\">localStorage</p>" +
+          "<p class=\"save-import-row-meta\">" + draft.localStorageCount + " key(s)</p>" +
+        "</div>" +
+        "<div class=\"save-import-row-action\">" +
+          "<select data-save-import-type=\"localstorage\">" +
+            "<option value=\"import\"" + (action === "import" ? " selected" : "") + ">Import</option>" +
+            "<option value=\"ignore\"" + (action === "ignore" ? " selected" : "") + ">Ignore</option>" +
+          "</select>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  // --- Unity /idbfs game rows ---
+  for (let i = 0; i < (draft.unityRows || []).length; i++) {
+    const row = draft.unityRows[i];
+    const action = row.action;
+    let options = "";
+    options += "<optgroup label=\"Actions\">";
+    options += "<option value=\"ignore\"" + (action === "ignore" ? " selected" : "") + ">Ignore</option>";
+    options += "<option value=\"raw\"" + (action === "raw" ? " selected" : "") + ">Import as-is</option>";
+    options += "</optgroup>";
+    if (row.autoGameId) {
+      const g = state.gamesById.get(row.autoGameId);
+      const gName = g ? escapeHtml(String(g.name || row.autoGameId)) : escapeHtml(row.autoGameId);
+      const val = "auto:" + row.autoGameId;
+      options += "<optgroup label=\"Auto-detected\">";
+      options += "<option value=\"" + escapeHtml(val) + "\"" + (action === val ? " selected" : "") + ">" + gName + "</option>";
+      options += "</optgroup>";
+    }
+    if (games.length) {
+      options += "<optgroup label=\"Map to game\">";
+      for (const g of games) {
+        const val = "map:" + g.id;
+        options += "<option value=\"" + escapeHtml(val) + "\"" + (action === val ? " selected" : "") + ">" + escapeHtml(String(g.name || g.id)) + "</option>";
+      }
+      options += "</optgroup>";
+    }
+    rows.push(
+      "<div class=\"save-import-row\">" +
+        "<div class=\"save-import-row-info\">" +
+          "<p class=\"save-import-row-slug\"><span class=\"save-import-badge\">Unity</span> " + escapeHtml(row.zipSlug) + "</p>" +
+          "<p class=\"save-import-row-meta\">" + String(row.fileCount || 0) + " file(s)</p>" +
+        "</div>" +
+        "<div class=\"save-import-row-action\">" +
+          "<select data-save-import-type=\"unity\" data-save-import-index=\"" + i + "\">" + options + "</select>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  // --- Other IDB rows ---
+  for (let i = 0; i < (draft.otherDbRows || []).length; i++) {
+    const row = draft.otherDbRows[i];
+    const action = row.action;
+    const totalRecords = row.stores.reduce((sum, s) => sum + (s.records ? s.records.length : 0), 0);
+    rows.push(
+      "<div class=\"save-import-row\">" +
+        "<div class=\"save-import-row-info\">" +
+          "<p class=\"save-import-row-slug\"><span class=\"save-import-badge\">IDB</span> " + escapeHtml(row.dbName) + "</p>" +
+          "<p class=\"save-import-row-meta\">" + row.stores.length + " store(s) · " + totalRecords + " record(s)</p>" +
+        "</div>" +
+        "<div class=\"save-import-row-action\">" +
+          "<select data-save-import-type=\"db\" data-save-import-index=\"" + i + "\">" +
+            "<option value=\"import\"" + (action === "import" ? " selected" : "") + ">Import</option>" +
+            "<option value=\"ignore\"" + (action === "ignore" ? " selected" : "") + ">Ignore</option>" +
+          "</select>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  saveImportList.innerHTML = rows.join("");
+}
+
 function renderReplaceTargetList() {
     const games = sortedGames();
     replaceTargetList.innerHTML = "";

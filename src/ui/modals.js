@@ -1,4 +1,70 @@
 "use strict";
+function openWrongZipTypeModal(message) {
+  wrongZipTypeMessage.textContent = message || "This ZIP cannot be imported here.";
+  wrongZipTypeModal.classList.add("open");
+  wrongZipTypeModal.setAttribute("aria-hidden", "false");
+  wrongZipTypeOkButton.focus();
+}
+
+function closeWrongZipTypeModal() {
+  wrongZipTypeModal.classList.remove("open");
+  wrongZipTypeModal.setAttribute("aria-hidden", "true");
+}
+
+function closeSaveImportModal() {
+  saveImportModal.classList.remove("open");
+  saveImportModal.setAttribute("aria-hidden", "true");
+  state.saveImportDraft = null;
+}
+
+function openSaveImportModal(parsed) {
+  // Unity /idbfs games
+  const unityRows = [];
+  for (const [zipSlug, entry] of parsed.gameEntries) {
+    const expectedHash = computeUnityHash(zipSlug);
+    let autoGameId = null;
+    for (const game of state.gamesById.values()) {
+      if (!game.zipName) continue;
+      const slug = zipSlugFromZipName(game.zipName);
+      if (slug === zipSlug || computeUnityHash(slug) === expectedHash) {
+        autoGameId = game.id;
+        break;
+      }
+    }
+    unityRows.push({
+      zipSlug,
+      sourceHash: entry.hash,
+      fileCount: entry.fileCount,
+      records: entry.records,
+      autoGameId,
+      action: autoGameId ? ("auto:" + autoGameId) : "raw"
+    });
+  }
+
+  // Other IDBs
+  const otherDbRows = (parsed.otherDbs || []).map((db) => ({
+    dbName: db.dbName,
+    stores: db.stores,
+    action: "import"
+  }));
+
+  const lsCount = parsed.localStorageData ? Object.keys(parsed.localStorageData).length : 0;
+  state.saveImportDraft = {
+    localStorageAction: parsed.localStorageData ? "import" : null,
+    localStorageData: parsed.localStorageData,
+    localStorageCount: lsCount,
+    unityRows,
+    otherDbRows
+  };
+
+  const totalSections = (parsed.localStorageData ? 1 : 0) + unityRows.length + otherDbRows.length;
+  saveImportSummary.textContent = "Save ZIP contains " + totalSections + " section(s). Choose what to do with each.";
+  renderSaveImportList();
+  saveImportModal.classList.add("open");
+  saveImportModal.setAttribute("aria-hidden", "false");
+  saveImportConfirmButton.focus();
+}
+
 function closeImportConflictModal() {
     importConflictModal.classList.remove("open");
     importConflictModal.setAttribute("aria-hidden", "true");

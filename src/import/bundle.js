@@ -195,6 +195,22 @@ async function parseBundlePreviewData(file) {
     const entryByPath = new Map(parsedZip.entries.map((entry) => [normalizePath(entry.path), entry]));
     const manifestEntry = entryByPath.get("bundle.json");
     if (!manifestEntry) {
+      if (entryByPath.has("manifest.json")) {
+        const mEntry = entryByPath.get("manifest.json");
+        try {
+          const mBytes = await extractEntryBytes(parsedZip, mEntry);
+          const mData = JSON.parse(decodeUtf8(mBytes));
+          if (mData && (mData.version === "cbgames-save-v1" || mData.version === "cbgames-save-v2")) {
+            throw new Error("This looks like a Save Data ZIP. Use 'Import Saves' to import it.");
+          }
+        } catch (e) {
+          if (e.message && e.message.startsWith("This looks like")) throw e;
+        }
+      }
+      const htmlCount = [...entryByPath.keys()].filter((p) => /\.html?$/i.test(p)).length;
+      if (htmlCount > 0) {
+        throw new Error("This looks like a Game ZIP. Use 'Import Game' to import it.");
+      }
       throw new Error("Bundle ZIP missing bundle.json.");
     }
     const manifestBytes = await extractEntryBytes(parsedZip, manifestEntry);
@@ -457,7 +473,12 @@ async function importBundleFile(file) {
       log("Bundle preview ready: " + previewData.games.length + " games.");
     } catch (error) {
       console.error(error);
-      log("Bundle import failed: " + (error.message || String(error)), "error");
+      const msg = error.message || String(error);
+      if (msg.startsWith("This looks like")) {
+        openWrongZipTypeModal(msg);
+      } else {
+        log("Bundle import failed: " + msg, "error");
+      }
       return;
     } finally {
       setActionButtonsDisabled(false);

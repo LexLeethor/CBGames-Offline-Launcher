@@ -981,6 +981,87 @@
     background: #1a1a1a;
     color: #fff;
   }
+  .save-import-dialog {
+    width: min(96vw, 680px);
+    max-height: calc(100dvh - 34px);
+    overflow: auto;
+  }
+  .save-import-summary {
+    font-size: 14px;
+  }
+  .save-import-list {
+    display: grid;
+    gap: 8px;
+    max-height: 50dvh;
+    overflow: auto;
+    border: 1px solid #2b2b2b;
+    border-radius: 10px;
+    background: #121212;
+    padding: 10px;
+  }
+  .save-import-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 200px;
+    gap: 10px;
+    align-items: center;
+    background: #181818;
+    border: 1px solid #2c2c2c;
+    border-radius: 9px;
+    padding: 10px;
+  }
+  .save-import-row-info {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+  .save-import-row-slug {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .save-import-row-meta {
+    margin: 0;
+    color: #c7c7c7;
+    font-size: 12px;
+  }
+  .save-import-row-action select {
+    width: 100%;
+    border: 1px solid #3a3a3a;
+    border-radius: 7px;
+    padding: 7px 8px;
+    background: #1a1a1a;
+    color: #fff;
+    font-size: 13px;
+  }
+  .save-import-action-ignore select {
+    border-color: #4a4a4a;
+    color: #888;
+  }
+  .save-import-action-map select {
+    border-color: #3a5a3a;
+  }
+  .save-import-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    background: #2a2a3a;
+    color: #9ab;
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  @media (max-width: 600px) {
+    .save-import-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
   .bundle-preview-dialog {
     width: min(96vw, 900px);
     max-height: calc(100dvh - 34px);

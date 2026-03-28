@@ -61,6 +61,7 @@ const state = {
   updatePromptResolver: null,
   bundlePreviewResolver: null,
   bundlePreviewDraft: null,
+  saveImportDraft: null,
   networkTransfer: {
     hostUrl: NETWORK_TRANSFER_DEFAULT_HOST_URL,
     items: []
