@@ -35,6 +35,18 @@ function collectMatches(html, re) {
   return results;
 }
 
+// Strip trailing ASCII whitespace bytes from a Buffer without decoding it.
+// Safe for binary files — never touches non-whitespace bytes.
+function trimEndBuf(buf) {
+  let end = buf.length;
+  while (end > 0) {
+    const b = buf[end - 1];
+    if (b === 0x20 || b === 0x09 || b === 0x0a || b === 0x0d) end--;
+    else break;
+  }
+  return buf.slice(0, end);
+}
+
 function main() {
   const { minify, out } = parseArgs();
 
@@ -46,18 +58,20 @@ function main() {
   const outPath = resolve(out);
   if (outPath === DEV_HTML) {
     console.error(
-      "Error: output path cannot be the same as the source index.html. Use --out to specify a different path."
+      "Error: output path cannot be the same as the source index.html. " +
+      "Use --out to specify a different path."
     );
     process.exit(1);
   }
 
+  // HTML is always UTF-8 text — safe to decode.
   let html = readFileSync(DEV_HTML, "utf8");
 
-  const linkRe   = /<link\s+rel="stylesheet"\s+href="(\.\/(?:src|lib)\/[^"]+)"\s*\/?>/g;
-  const scriptRe = /<script\s+src="(\.\/(?:src|lib)\/[^"]+)"\s*>\s*<\/script>/g;
+  const linkRe    = /<link\s+rel="stylesheet"\s+href="(\.\/(?:src|lib)\/[^"]+)"\s*\/?>/g;
+  const scriptRe  = /<script\s+src="(\.\/(?:src|lib)\/[^"]+)"\s*>\s*<\/script>/g;
   const faviconRe = /<link\s+rel="icon"\s+type="image\/[^"]+"\s+href="(\.\/[^"]+)"\s*\/?>/;
 
-  // --- Inline CSS ---
+  // --- Inline CSS (always UTF-8 text) ---
   const cssHrefs = collectMatches(html, linkRe);
   if (!cssHrefs.length) {
     console.error("Could not find stylesheet link tags in index.html");
@@ -71,31 +85,36 @@ function main() {
   let css = cssChunks.join("\n").trimEnd() + "\n";
   if (minify) css = minifyCss(css);
 
-  // --- Inline JS ---
+  html = html.replace(/<link\s+rel="stylesheet"\s+href="(\.\/(?:src|lib)\/[^"]+)"\s*\/?>/g, "");
+  html = html.replace("</head>", `<style>\n${css}</style>\n</head>`);
+
+  // --- Inline JS as raw Buffers (some files may contain binary data) ---
   const scriptSrcs = collectMatches(html, scriptRe);
   if (!scriptSrcs.length) {
     console.error("Could not find script tags for ./src or ./lib in index.html");
     process.exit(1);
   }
-  const jsChunks = scriptSrcs.map((src) => {
+  const jsBuffers = scriptSrcs.map((src, i) => {
     const path = join(ROOT, src.replace("./", ""));
     if (!existsSync(path)) { console.error(`Missing ${path}`); process.exit(1); }
-    return `// ---- ${src} ----\n${readFileSync(path, "utf8").trimEnd()}\n`;
+    const header = Buffer.from(`// ---- ${src} ----\n`, "utf8");
+    const content = trimEndBuf(readFileSync(path));   // raw bytes — no UTF-8 decode
+    const sep = Buffer.from(i < scriptSrcs.length - 1 ? "\n\n" : "\n", "utf8");
+    return Buffer.concat([header, content, sep]);
   });
-  const js = jsChunks.join("\n").trimEnd() + "\n";
+  const jsBuf = Buffer.concat(jsBuffers);
 
-  // --- Apply substitutions ---
-  html = html.replace(/<link\s+rel="stylesheet"\s+href="(\.\/(?:src|lib)\/[^"]+)"\s*\/?>/g, "");
-  html = html.replace("</head>", `<style>\n${css}</style>\n</head>`);
-
+  // Strip the script tags from the HTML text.
   html = html.replace(/<script\s+src="(\.\/(?:src|lib)\/[^"]+)"\s*>\s*<\/script>/g, "");
-  if (!html.includes("</body>")) {
+
+  const bodyTag = "</body>";
+  const bodyIdx = html.indexOf(bodyTag);
+  if (bodyIdx === -1) {
     console.error("Could not find </body> to inject bundled script");
     process.exit(1);
   }
-  html = html.replace("</body>", `<script>\n${js}</script>\n</body>`);
 
-  // --- Embed favicon as data URL ---
+  // --- Embed favicon as data URL (text operation, safe) ---
   const faviconMatch = faviconRe.exec(html);
   if (faviconMatch) {
     const faviconRel = faviconMatch[1].replace("./", "");
@@ -107,8 +126,13 @@ function main() {
     }
   }
 
+  // Split HTML at </body> and concat with the raw JS buffer in between.
+  const htmlBefore = Buffer.from(html.slice(0, bodyIdx) + "<script>\n", "utf8");
+  const htmlAfter  = Buffer.from("\n</script>\n" + html.slice(bodyIdx), "utf8");
+  const output = Buffer.concat([htmlBefore, jsBuf, htmlAfter]);
+
   mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, html, "utf8");
+  writeFileSync(outPath, output);
   console.log(`Wrote ${outPath}`);
 }
 
