@@ -919,7 +919,13 @@ function injectRuntimeBridge(documentNode, options = {}) {
 (function () {
   var __launcherBridgeMeta = ${JSON.stringify(bridgeMeta)};
   var __launcherVfsOrigin = ${JSON.stringify(VFS_ORIGIN)};
-  self.__unityDocUrl = __launcherVfsOrigin + __launcherBridgeMeta.zipSlug + "/index.html";
+  // Unity uses GetDocumentURL() (patched below) as a base to resolve StreamingAssets
+  // and other relative paths at runtime. We must point it at the actual entry file
+  // path inside our VFS so those relative requests resolve to the correct blob: URLs.
+  // Using zipSlug here was wrong: zipSlug sanitizes hyphens/spaces to underscores, so
+  // a game stored as "bad-piggies/..." would get a URL with "bad_piggies/..." causing
+  // every StreamingAssets XHR to miss the objectUrl cache and hit the network.
+  self.__unityDocUrl = __launcherVfsOrigin + (__launcherBridgeMeta.entryPath || __launcherBridgeMeta.zipSlug + "/index.html");
   var __errorArgToString = function (value) {
     if (value == null) return String(value);
     if (value instanceof Error) {
