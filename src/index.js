@@ -18,7 +18,13 @@ if (networkHostUrlInput && !networkHostUrlInput.value) {
       const savedGameId = await getSetting(SETTING_SELECTED_GAME);
       await loadLibrary(savedGameId || "");
       log("Ready. Import a ZIP game to begin.");
-       const urlParams = new URLSearchParams(window.location.search);
+
+      const hostSetup = window.__CBGAMES_HOST_SETUP__;
+      if (hostSetup && Array.isArray(hostSetup.bundles) && hostSetup.bundles.length > 0) {
+        await runAutoImport(hostSetup);
+      }
+
+      const urlParams = new URLSearchParams(window.location.search);
       const loadParam = urlParams.get('load');
       if (loadParam) {
         const lower = loadParam.toLowerCase();

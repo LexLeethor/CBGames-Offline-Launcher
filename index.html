@@ -408,6 +408,26 @@
 
 
 
+<div id="autoImportModal" class="confirm-modal" aria-hidden="true">
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="autoImportTitle">
+    <h3 id="autoImportTitle">Auto-Importing Bundles</h3>
+    <p id="autoImportStatusText">Preparing to import...</p>
+    <div class="auto-import-progress-wrap">
+      <div class="auto-import-progress-bar">
+        <div id="autoImportProgressFill" class="auto-import-progress-fill"></div>
+      </div>
+      <span id="autoImportProgressLabel" class="auto-import-progress-label"></span>
+    </div>
+    <div id="autoImportLog" class="auto-import-log"></div>
+    <div id="autoImportFolderPickerWrap" hidden>
+      <button id="autoImportFolderPickerBtn" type="button">Select Launcher Folder</button>
+    </div>
+    <div class="actions">
+      <button id="autoImportCloseBtn" type="button" disabled>Close</button>
+    </div>
+  </div>
+</div>
+
 <script src="./lib/cropper.min.js"></script>
 <script src="./lib/brotli.js"></script>
 <script src="./src/state/state.js"></script>
@@ -430,6 +450,7 @@
 <script src="./src/ui/modals.js"></script>
 <script src="./src/ui/renderers.js"></script>
 <script src="./src/ui/events.js"></script>
+<script src="./src/network/auto-import.js"></script>
 <script src="./src/index.js"></script>
 </body>
 </html>

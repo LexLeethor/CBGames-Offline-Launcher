@@ -666,6 +666,15 @@ openOpsModalButton.addEventListener("click", showOpsModal);
 
   wrongZipTypeOkButton.addEventListener("click", closeWrongZipTypeModal);
 
+  const autoImportCloseBtn = document.getElementById("autoImportCloseBtn");
+  const autoImportModal = document.getElementById("autoImportModal");
+  if (autoImportCloseBtn && autoImportModal) {
+    autoImportCloseBtn.addEventListener("click", () => {
+      autoImportModal.classList.remove("open");
+      autoImportModal.setAttribute("aria-hidden", "true");
+    });
+  }
+
   saveImportCancelButton.addEventListener("click", closeSaveImportModal);
 
   saveImportConfirmButton.addEventListener("click", async () => {
