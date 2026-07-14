@@ -23,20 +23,11 @@ jobs:
           ref: ${{ github.ref_name }}
           github_server_url: 'http://lex-pi.local:3002'
 
-      - name: Setup Node.js
-        uses: http://lex-pi.local:3002/lex/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: Build launcher bundle
-        run: node scripts/build_bundle.mjs --out dist/index.debug.html
-
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright browser
-        run: npx playwright install chromium --with-deps
+      - name: Build launcher bundle
+        run: node scripts/build_bundle.mjs --out dist/index.debug.html
 
       - name: Run launcher autotest
         run: node playwright-launcher-test.mjs
