@@ -14,10 +14,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: https://gitea.com/actions/checkout@v4
+        uses: http://lex-pi.local:3002/lex/checkout@v4
+        with:
+      # Still recommended to ensure the clone URL inside the action points to your Pi
+          github_server_url: 'http://lex-pi.local:3002' 
 
       - name: Setup Node.js
-        uses: https://gitea.com/actions/setup-node@v4
+        uses: http://lex-pi.local:3002/lex/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
