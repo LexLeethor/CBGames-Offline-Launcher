@@ -16,10 +16,9 @@ jobs:
       - name: Checkout
         uses: http://lex-pi.local:3002/lex/checkout@v4
         with:
-          # Explicitly define the repository to clone using the full URL context
-          # Usually not needed if runner context is correct, but helps force the URL
-          repository: ${{ gitea.repository }} 
-   
+          repository: lex/CBGames-Offline-Launcher
+          ref: ${{ github.ref_name }}
+          github_server_url: 'http://lex-pi.local:3002'
 
       - name: Setup Node.js
         uses: http://lex-pi.local:3002/lex/setup-node@v4
