@@ -15,7 +15,7 @@ on:
       - "index.html"
       - "src/**"
       - "scripts/build_bundle.mjs"
-      - ".github/workflows/build-single-file.yml"
+      - ".gitea/workflows/build-launcher.yml"
 
 jobs:
   build:
@@ -48,10 +48,13 @@ jobs:
           name: cbgames-offline-launcher-bundles
           path: dist/*.html
 
-      - name: Create release and upload asset
+      - name: Create Gitea Release and Upload Asset
         if: github.event_name == 'workflow_dispatch'
-        uses: softprops/action-gh-release@v2
+        uses: akkuman/gitea-release-action@v1
+        env:
+          NODE_OPTIONS: '--experimental-fetch' # Required for older Node versions in the runner
         with:
           tag_name: ${{ inputs.version }}
           name: ${{ inputs.version }}
           files: dist/index.html
+          # token: ${{ secrets.GITEA_TOKEN }} # Usually not needed if GITEA_TOKEN is auto-injected, but add if fails   
