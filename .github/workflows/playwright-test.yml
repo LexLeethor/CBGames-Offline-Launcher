@@ -15,10 +15,6 @@ jobs:
     steps:
       - name: Checkout
         uses: http://lex-pi.local:3002/lex/checkout@v4
-        with:
-          repository: lex/CBGames-Offline-Launcher
-          ref: ${{ github.ref_name }}
-          github_server_url: 'http://lex-pi.local:3002'
 
       - name: Setup Node.js
         uses: http://lex-pi.local:3002/lex/setup-node@v4
@@ -40,4 +36,6 @@ jobs:
         env:
           CI: "1"
           HEADLESS: "1"
-          PAUSE_MS: "0"   
+          PAUSE_MS: "0"
+          # Uses test-fixtures/webgl-test-game.zip (committed) since Unity build
+          # dir is not present in CI. To override, set TEST_GAME_ZIP to a path.
