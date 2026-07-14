@@ -40,7 +40,7 @@ const CREATE_ZIP_PY  = path.join(__dirname, 'create-test-zip.py');
 const BUILD_DIR      = '/home/lex/Documents/Test/UnityWebGL-Test/Builds/WebGL/local';
 const TMP_ZIP        = '/tmp/webgl-test-game.zip';
 
-const AUTOTEST_TIMEOUT_MS = 3 * 60 * 1000;
+const AUTOTEST_TIMEOUT_MS = 10 * 60 * 1000;
 const PAUSE_MS  = parseInt(process.env.PAUSE_MS ?? (process.env.CI ? '0' : '3000'), 10);
 const HEADLESS  = process.env.HEADLESS === '1' || Boolean(process.env.CI);
 

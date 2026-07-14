@@ -1,62 +1,19 @@
-name: Build Launcher Bundles
-
-permissions:
-  contents: write
-
-on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Release tag (e.g. v1.0.0)"
-        required: true
-        type: string
-  push:
-    paths:
-      - "index.html"
-      - "src/**"
-      - "scripts/build_bundle.mjs"
-      - ".gitea/workflows/build-launcher.yml"
-
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: cbgl-playwright:latest
+
     steps:
       - name: Checkout
         uses: http://lex-pi.local:3002/lex/checkout@v4
         with:
-      # Still recommended to ensure the clone URL inside the action points to your Pi
-          github_server_url: 'http://lex-pi.local:3002' 
-      - name: Setup Node.js
-        uses: http://lex-pi.local:3002/lex/setup-node@v4
-        with:
-          node-version: "20"
+          repository: lex/CBGames-Offline-Launcher
+          ref: ${{ github.ref_name }}
+          github_server_url: 'http://lex-pi.local:3002'
 
       - name: Build debug bundle
         if: github.event_name == 'push'
         run: node scripts/build_bundle.mjs --out dist/index.debug.html
 
-      - name: Build minified bundle
-        if: github.event_name == 'push'
-        run: node scripts/build_bundle.mjs --minify --out dist/index.min.html
-
-      - name: Build release bundle (minified)
-        if: github.event_name == 'workflow_dispatch'
-        run: node scripts/build_bundle.mjs --minify --out dist/index.html
-
-      - name: Upload build artifacts
-        if: github.event_name == 'push'
-        uses: actions/upload-artifact@v4
-        with:
-          name: cbgames-offline-launcher-bundles
-          path: dist/*.html
-
-      - name: Create Gitea Release and Upload Asset
-        if: github.event_name == 'workflow_dispatch'
-        uses: akkuman/gitea-release-action@v1
-        env:
-          NODE_OPTIONS: '--experimental-fetch' # Required for older Node versions in the runner
-        with:
-          tag_name: ${{ inputs.version }}
-          name: ${{ inputs.version }}
-          files: dist/index.html
-          # token: ${{ secrets.GITEA_TOKEN }} # Usually not needed if GITEA_TOKEN is auto-injected, but add if fails   
+      ...
