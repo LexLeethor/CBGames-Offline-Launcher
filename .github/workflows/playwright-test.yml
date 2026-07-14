@@ -16,8 +16,10 @@ jobs:
       - name: Checkout
         uses: http://lex-pi.local:3002/lex/checkout@v4
         with:
-      # Still recommended to ensure the clone URL inside the action points to your Pi
-          github_server_url: 'http://lex-pi.local:3002' 
+          # Explicitly define the repository to clone using the full URL context
+          # Usually not needed if runner context is correct, but helps force the URL
+          repository: ${{ gitea.repository }} 
+   
 
       - name: Setup Node.js
         uses: http://lex-pi.local:3002/lex/setup-node@v4
@@ -39,6 +41,4 @@ jobs:
         env:
           CI: "1"
           HEADLESS: "1"
-          PAUSE_MS: "0"
-          # Uses test-fixtures/webgl-test-game.zip (committed) since Unity build
-          # dir is not present in CI. To override, set TEST_GAME_ZIP to a path.
+          PAUSE_MS: "0"   
