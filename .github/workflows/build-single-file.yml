@@ -6,11 +6,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: http://lex-pi.local:3002/lex/checkout@v4
+        uses: https://git.tail39ec93.ts.net/lex/checkout@v4
         with:
           repository: lex/CBGames-Offline-Launcher
           ref: ${{ github.ref_name }}
-          github_server_url: 'http://lex-pi.local:3002'
+          github_server_url: 'https://git.tail39ec93.ts.net/'
 
       - name: Build debug bundle
         if: github.event_name == 'push'
