@@ -626,7 +626,9 @@ async function importZipFile(file, options) {
 
       for (const entry of processedEntries) {
         let entryBytes = entry.bytes;
+        const transformations = [];
         const isTextFile = /\.(?:html?|js|mjs|cjs|css|json)$/i.test(entry.path);
+        
         if (brotliReplacementMap.size && isTextFile) {
           try {
             const originalText = decodeUtf8(entryBytes);
@@ -635,6 +637,7 @@ async function importZipFile(file, options) {
             );
             if (replacedText !== originalText) {
               entryBytes = new TextEncoder().encode(replacedText);
+              transformations.push({ version: 1, type: 'json_rewrite' });
             }
           } catch {
             // ignore decode failures
@@ -648,6 +651,9 @@ async function importZipFile(file, options) {
             const rewrittenText = JSON.stringify(rewritten);
             if (rewrittenText !== jsonText) {
               entryBytes = new TextEncoder().encode(rewrittenText);
+              if (!transformations.find(t => t.type === 'json_rewrite')) {
+                transformations.push({ version: 1, type: 'json_rewrite' });
+              }
             }
           } catch {
             // ignore JSON rewrite failures
@@ -662,7 +668,8 @@ async function importZipFile(file, options) {
           path: entry.path,
           size: blob.size,
           type: blob.type,
-          blob
+          blob,
+          transformations: transformations.length > 0 ? transformations : undefined
         });
 
         if (!gameRecord.unityDetected && /\.html?$/i.test(entry.path)) {

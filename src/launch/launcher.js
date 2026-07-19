@@ -68,6 +68,23 @@ function requestToObjectUrl(rawValue, baseHref) {
   // Expose the resolver for the player window bridge.
   window.__loaderResolve = requestToObjectUrl;
 
+const CURRENT_EXTRACTOR_VERSION = 1;
+
+async function checkAndMigrateGameIfNeeded(game) {
+    if (!game || typeof game.extractorVersion === "undefined") {
+      game.extractorVersion = 1;
+      return false;
+    }
+    if (game.extractorVersion >= CURRENT_EXTRACTOR_VERSION) {
+      return false;
+    }
+    
+    log(`Game "${game.name}" was imported with extractor v${game.extractorVersion}, current is v${CURRENT_EXTRACTOR_VERSION}.`);
+    log("Migration needed — consider re-importing this game for compatibility.");
+    // Future: implement actual re-processing logic here
+    return true;
+  }
+
 async function launchSelectedGame() {
     const gameId = state.selectedGameId;
     const game = gameId ? state.gamesById.get(gameId) : null;
@@ -75,6 +92,8 @@ async function launchSelectedGame() {
       log("Choose a saved game first.", "error");
       return;
     }
+
+    await checkAndMigrateGameIfNeeded(game);
 
     const chosenEntry = entrySelect.value || game.entryPath || chooseBestEntryPath(game.htmlEntries || [], "");
     if (!chosenEntry) {

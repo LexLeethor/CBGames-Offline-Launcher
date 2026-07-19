@@ -52,10 +52,12 @@ function resolveZipPath() {
 async function main() {
   const zipPath = resolveZipPath();
 
-  const browser = await chromium.launch({
-    headless: HEADLESS,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+const browser = await chromium.launch({
+  headless: HEADLESS,
+  args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  executablePath: '/root/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell',
+});
+
   const context = await browser.newContext();
   const page    = await context.newPage();
 
