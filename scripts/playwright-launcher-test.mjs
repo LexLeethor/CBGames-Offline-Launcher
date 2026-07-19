@@ -26,7 +26,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // In CI the bundle is pre-built to dist/index.debug.html; locally use index.html
 // (dev version with external src/ refs, which file:// can load fine).
 const LAUNCHER_PATH  = process.env.CI
-  ? path.join(__dirname, 'dist', 'index.debug.html')
+  ? path.join(__dirname, '../dist', 'index.debug.html')
   : path.join(__dirname, 'index.html');
 const LAUNCHER_URL   = 'file://' + LAUNCHER_PATH;
 const FIXTURE_ZIP    = path.join(__dirname, '../test-fixtures', 'webgl-test-game.zip');
