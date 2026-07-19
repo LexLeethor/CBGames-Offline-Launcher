@@ -74,7 +74,7 @@ function main() {
   if (minify) css = minifyCss(css);
 
   html = html.replace(/<link\s+rel="stylesheet"\s+href="(\.\/(?:src|lib)\/[^"]+)"\s*\/?>/g, "");
-  html = html.replace("</head>", `<style>\n${css}</style>\n</head>`);
+  html = html.replace("</head>", () => `<style>\n${css}</style>\n</head>`);
 
   // --- Inline JS as raw Buffers (some files may contain binary data) ---
   const scriptSrcs = collectMatches(html, scriptRe);
@@ -91,15 +91,11 @@ function main() {
     const buf = readFileSync(path);
     let content;
     try {
-      content = buf.toString("utf8");
-      // Verify it's valid UTF-8 by encoding back
-      if (Buffer.from(content, "utf8").toString("utf8") !== content) {
-        throw new Error("Invalid UTF-8");
-      }
+      content = new TextDecoder("utf-8", { fatal: true }).decode(buf);
     } catch (e) {
       // Not valid UTF-8, encode as base64 and wrap in a way browsers can execute
       const b64 = buf.toString("base64");
-      content = `// [Binary file - base64 encoded]\n(function(){const str=String.fromCharCode.apply(null,atob('${b64}').split('').map(c=>c.charCodeAt(0)));eval(str)})();`;
+      content = `// [Binary file - base64 encoded]\n(function(){ eval(atob('${b64}')); })();`;
     }
     return `// ---- ${src} ----\n${content.trimEnd()}\n`;
   });
@@ -116,13 +112,13 @@ function main() {
     if (existsSync(faviconPath)) {
       const ext = extname(faviconPath).slice(1).toLowerCase() || "png";
       const dataUrl = `data:image/${ext};base64,${readFileSync(faviconPath).toString("base64")}`;
-      html = html.replace(faviconRe, `<link rel="icon" type="image/${ext}" href="${dataUrl}">`);
+      html = html.replace(faviconRe, () => `<link rel="icon" type="image/${ext}" href="${dataUrl}">`);
     }
   }
 
   // Split HTML at </body> and inject the bundled script.
   const scriptTag = `<script>\n${js}</script>\n`;
-  html = html.replace("</body>", `${scriptTag}</body>`);
+  html = html.replace("</body>", () => `${scriptTag}</body>`);
   
   const output = Buffer.from(html, "utf8");
 
