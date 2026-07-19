@@ -1,8 +1,6 @@
 name: Build Launcher Bundles
 
 on:
-  push:
-    branches: ["main", "master"]
   workflow_dispatch:
     inputs:
       version:
@@ -18,11 +16,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: https://git.tail39ec93.ts.net/lex/checkout@v4
-        with:
-          repository: lex/CBGames-Offline-Launcher
-          ref: ${{ github.ref_name }}
-          github_server_url: 'https://git.tail39ec93.ts.net/'
+        uses: actions/checkout@v4
 
       - name: Update Extractor Version
         if: github.event_name == 'workflow_dispatch'
@@ -39,7 +33,7 @@ jobs:
         run: node scripts/build_bundle.mjs --minify --out dist/index.html
 
       - name: Upload Bundles
-        uses: https://git.tail39ec93.ts.net/lex/upload-artifact@v4
+        uses: actions/upload-artifact@v4
         with:
           name: launcher-bundles
           path: |
