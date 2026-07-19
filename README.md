@@ -4,11 +4,11 @@ Development entrypoint: `index.dev.html` (loads `src/styles.css` and the `src/` 
 
 Bundle to the single-file launcher:
 
-`python scripts/build_bundle.py`
+`node scripts/build_bundle.mjs`
 
 Minified single-file bundle:
 
-`python scripts/build_bundle.py --minify --out dist/index.min.html`
+`node scripts/build_bundle.mjs --minify --out dist/index.min.html`
 
 The GitHub Actions workflow `Build Launcher Bundles` runs the same script, uploads both the debug and minified bundles, and attaches them to releases.
 

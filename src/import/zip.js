@@ -592,6 +592,14 @@ async function importZipFile(file, options) {
         .filter((path) => /\.html?$/i.test(path))
         .sort((a, b) => a.localeCompare(b));
 
+      // Check for SharedArrayBuffer usage (known limitation)
+      if (detectSharedArrayBufferUsage(processedEntries)) {
+        throw new Error(
+          "This game uses SharedArrayBuffer, which is not supported in the file:// protocol. " +
+          "This is a known limitation of the offline launcher and this game cannot be imported."
+        );
+      }
+
       const gameRecord = {
         id: gameId,
         name: preservedName,
@@ -692,7 +700,7 @@ async function importZipFile(file, options) {
     } catch (error) {
       console.error(error);
       const msg = error.message || String(error);
-      if (msg.startsWith("This looks like")) {
+      if (msg.startsWith("This looks like") || msg.includes("SharedArrayBuffer")) {
         openWrongZipTypeModal(msg);
       } else {
         log("Import failed: " + msg, "error");

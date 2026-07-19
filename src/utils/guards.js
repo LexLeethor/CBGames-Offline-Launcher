@@ -88,6 +88,27 @@ function detectFlashByPaths(paths) {
     return false;
   }
 
+function detectSharedArrayBufferUsage(processedEntries) {
+    // Scan JavaScript and HTML files for SharedArrayBuffer usage
+    const sharedArrayBufferPattern = /\bSharedArrayBuffer\b/;
+    for (const entry of processedEntries || []) {
+      // Only check files that may contain executable script content
+      if (!/\.(?:js|mjs|cjs|html?)$/i.test(entry.path)) {
+        continue;
+      }
+      try {
+        const text = decodeUtf8(entry.bytes);
+        if (sharedArrayBufferPattern.test(text)) {
+          return true;
+        }
+      } catch (error) {
+        // Ignore decode errors and continue scanning
+        continue;
+      }
+    }
+    return false;
+  }
+
 function toHttpUrl(value) {
     if (typeof value !== "string" || !value.trim()) {
       return "";
