@@ -86,12 +86,16 @@ async function exportGamesBundle(games, progressCallback) {
           path: zipPath,
           bytes
         });
-        manifestGame.files.push({
+        const manifestFile = {
           path: normalizePath(file.path),
           type: file.type || mimeFromPath(file.path),
           size: Number(file.size) || bytes.byteLength,
           zipPath
-        });
+        };
+        if (Array.isArray(file.transformations) && file.transformations.length) {
+          manifestFile.transformations = file.transformations;
+        }
+        manifestGame.files.push(manifestFile);
       }
       manifest.games.push(manifestGame);
       processedGames += 1;
@@ -143,6 +147,72 @@ async function downloadAllGamesBundle() {
         URL.revokeObjectURL(url);
       }
       log("Exported games to " + filename + ".");
+    } finally {
+      setActionButtonsDisabled(false);
+      clearWorkProgress();
+    }
+  }
+
+async function downloadGameWithTransformationsReverted(game) {
+    setActionButtonsDisabled(true);
+    try {
+      if (!game) {
+        throw new Error("No game selected.");
+      }
+      setWorkProgress("Preparing game export", 0, 0);
+      log(`Exporting game "${game.name}" with transformation info...`);
+      const files = await getAllFilesForGame(game.id);
+      
+      const zipEntries = [];
+      let revertedFileCount = 0;
+      for (const file of files) {
+        const rawBytes = new Uint8Array(await file.blob.arrayBuffer());
+        const reversedBytes = reverseFileTransformations(rawBytes, file.transformations);
+        if (reversedBytes !== rawBytes) {
+          revertedFileCount += 1;
+        }
+        zipEntries.push({
+          path: file.path,
+          bytes: reversedBytes
+        });
+      }
+      
+      const transformationMetadata = {
+        gameId: game.id,
+        gameName: game.name,
+        extractorVersion: game.extractorVersion || 1,
+        exportedAt: Date.now(),
+        exportMode: "reverted-transformations",
+        revertedFileCount,
+        reversibleTransformationCount: countReversibleTransformations(files),
+        filesWithTransformations: files
+          .filter(f => f.transformations && f.transformations.length > 0)
+          .map(f => ({
+            path: f.path,
+            transformations: f.transformations
+          }))
+      };
+      
+      zipEntries.push({
+        path: ".cbgames-metadata.json",
+        bytes: new TextEncoder().encode(JSON.stringify(transformationMetadata, null, 2))
+      });
+      
+      const bundleZip = createZipStoreArchive(zipEntries);
+      const filename = game.name.trim().replace(/[^a-z0-9]+/gi, "-").toLowerCase() + "-exported.zip";
+      const url = URL.createObjectURL(new Blob([bundleZip], { type: "application/zip" }));
+      
+      try {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+      log(`Exported "${game.name}" to ${filename}; reverted ${revertedFileCount} transformed files.`);
     } finally {
       setActionButtonsDisabled(false);
       clearWorkProgress();
@@ -425,7 +495,10 @@ async function executeBundleImportPlan(previewData, planGames) {
           path: sourcePath,
           size: blob.size,
           type: blob.type,
-          blob
+          blob,
+          transformations: Array.isArray(fileInfo.transformations) && fileInfo.transformations.length
+            ? fileInfo.transformations
+            : undefined
         });
         importedFiles += 1;
         if (importedFiles % 25 === 0 || importedFiles === totalFiles) {

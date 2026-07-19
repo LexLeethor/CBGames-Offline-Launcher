@@ -269,6 +269,21 @@
     </div>
   </div>
 </div>
+<div id="extractorMigrationModal" class="confirm-modal" aria-hidden="true">
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="extractorMigrationTitle" aria-describedby="extractorMigrationMessage">
+    <h3 id="extractorMigrationTitle">Compatibility Update Needed</h3>
+    <p id="extractorMigrationMessage"></p>
+    <label class="confirm-checkbox">
+      <input id="extractorMigrationDontAsk" type="checkbox">
+      <span>Don't ask again; update automatically in the future</span>
+    </label>
+    <div class="actions">
+      <button id="extractorMigrationCancel" type="button">Cancel</button>
+      <button id="extractorMigrationSkip" type="button">Launch Without Updating</button>
+      <button id="extractorMigrationUpdate" type="button" data-variant="replace">Update and Launch</button>
+    </div>
+  </div>
+</div>
 <div id="saveImportModal" class="confirm-modal" aria-hidden="true">
   <div class="confirm-dialog save-import-dialog" role="dialog" aria-modal="true" aria-labelledby="saveImportTitle" aria-describedby="saveImportSummary">
     <h3 id="saveImportTitle">Import Save Data</h3>
@@ -333,6 +348,7 @@
           <button id="uploadGameEditImage" type="button">Choose Image</button>
           <button id="removeGameEditImage" type="button">Remove</button>
           <button id="saveGameEditChanges" type="button" data-role="save">Save Changes</button>
+          <button id="exportGameRevertChanges" type="button">Export (Revert)</button>
         </div>
       </div>
     </div>
@@ -383,31 +399,6 @@
     </div>
   </div>
 </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <div id="autoImportModal" class="confirm-modal" aria-hidden="true">
   <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="autoImportTitle">
     <h3 id="autoImportTitle">Auto-Importing Bundles</h3>
@@ -444,6 +435,7 @@
 <script src="./src/network/host.js"></script>
 <script src="./src/import/zip.js"></script>
 <script src="./src/import/conflicts.js"></script>
+<script src="./src/import/reversal.js"></script>
 <script src="./src/import/bundle.js"></script>
 <script src="./src/launch/player.js"></script>
 <script src="./src/launch/launcher.js"></script>

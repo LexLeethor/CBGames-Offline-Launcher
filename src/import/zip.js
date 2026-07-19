@@ -342,6 +342,30 @@ function replaceBrReferencesInText(text, brMap) {
     return out;
   }
 
+function addReplacementRecord(replacements, original, transformed) {
+    if (!original || !transformed || original === transformed) {
+      return;
+    }
+    if (replacements.some((item) => item.original === original && item.transformed === transformed)) {
+      return;
+    }
+    replacements.push({ original, transformed });
+  }
+
+function replaceBrReferencesInTextWithRecords(text, brMap, replacements) {
+    if (!text || !brMap || !brMap.size) {
+      return text;
+    }
+    let out = text;
+    for (const [brPath, decodedPath] of brMap.entries()) {
+      if (out.includes(brPath)) {
+        out = out.split(brPath).join(decodedPath);
+        addReplacementRecord(replacements, brPath, decodedPath);
+      }
+    }
+    return out;
+  }
+
 function stripGenericBrotliSuffixes(text) {
     if (!text) {
       return text;
@@ -355,6 +379,156 @@ function stripGenericBrotliSuffixes(text) {
       .replace(/\.cjs\.br\b/gi, ".cjs")
       .replace(/\.css\.br\b/gi, ".css")
       .replace(/\.json\.br\b/gi, ".json");
+  }
+
+function stripGenericBrotliSuffixesWithRecords(text, replacements) {
+    if (!text) {
+      return text;
+    }
+    const patterns = [
+      [/\.data\.br\b/gi, ".data"],
+      [/\.wasm\.br\b/gi, ".wasm"],
+      [/\.framework\.js\.br\b/gi, ".framework.js"],
+      [/\.js\.br\b/gi, ".js"],
+      [/\.mjs\.br\b/gi, ".mjs"],
+      [/\.cjs\.br\b/gi, ".cjs"],
+      [/\.css\.br\b/gi, ".css"],
+      [/\.json\.br\b/gi, ".json"]
+    ];
+    let out = text;
+    for (const [pattern, replacement] of patterns) {
+      out = out.replace(pattern, (match) => {
+        addReplacementRecord(replacements, match, replacement);
+        return replacement;
+      });
+    }
+    return out;
+  }
+
+function replaceBrUrlsInObjectWithRecords(value, brMap, replacements) {
+    if (!value) {
+      return value;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (/\.br$/i.test(trimmed)) {
+        const decoded = trimmed.replace(/\.br$/i, "");
+        if (!brMap || !brMap.size || brMap.has(decoded)) {
+          addReplacementRecord(replacements, value, decoded);
+          return decoded;
+        }
+      }
+      return value;
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => replaceBrUrlsInObjectWithRecords(item, brMap, replacements));
+    }
+    if (typeof value === "object") {
+      const next = {};
+      for (const [key, entry] of Object.entries(value)) {
+        next[key] = replaceBrUrlsInObjectWithRecords(entry, brMap, replacements);
+      }
+      return next;
+    }
+    return value;
+  }
+
+function pushJsonRewriteTransformation(transformations, replacements, source) {
+    if (!replacements.length) {
+      return;
+    }
+    const existing = transformations.find((item) => item.type === "json_rewrite");
+    if (existing) {
+      existing.replacements = existing.replacements || [];
+      for (const replacement of replacements) {
+        addReplacementRecord(existing.replacements, replacement.original, replacement.transformed);
+      }
+      if (source) {
+        existing.sources = Array.isArray(existing.sources) ? existing.sources : [];
+        if (!existing.sources.includes(source)) {
+          existing.sources.push(source);
+        }
+      }
+      return;
+    }
+    transformations.push({
+      version: 1,
+      type: "json_rewrite",
+      source,
+      replacements: replacements.slice()
+    });
+  }
+
+function buildBrotliDecodedPathSetFromRecords(records) {
+    const decodedPaths = new Set();
+    for (const record of Array.isArray(records) ? records : []) {
+      const path = normalizePath(record && record.path ? record.path : "");
+      if (path) {
+        decodedPaths.add(path);
+      }
+      const transformations = Array.isArray(record && record.transformations) ? record.transformations : [];
+      for (const transform of transformations) {
+        const replacements = Array.isArray(transform && transform.replacements) ? transform.replacements : [];
+        for (const replacement of replacements) {
+          const transformed = normalizePath(replacement && replacement.transformed ? replacement.transformed : "");
+          if (transformed) {
+            decodedPaths.add(transformed);
+          }
+        }
+      }
+    }
+    return decodedPaths;
+  }
+
+function applyCurrentExtractorTransformations(path, bytes, context) {
+    let entryBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+    const transformations = [];
+    const decodedPaths = context && context.brotliDecodedPaths instanceof Set
+      ? context.brotliDecodedPaths
+      : new Set();
+    const replacementMap = context && context.brotliReplacementMap instanceof Map
+      ? context.brotliReplacementMap
+      : buildBrotliReplacementMap(decodedPaths);
+    const normalizedPath = normalizePath(path || "");
+    const isTextFile = /\.(?:html?|js|mjs|cjs|css|json)$/i.test(normalizedPath);
+
+    if (replacementMap.size && isTextFile) {
+      try {
+        const originalText = decodeUtf8(entryBytes);
+        const replacements = [];
+        const replacedText = stripGenericBrotliSuffixesWithRecords(
+          replaceBrReferencesInTextWithRecords(originalText, replacementMap, replacements),
+          replacements
+        );
+        if (replacedText !== originalText) {
+          entryBytes = new TextEncoder().encode(replacedText);
+          pushJsonRewriteTransformation(transformations, replacements, "text_brotli_reference");
+        }
+      } catch {
+        // ignore decode failures
+      }
+    }
+
+    if (decodedPaths.size && /\.json$/i.test(normalizedPath)) {
+      try {
+        const jsonText = decodeUtf8(entryBytes);
+        const jsonValue = JSON.parse(jsonText);
+        const replacements = [];
+        const rewritten = replaceBrUrlsInObjectWithRecords(jsonValue, decodedPaths, replacements);
+        const rewrittenText = JSON.stringify(rewritten);
+        if (rewrittenText !== jsonText) {
+          entryBytes = new TextEncoder().encode(rewrittenText);
+          pushJsonRewriteTransformation(transformations, replacements, "json_brotli_url");
+        }
+      } catch {
+        // ignore JSON rewrite failures
+      }
+    }
+
+    return {
+      bytes: entryBytes,
+      transformations: transformations.length ? transformations : undefined
+    };
   }
 
 async function extractEntryBytes(zip, entry) {
@@ -605,6 +779,7 @@ async function importZipFile(file, options) {
         name: preservedName,
         zipName: file.name,
         importedAt: Date.now(),
+        extractorVersion: CURRENT_EXTRACTOR_VERSION,
         sortOrder: Number.isFinite(preservedSortOrder) ? preservedSortOrder : getNextSortOrder(),
         fileCount: processedEntries.length,
         totalBytes: 0,
@@ -625,40 +800,12 @@ async function importZipFile(file, options) {
       setWorkProgress("Importing game files", 0, processedEntries.length);
 
       for (const entry of processedEntries) {
-        let entryBytes = entry.bytes;
-        const transformations = [];
-        const isTextFile = /\.(?:html?|js|mjs|cjs|css|json)$/i.test(entry.path);
-        
-        if (brotliReplacementMap.size && isTextFile) {
-          try {
-            const originalText = decodeUtf8(entryBytes);
-            const replacedText = stripGenericBrotliSuffixes(
-              replaceBrReferencesInText(originalText, brotliReplacementMap)
-            );
-            if (replacedText !== originalText) {
-              entryBytes = new TextEncoder().encode(replacedText);
-              transformations.push({ version: 1, type: 'json_rewrite' });
-            }
-          } catch {
-            // ignore decode failures
-          }
-        }
-        if (brotliDecodedPaths.size && /\.json$/i.test(entry.path)) {
-          try {
-            const jsonText = decodeUtf8(entryBytes);
-            const jsonValue = JSON.parse(jsonText);
-            const rewritten = replaceBrUrlsInObject(jsonValue, brotliDecodedPaths);
-            const rewrittenText = JSON.stringify(rewritten);
-            if (rewrittenText !== jsonText) {
-              entryBytes = new TextEncoder().encode(rewrittenText);
-              if (!transformations.find(t => t.type === 'json_rewrite')) {
-                transformations.push({ version: 1, type: 'json_rewrite' });
-              }
-            }
-          } catch {
-            // ignore JSON rewrite failures
-          }
-        }
+        const transformed = applyCurrentExtractorTransformations(entry.path, entry.bytes, {
+          brotliDecodedPaths,
+          brotliReplacementMap
+        });
+        const entryBytes = transformed.bytes;
+        const transformations = transformed.transformations;
 
         const blob = new Blob([entryBytes], { type: mimeFromPath(entry.path) });
         totalBytes += blob.size;
@@ -669,7 +816,7 @@ async function importZipFile(file, options) {
           size: blob.size,
           type: blob.type,
           blob,
-          transformations: transformations.length > 0 ? transformations : undefined
+          transformations
         });
 
         if (!gameRecord.unityDetected && /\.html?$/i.test(entry.path)) {

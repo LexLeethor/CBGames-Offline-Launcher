@@ -144,6 +144,34 @@ function askUpdateInstallDecision(gameName, sourceLabel, progressLabel) {
     });
   }
 
+function closeExtractorMigrationModal() {
+    extractorMigrationModal.classList.remove("open");
+    extractorMigrationModal.setAttribute("aria-hidden", "true");
+    const resolver = state.extractorMigrationResolver;
+    state.extractorMigrationResolver = null;
+    return resolver;
+  }
+
+function askExtractorMigrationDecision(game, analysis, fromVersion, currentVersion) {
+    return new Promise((resolve) => {
+      const name = game && game.name ? String(game.name) : "Selected game";
+      const filesChanged = Number(analysis && analysis.filesChanged) || 0;
+      const filesChecked = Number(analysis && analysis.filesChecked) || 0;
+      const storedSize = formatBytes(Number(analysis && analysis.totalBytes) || 0);
+      extractorMigrationMessage.textContent =
+        "\"" + name + "\" was updated from launcher v" + fromVersion +
+        ", and the current launcher is v" + currentVersion + ".\n\n" +
+        filesChanged + "/" + filesChecked + " saved files need to be updated before launch. " +
+        "The launcher can update the stored copy now, or launch the current stored files unchanged.\n\n" +
+        "Stored size after update: " + storedSize + ".";
+      extractorMigrationDontAsk.checked = false;
+      state.extractorMigrationResolver = resolve;
+      extractorMigrationModal.classList.add("open");
+      extractorMigrationModal.setAttribute("aria-hidden", "false");
+      extractorMigrationUpdateButton.focus();
+    });
+  }
+
 function closeBundlePreviewModal() {
     bundlePreviewModal.classList.remove("open");
     bundlePreviewModal.setAttribute("aria-hidden", "true");

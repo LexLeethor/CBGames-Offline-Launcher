@@ -315,6 +315,13 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       }
       return;
     }
+    if (event.key === "Escape" && extractorMigrationModal.classList.contains("open")) {
+      const resolver = closeExtractorMigrationModal();
+      if (resolver) {
+        resolver({ action: "cancel", dontAsk: false });
+      }
+      return;
+    }
     if (event.key === "Escape" && opsModal.classList.contains("open")) {
       hideOpsModal(false);
       return;
@@ -354,6 +361,19 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     } catch (error) {
       console.error(error);
       log("Could not save changes.", "error");
+    }
+  });
+  exportGameRevertChangesButton.addEventListener("click", async () => {
+    try {
+      const game = state.gameEditEditor.gameId ? state.gamesById.get(state.gameEditEditor.gameId) : null;
+      if (!game) {
+        log("No game selected.", "error");
+        return;
+      }
+      await downloadGameWithTransformationsReverted(game);
+    } catch (error) {
+      console.error(error);
+      log("Could not export game with reverted changes.", "error");
     }
   });
   removeGameEditImageButton.addEventListener("click", async () => {
@@ -451,6 +471,25 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       resolver("stop");
     }
   });
+  extractorMigrationUpdateButton.addEventListener("click", () => {
+    const dontAsk = Boolean(extractorMigrationDontAsk && extractorMigrationDontAsk.checked);
+    const resolver = closeExtractorMigrationModal();
+    if (resolver) {
+      resolver({ action: "update", dontAsk });
+    }
+  });
+  extractorMigrationSkipButton.addEventListener("click", () => {
+    const resolver = closeExtractorMigrationModal();
+    if (resolver) {
+      resolver({ action: "skip", dontAsk: false });
+    }
+  });
+  extractorMigrationCancelButton.addEventListener("click", () => {
+    const resolver = closeExtractorMigrationModal();
+    if (resolver) {
+      resolver({ action: "cancel", dontAsk: false });
+    }
+  });
   importConflictModal.addEventListener("click", (event) => {
     if (event.target === importConflictModal) {
       const resolver = closeImportConflictModal();
@@ -477,6 +516,14 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       const resolver = closeUpdatePromptModal();
       if (resolver) {
         resolver("skip");
+      }
+    }
+  });
+  extractorMigrationModal.addEventListener("click", (event) => {
+    if (event.target === extractorMigrationModal) {
+      const resolver = closeExtractorMigrationModal();
+      if (resolver) {
+        resolver({ action: "cancel", dontAsk: false });
       }
     }
   });

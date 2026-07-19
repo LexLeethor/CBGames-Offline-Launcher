@@ -7,6 +7,7 @@ const STORE_FILES = "files";
 const STORE_SETTINGS = "settings";
 const STORE_ERROR_LOGS = "errorLogs";
 const SETTING_SELECTED_GAME = "selectedGameId";
+const SETTING_AUTO_MIGRATE_EXTRACTOR = "autoMigrateExtractor";
 
 const VFS_ORIGIN = "https://loader.invalid/";
 const VFS_ORIGIN_URL = new URL(VFS_ORIGIN).origin;
@@ -16,6 +17,7 @@ const UNITY_CLAMP_DEVICE_PIXEL_RATIO = 1;
 
 const BADGE_RESCAN_SECRET_PARAM = "__cbgames_rebadge";
 const NETWORK_TRANSFER_DEFAULT_HOST_URL = "http://localhost:8941";
+const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "true";
 
 const reorderAnimations = new WeakMap();
 
@@ -59,6 +61,7 @@ const state = {
   githubImportResolver: null,
   replaceTargetSelectedId: "",
   updatePromptResolver: null,
+  extractorMigrationResolver: null,
   bundlePreviewResolver: null,
   bundlePreviewDraft: null,
   saveImportDraft: null,

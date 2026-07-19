@@ -1,3 +1,15 @@
+name: Build Launcher Bundles
+
+on:
+  push:
+    branches: ["main", "master"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version string (e.g., 1.3.2)'
+        required: true
+        default: '1.0.0'
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,8 +24,24 @@ jobs:
           ref: ${{ github.ref_name }}
           github_server_url: 'https://git.tail39ec93.ts.net/'
 
+      - name: Update Extractor Version
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION_INPUT="${{ github.event.inputs.version }}"
+          VERSION_CLEAN=$(echo "$VERSION_INPUT" | tr -d '.')
+          echo "Updating CURRENT_EXTRACTOR_VERSION to $VERSION_CLEAN"
+          sed -i "s/const CURRENT_EXTRACTOR_VERSION = [0-9]\+;/const CURRENT_EXTRACTOR_VERSION = ${VERSION_CLEAN};/" src/launch/launcher.js
+
       - name: Build debug bundle
-        if: github.event_name == 'push'
         run: node scripts/build_bundle.mjs --out dist/index.debug.html
 
-      ...
+      - name: Build release bundle
+        run: node scripts/build_bundle.mjs --minify --out dist/index.html
+
+      - name: Upload Bundles
+        uses: https://git.tail39ec93.ts.net/lex/upload-artifact@v4
+        with:
+          name: launcher-bundles
+          path: |
+            dist/index.debug.html
+            dist/index.html

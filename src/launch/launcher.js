@@ -68,21 +68,189 @@ function requestToObjectUrl(rawValue, baseHref) {
   // Expose the resolver for the player window bridge.
   window.__loaderResolve = requestToObjectUrl;
 
-const CURRENT_EXTRACTOR_VERSION = 1;
+const CURRENT_EXTRACTOR_VERSION = 7;
 
-async function checkAndMigrateGameIfNeeded(game) {
-    if (!game || typeof game.extractorVersion === "undefined") {
-      game.extractorVersion = 1;
+function bytesEqual(a, b) {
+    if (a === b) {
+      return true;
+    }
+    if (!a || !b || a.byteLength !== b.byteLength) {
       return false;
     }
-    if (game.extractorVersion >= CURRENT_EXTRACTOR_VERSION) {
+    for (let i = 0; i < a.byteLength; i += 1) {
+      if (a[i] !== b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+function transformationsEqual(a, b) {
+    const left = Array.isArray(a) && a.length ? a : undefined;
+    const right = Array.isArray(b) && b.length ? b : undefined;
+    return JSON.stringify(left || null) === JSON.stringify(right || null);
+  }
+
+function getGameExtractorVersion(game) {
+    const rawVersion = Number(game && game.extractorVersion);
+    return Number.isFinite(rawVersion) && rawVersion > 0 ? rawVersion : 1;
+  }
+
+async function migrateStoredGameToCurrentExtractor(game, fromVersion) {
+    const analysis = await analyzeStoredGameMigration(game);
+    return applyStoredGameMigrationPlan(game, fromVersion, analysis);
+  }
+
+async function analyzeStoredGameMigration(game) {
+    const files = await getAllFilesForGame(game.id);
+    if (!files.length) {
+      return {
+        files,
+        updates: [],
+        paths: [],
+        filesChanged: 0,
+        filesChecked: 0,
+        totalBytes: 0
+      };
+    }
+
+    const brotliDecodedPaths = buildBrotliDecodedPathSetFromRecords(files);
+    const brotliReplacementMap = buildBrotliReplacementMap(brotliDecodedPaths);
+    const paths = files.map((file) => normalizePath(file.path || "")).filter(Boolean);
+    const updates = [];
+    let totalBytes = 0;
+
+    for (const file of files) {
+      const rawBytes = new Uint8Array(await file.blob.arrayBuffer());
+      const sourceBytes = reverseFileTransformations(rawBytes, file.transformations);
+      const transformed = applyCurrentExtractorTransformations(file.path, sourceBytes, {
+        brotliDecodedPaths,
+        brotliReplacementMap
+      });
+      const nextBytes = transformed.bytes;
+      const type = file.type || mimeFromPath(file.path);
+      const blob = new Blob([nextBytes], { type });
+      totalBytes += blob.size;
+
+      const bytesChanged = !bytesEqual(rawBytes, nextBytes);
+      const metadataChanged = !transformationsEqual(file.transformations, transformed.transformations);
+      if (!bytesChanged && !metadataChanged && Number(file.size) === blob.size && file.type === blob.type) {
+        continue;
+      }
+
+      updates.push({
+        file,
+        blob,
+        transformations: transformed.transformations,
+        contentChanged: bytesChanged
+      });
+    }
+
+    return {
+      files,
+      updates,
+      paths,
+      filesChanged: updates.length,
+      contentFilesChanged: updates.filter((update) => update.contentChanged).length,
+      filesChecked: files.length,
+      totalBytes
+    };
+  }
+
+async function applyStoredGameMigrationPlan(game, fromVersion, analysis) {
+    const plan = analysis || await analyzeStoredGameMigration(game);
+    for (const update of plan.updates) {
+      const file = update.file;
+      await putFileRecord({
+        ...file,
+        size: update.blob.size,
+        type: update.blob.type,
+        blob: update.blob,
+        transformations: update.transformations
+      });
+    }
+
+    const htmlEntries = plan.paths.filter((path) => /\.html?$/i.test(path)).sort((a, b) => a.localeCompare(b));
+    game.extractorVersion = CURRENT_EXTRACTOR_VERSION;
+    game.fileCount = plan.files.length;
+    game.totalBytes = plan.totalBytes;
+    game.htmlEntries = htmlEntries;
+    game.entryPath = chooseBestEntryPath(htmlEntries, game.entryPath || "");
+    game.unityDetected = Boolean(game.unityDetected) || detectUnityByPaths(plan.paths);
+    game.flashDetected = typeof game.flashDetected === "boolean"
+      ? game.flashDetected
+      : detectFlashByPaths(plan.paths);
+    game.migratedAt = Date.now();
+    game.migratedFromExtractorVersion = fromVersion;
+
+    await putGame(game);
+    state.gamesById.set(game.id, game);
+    updateSelectedGameInfo(game);
+    return {
+      filesChanged: plan.filesChanged,
+      contentFilesChanged: plan.contentFilesChanged,
+      filesChecked: plan.filesChecked,
+      totalBytes: plan.totalBytes
+    };
+  }
+
+async function checkAndMigrateGameIfNeeded(game) {
+    if (!game) {
+      return false;
+    }
+    const fromVersion = getGameExtractorVersion(game);
+    if (typeof game.extractorVersion === "undefined") {
+      log(`Game "${game.name}" has no extractor version; treating it as extractor v${fromVersion}.`);
+    }
+    if (fromVersion >= CURRENT_EXTRACTOR_VERSION) {
       return false;
     }
     
-    log(`Game "${game.name}" was imported with extractor v${game.extractorVersion}, current is v${CURRENT_EXTRACTOR_VERSION}.`);
-    log("Migration needed — consider re-importing this game for compatibility.");
-    // Future: implement actual re-processing logic here
-    return true;
+    log(`Game "${game.name}" was imported with extractor v${fromVersion}, current is v${CURRENT_EXTRACTOR_VERSION}.`);
+    log("Checking whether stored files need a compatibility update...");
+    try {
+      const analysis = await analyzeStoredGameMigration(game);
+      if (!analysis.filesChanged && !DEBUG_MODE) {
+        const result = await applyStoredGameMigrationPlan(game, fromVersion, analysis);
+        log(`No file changes needed for "${game.name}". Marked as extractor v${CURRENT_EXTRACTOR_VERSION}.`);
+        return result;
+      }
+
+      const autoMigrate = Boolean(await getSetting(SETTING_AUTO_MIGRATE_EXTRACTOR));
+      let decision = { action: "update", dontAsk: false };
+      if (!autoMigrate) {
+        decision = await askExtractorMigrationDecision(game, analysis, fromVersion, CURRENT_EXTRACTOR_VERSION);
+      }
+      if (!decision || decision.action === "cancel") {
+        log(`Compatibility update canceled for "${game.name}".`);
+        return "cancel";
+      }
+      if (decision.action === "skip") {
+        log(`Launching "${game.name}" without compatibility update.`);
+        return false;
+      }
+      if (decision.dontAsk) {
+        await putSetting(SETTING_AUTO_MIGRATE_EXTRACTOR, true);
+        log("Future extractor compatibility updates will run automatically.");
+      }
+      log("Re-processing stored files with the current extractor...");
+      const result = await applyStoredGameMigrationPlan(game, fromVersion, analysis);
+      log(
+        `Migration complete for "${game.name}": ` +
+        `${result.filesChanged}/${result.filesChecked} files updated, ` +
+        `${formatBytes(result.totalBytes)} stored.`
+      );
+      return result;
+    } catch (error) {
+      console.error(error);
+      log(
+        `Migration failed for "${game.name}": ` +
+        (error.message || String(error)) +
+        ". Launching with existing stored files.",
+        "error"
+      );
+      return false;
+    }
   }
 
 async function launchSelectedGame() {
@@ -93,7 +261,10 @@ async function launchSelectedGame() {
       return;
     }
 
-    await checkAndMigrateGameIfNeeded(game);
+    const migrationResult = await checkAndMigrateGameIfNeeded(game);
+    if (migrationResult === "cancel") {
+      return;
+    }
 
     const chosenEntry = entrySelect.value || game.entryPath || chooseBestEntryPath(game.htmlEntries || [], "");
     if (!chosenEntry) {

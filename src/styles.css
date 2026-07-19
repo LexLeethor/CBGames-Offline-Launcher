@@ -897,7 +897,8 @@
     color: #d6d6d6;
     line-height: 1.45;
   }
-  #updatePromptMessage {
+  #updatePromptMessage,
+  #extractorMigrationMessage {
     white-space: pre-line;
   }
   .confirm-dialog .actions {
@@ -909,6 +910,17 @@
   .confirm-dialog .actions button[data-variant="replace"] {
     background: #28333a;
     border-color: #435865;
+  }
+  .confirm-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    color: #dddddd;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+  .confirm-checkbox input[type="checkbox"] {
+    margin-top: 2px;
   }
   .docs-launch {
     width: 100%;
