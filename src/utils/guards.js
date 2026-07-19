@@ -89,6 +89,12 @@ function detectFlashByPaths(paths) {
   }
 
 function detectSharedArrayBufferUsage(processedEntries) {
+    // Skip SharedArrayBuffer detection for Unity games, which may still use
+    // this token in build artifacts but work with the offline launcher.
+    if (detectUnityByPaths((processedEntries || []).map((entry) => entry.path))) {
+      return false;
+    }
+
     // Scan JavaScript and HTML files for SharedArrayBuffer usage
     const sharedArrayBufferPattern = /\bSharedArrayBuffer\b/;
     for (const entry of processedEntries || []) {
