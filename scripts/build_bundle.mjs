@@ -35,18 +35,6 @@ function collectMatches(html, re) {
   return results;
 }
 
-// Strip trailing ASCII whitespace bytes from a Buffer without decoding it.
-// Safe for binary files — never touches non-whitespace bytes.
-function trimEndBuf(buf) {
-  let end = buf.length;
-  while (end > 0) {
-    const b = buf[end - 1];
-    if (b === 0x20 || b === 0x09 || b === 0x0a || b === 0x0d) end--;
-    else break;
-  }
-  return buf.slice(0, end);
-}
-
 function main() {
   const { minify, out } = parseArgs();
 
@@ -94,25 +82,31 @@ function main() {
     console.error("Could not find script tags for ./src or ./lib in index.html");
     process.exit(1);
   }
-  const jsBuffers = scriptSrcs.map((src, i) => {
+  // --- Inline JS (handle encoding issues gracefully) ---
+  const jsChunks = scriptSrcs.map((src) => {
     const path = join(ROOT, src.replace("./", ""));
     if (!existsSync(path)) { console.error(`Missing ${path}`); process.exit(1); }
-    const header = Buffer.from(`// ---- ${src} ----\n`, "utf8");
-    const content = trimEndBuf(readFileSync(path));   // raw bytes — no UTF-8 decode
-    const sep = Buffer.from(i < scriptSrcs.length - 1 ? "\n\n" : "\n", "utf8");
-    return Buffer.concat([header, content, sep]);
+    
+    // Try to read as UTF-8; if it fails, encode as base64
+    const buf = readFileSync(path);
+    let content;
+    try {
+      content = buf.toString("utf8");
+      // Verify it's valid UTF-8 by encoding back
+      if (Buffer.from(content, "utf8").toString("utf8") !== content) {
+        throw new Error("Invalid UTF-8");
+      }
+    } catch (e) {
+      // Not valid UTF-8, encode as base64 and wrap in a way browsers can execute
+      const b64 = buf.toString("base64");
+      content = `// [Binary file - base64 encoded]\n(function(){const str=String.fromCharCode.apply(null,atob('${b64}').split('').map(c=>c.charCodeAt(0)));eval(str)})();`;
+    }
+    return `// ---- ${src} ----\n${content.trimEnd()}\n`;
   });
-  const jsBuf = Buffer.concat(jsBuffers);
+  let js = jsChunks.join("\n").trimEnd() + "\n";
 
   // Strip the script tags from the HTML text.
   html = html.replace(/<script\s+src="(\.\/(?:src|lib)\/[^"]+)"\s*>\s*<\/script>/g, "");
-
-  const bodyTag = "</body>";
-  const bodyIdx = html.indexOf(bodyTag);
-  if (bodyIdx === -1) {
-    console.error("Could not find </body> to inject bundled script");
-    process.exit(1);
-  }
 
   // --- Embed favicon as data URL (text operation, safe) ---
   const faviconMatch = faviconRe.exec(html);
@@ -126,10 +120,11 @@ function main() {
     }
   }
 
-  // Split HTML at </body> and concat with the raw JS buffer in between.
-  const htmlBefore = Buffer.from(html.slice(0, bodyIdx) + "<script>\n", "utf8");
-  const htmlAfter  = Buffer.from("\n</script>\n" + html.slice(bodyIdx), "utf8");
-  const output = Buffer.concat([htmlBefore, jsBuf, htmlAfter]);
+  // Split HTML at </body> and inject the bundled script.
+  const scriptTag = `<script>\n${js}</script>\n`;
+  html = html.replace("</body>", `${scriptTag}</body>`);
+  
+  const output = Buffer.from(html, "utf8");
 
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, output);

@@ -30,7 +30,7 @@ jobs:
         run: node scripts/build_bundle.mjs --out dist/index.debug.html
 
       - name: Run launcher autotest
-        run: node playwright-launcher-test.mjs
+        run: node scripts/playwright-launcher-test.mjs
         env:
           CI: "1"
           HEADLESS: "1"

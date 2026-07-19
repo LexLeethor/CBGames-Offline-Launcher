@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "test": "node playwright-launcher-test.mjs",
+    "test": "node scripts/playwright-launcher-test.mjs",
     "build": "node scripts/build_bundle.mjs",
     "build:min": "node scripts/build_bundle.mjs --minify"
   },

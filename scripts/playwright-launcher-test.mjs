@@ -2,7 +2,7 @@
  * Playwright automated test for CBGames-Offline-Launcher
  *
  * Flow:
- *   1. Resolve the game ZIP (committed fixture or freshly built from dev tree)
+ *   1. Load the committed game ZIP fixture
  *   2. Open the launcher (file://)
  *   3. Import the ZIP via the hidden #zipInput file input
  *   4. Click Play on the imported game card
@@ -14,15 +14,9 @@
  *   node playwright-launcher-test.mjs
  *   PAUSE_MS=5000 node playwright-launcher-test.mjs   # keep browser open longer
  *   HEADLESS=1 node playwright-launcher-test.mjs      # run headless (CI default)
- *
- * ZIP resolution order:
- *   1. TEST_GAME_ZIP env var (explicit override / CI)
- *   2. test-fixtures/webgl-test-game.zip  (committed fixture, used when build dir absent)
- *   3. Freshly built from the UnityWebGL-Test dev tree via create-test-zip.py
  */
 
 import { chromium } from 'playwright';
-import { execSync } from 'child_process';
 import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -35,10 +29,7 @@ const LAUNCHER_PATH  = process.env.CI
   ? path.join(__dirname, 'dist', 'index.debug.html')
   : path.join(__dirname, 'index.html');
 const LAUNCHER_URL   = 'file://' + LAUNCHER_PATH;
-const FIXTURE_ZIP    = path.join(__dirname, 'test-fixtures', 'webgl-test-game.zip');
-const CREATE_ZIP_PY  = path.join(__dirname, 'create-test-zip.py');
-const BUILD_DIR      = '/home/lex/Documents/Test/UnityWebGL-Test/Builds/WebGL/local';
-const TMP_ZIP        = '/tmp/webgl-test-game.zip';
+const FIXTURE_ZIP    = path.join(__dirname, '../test-fixtures', 'webgl-test-game.zip');
 
 const AUTOTEST_TIMEOUT_MS = 10 * 60 * 1000;
 const PAUSE_MS  = parseInt(process.env.PAUSE_MS ?? (process.env.CI ? '0' : '3000'), 10);
@@ -48,21 +39,11 @@ const HEADLESS  = process.env.HEADLESS === '1' || Boolean(process.env.CI);
 // ZIP resolution
 // ---------------------------------------------------------------------------
 function resolveZipPath() {
-  if (process.env.TEST_GAME_ZIP) {
-    console.log(`[setup] Using TEST_GAME_ZIP: ${process.env.TEST_GAME_ZIP}`);
-    return process.env.TEST_GAME_ZIP;
+  if (!existsSync(FIXTURE_ZIP)) {
+    throw new Error(`Test fixture not found at ${FIXTURE_ZIP}`);
   }
-  if (!existsSync(BUILD_DIR)) {
-    if (!existsSync(FIXTURE_ZIP)) {
-      throw new Error(`No game ZIP available: build dir missing and fixture not found at ${FIXTURE_ZIP}`);
-    }
-    console.log(`[setup] Build dir not found — using committed fixture: ${FIXTURE_ZIP}`);
-    return FIXTURE_ZIP;
-  }
-  // Dev tree present — build a fresh ZIP
-  console.log('[setup] Building fresh game ZIP from dev tree...');
-  execSync(`python3 ${CREATE_ZIP_PY} ${TMP_ZIP}`, { stdio: 'inherit' });
-  return TMP_ZIP;
+  console.log(`[setup] Using committed test fixture: ${FIXTURE_ZIP}`);
+  return FIXTURE_ZIP;
 }
 
 // ---------------------------------------------------------------------------
