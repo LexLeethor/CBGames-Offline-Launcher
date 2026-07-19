@@ -54,7 +54,7 @@ async function main() {
 
 const browser = await chromium.launch({
   headless: HEADLESS,
-  args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'],
   executablePath: '/root/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell',
 });
 
@@ -63,9 +63,12 @@ const browser = await chromium.launch({
 
   page.on('console', msg => {
     const t = msg.text();
-    if (t.startsWith('[runner]') || t.includes('[AUTOTEST]')) {
-      console.log(`  [launcher] ${t}`);
-    }
+    const type = msg.type();
+    console.log(`  [browser:${type}] ${t}`);
+  });
+
+  page.on('pageerror', err => {
+    console.error(`  [browser:pageerror] ${err.message}`);
   });
 
   // ---------------------------------------------------------------------------
@@ -92,7 +95,23 @@ const browser = await chromium.launch({
     // Modal didn't appear (e.g. game already existed and was replaced) — that's fine
   }
 
-  await page.waitForSelector('[data-action="launch"]', { timeout: 30_000 });
+  console.log('[runner] Waiting for [data-action="launch"] selector...');
+  
+  // Race between the success state and error modals
+  const result = await Promise.race([
+    page.waitForSelector('[data-action="launch"]', { timeout: 30_000 }).then(() => 'success'),
+    page.waitForSelector('#wrongZipTypeModal.open', { timeout: 30_000 }).then(() => 'error-modal'),
+    page.waitForSelector('.error', { timeout: 30_000 }).then(() => 'log-error')
+  ]);
+
+  if (result !== 'success') {
+    if (result === 'error-modal') {
+      const msg = await page.$eval('#wrongZipTypeMessage', el => el.textContent);
+      throw new Error(`Import failed with Wrong ZIP Type modal: ${msg}`);
+    }
+    throw new Error(`Import failed or timed out (result: ${result})`);
+  }
+
   console.log('[runner] Game imported — card visible in library.');
 
   // ---------------------------------------------------------------------------
@@ -195,4 +214,7 @@ const browser = await chromium.launch({
   await browser.close();
 }
 
-main().then(() => process.exit(process.exitCode ?? 0));
+main().catch(err => {
+  console.error('[runner] FATAL ERROR:', err);
+  process.exit(1);
+}).then(() => process.exit(process.exitCode ?? 0));
