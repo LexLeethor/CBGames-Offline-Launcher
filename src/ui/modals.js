@@ -65,11 +65,11 @@ function openSaveImportModal(parsed) {
   saveImportConfirmButton.focus();
 }
 
-function closeImportConflictModal() {
-    importConflictModal.classList.remove("open");
-    importConflictModal.setAttribute("aria-hidden", "true");
-    const resolver = state.importConflictResolver;
-    state.importConflictResolver = null;
+function closeGenericChoiceModal() {
+    genericChoiceModal.classList.remove("open");
+    genericChoiceModal.setAttribute("aria-hidden", "true");
+    const resolver = state.genericChoiceResolver;
+    state.genericChoiceResolver = null;
     return resolver;
   }
 
@@ -77,14 +77,31 @@ function askImportConflictDecision(existingGame, incomingFileName) {
     return new Promise((resolve) => {
       const existingName = existingGame && existingGame.name ? String(existingGame.name) : "this game";
       const incoming = String(incomingFileName || "this ZIP");
-      importConflictMessage.textContent =
+      genericChoiceTitle.textContent = "Game Already Exists";
+      genericChoiceMessage.textContent =
         "\"" + existingName + "\" is already in your library. Do you want to replace the existing copy or import \"" +
         incoming +
         "\" as a separate game?";
-      state.importConflictResolver = resolve;
-      importConflictModal.classList.add("open");
-      importConflictModal.setAttribute("aria-hidden", "false");
-      importConflictReplaceButton.focus();
+      genericChoiceOptionAButton.textContent = "Import Separately";
+      genericChoiceOptionBButton.textContent = "Replace Contents";
+      state.genericChoiceResolver = resolve;
+      genericChoiceModal.classList.add("open");
+      genericChoiceModal.setAttribute("aria-hidden", "false");
+      genericChoiceOptionBButton.focus();
+    });
+  }
+
+function askExportDecision(game) {
+    return new Promise((resolve) => {
+      const name = game && game.name ? String(game.name) : "this game";
+      genericChoiceTitle.textContent = "Export Individual Game";
+      genericChoiceMessage.textContent = "How would you like to export \"" + name + "\"? You can export the files exactly as they are currently saved, or try to revert automatic changes made during import (like Ruffle Flash emulation).";
+      genericChoiceOptionAButton.textContent = "Standard Export";
+      genericChoiceOptionBButton.textContent = "Reverted Export";
+      state.genericChoiceResolver = resolve;
+      genericChoiceModal.classList.add("open");
+      genericChoiceModal.setAttribute("aria-hidden", "false");
+      genericChoiceOptionAButton.focus();
     });
   }
 

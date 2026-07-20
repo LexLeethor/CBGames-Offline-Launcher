@@ -675,6 +675,8 @@ async function importZipFile(file, options) {
         log("Import canceled.");
         return;
       }
+      if (importMode === "optionA") importMode = "separate";
+      if (importMode === "optionB") importMode = "replace";
     }
     if (manageUi) {
       setActionButtonsDisabled(true);

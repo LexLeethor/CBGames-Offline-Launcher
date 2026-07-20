@@ -219,6 +219,46 @@ async function downloadGameWithTransformationsReverted(game) {
     }
   }
 
+async function downloadGameStandard(game) {
+    setActionButtonsDisabled(true);
+    try {
+      if (!game) {
+        throw new Error("No game selected.");
+      }
+      setWorkProgress("Preparing game export", 0, 0);
+      log(`Exporting game "${game.name}"...`);
+      const files = await getAllFilesForGame(game.id);
+      
+      const zipEntries = [];
+      for (const file of files) {
+        const rawBytes = new Uint8Array(await file.blob.arrayBuffer());
+        zipEntries.push({
+          path: file.path,
+          bytes: rawBytes
+        });
+      }
+      
+      const bundleZip = createZipStoreArchive(zipEntries);
+      const filename = game.name.trim().replace(/[^a-z0-9]+/gi, "-").toLowerCase() + ".zip";
+      const url = URL.createObjectURL(new Blob([bundleZip], { type: "application/zip" }));
+      
+      try {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+      log(`Exported "${game.name}" to ${filename}.`);
+    } finally {
+      setActionButtonsDisabled(false);
+      clearWorkProgress();
+    }
+  }
+
 async function pickBundleFile() {
     if (window.showOpenFilePicker) {
       try {

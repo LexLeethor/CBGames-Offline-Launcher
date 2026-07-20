@@ -290,12 +290,11 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       }
       return;
     }
-    if (event.key === "Escape" && importConflictModal.classList.contains("open")) {
-      const resolver = closeImportConflictModal();
+    if (event.key === "Escape" && genericChoiceModal.classList.contains("open")) {
+      const resolver = closeGenericChoiceModal();
       if (resolver) {
         resolver("cancel");
       }
-      return;
     }
     if (event.key === "Escape" && githubImportModal.classList.contains("open")) {
       const resolver = closeGithubImportModal();
@@ -363,17 +362,23 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       log("Could not save changes.", "error");
     }
   });
-  exportGameRevertChangesButton.addEventListener("click", async () => {
+  exportSelectedGameButton.addEventListener("click", async () => {
     try {
-      const game = state.gameEditEditor.gameId ? state.gamesById.get(state.gameEditEditor.gameId) : null;
+      const gameId = state.selectedGameId;
+      const game = gameId ? state.gamesById.get(gameId) : null;
       if (!game) {
-        log("No game selected.", "error");
+        log("Select a game in the library first to export.", "error");
         return;
       }
-      await downloadGameWithTransformationsReverted(game);
+      const choice = await askExportDecision(game);
+      if (choice === "optionA") {
+        await downloadGameStandard(game);
+      } else if (choice === "optionB") {
+        await downloadGameWithTransformationsReverted(game);
+      }
     } catch (error) {
       console.error(error);
-      log("Could not export game with reverted changes.", "error");
+      log("Could not export game.", "error");
     }
   });
   removeGameEditImageButton.addEventListener("click", async () => {
@@ -385,20 +390,20 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     }
   });
 
-  importConflictReplaceButton.addEventListener("click", () => {
-    const resolver = closeImportConflictModal();
+  genericChoiceOptionBButton.addEventListener("click", () => {
+    const resolver = closeGenericChoiceModal();
     if (resolver) {
-      resolver("replace");
+      resolver("optionB");
     }
   });
-  importConflictSeparateButton.addEventListener("click", () => {
-    const resolver = closeImportConflictModal();
+  genericChoiceOptionAButton.addEventListener("click", () => {
+    const resolver = closeGenericChoiceModal();
     if (resolver) {
-      resolver("separate");
+      resolver("optionA");
     }
   });
-  importConflictCancelButton.addEventListener("click", () => {
-    const resolver = closeImportConflictModal();
+  genericChoiceCancelButton.addEventListener("click", () => {
+    const resolver = closeGenericChoiceModal();
     if (resolver) {
       resolver("cancel");
     }
@@ -490,9 +495,9 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       resolver({ action: "cancel", dontAsk: false });
     }
   });
-  importConflictModal.addEventListener("click", (event) => {
-    if (event.target === importConflictModal) {
-      const resolver = closeImportConflictModal();
+  genericChoiceModal.addEventListener("click", (event) => {
+    if (event.target === genericChoiceModal) {
+      const resolver = closeGenericChoiceModal();
       if (resolver) {
         resolver("cancel");
       }

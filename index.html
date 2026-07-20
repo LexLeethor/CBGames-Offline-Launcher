@@ -164,6 +164,18 @@
         </section>
         <section class="ops-group ops-group-fixed">
           <div class="ops-group-head">
+            <span class="ops-group-title">Export Individual Game</span>
+            <span class="ops-group-hint">Save a copy of a game</span>
+          </div>
+          <div class="ops-group-body">
+            <p>Export the selected game. You can choose to keep or revert automatic transformations.</p>
+            <div class="ops-row one">
+              <button id="exportSelectedGame" type="button">Export Game...</button>
+            </div>
+          </div>
+        </section>
+        <section class="ops-group ops-group-fixed">
+          <div class="ops-group-head">
             <span class="ops-group-title">Save Data</span>
             <span class="ops-group-hint">Export / import Unity game saves</span>
           </div>
@@ -225,14 +237,14 @@
 <input id="bundleInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 <input id="saveImportInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 <input id="gameEditImageInput" type="file" accept="image/*" hidden>
-<div id="importConflictModal" class="confirm-modal" aria-hidden="true">
-  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="importConflictTitle" aria-describedby="importConflictMessage">
-    <h3 id="importConflictTitle">Game Already Exists</h3>
-    <p id="importConflictMessage"></p>
+<div id="genericChoiceModal" class="confirm-modal" aria-hidden="true">
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="genericChoiceTitle" aria-describedby="genericChoiceMessage">
+    <h3 id="genericChoiceTitle"></h3>
+    <p id="genericChoiceMessage"></p>
     <div class="actions">
-      <button id="importConflictCancel" type="button">Cancel</button> 
-      <button id="importConflictSeparate" type="button">Import Separately</button>
-      <button id="importConflictReplace" type="button" data-variant="replace">Replace Contents</button>
+      <button id="genericChoiceCancel" type="button">Cancel</button> 
+      <button id="genericChoiceOptionA" type="button"></button>
+      <button id="genericChoiceOptionB" type="button" data-variant="replace"></button>
     </div>
   </div>
 </div>
@@ -348,7 +360,6 @@
           <button id="uploadGameEditImage" type="button">Choose Image</button>
           <button id="removeGameEditImage" type="button">Remove</button>
           <button id="saveGameEditChanges" type="button" data-role="save">Save Changes</button>
-          <button id="exportGameRevertChanges" type="button">Export (Revert)</button>
         </div>
       </div>
     </div>

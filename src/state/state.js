@@ -57,7 +57,7 @@ const state = {
     previewFrame: 0
   },
   actionInProgress: false,
-  importConflictResolver: null,
+  genericChoiceResolver: null,
   githubImportResolver: null,
   replaceTargetSelectedId: "",
   updatePromptResolver: null,
