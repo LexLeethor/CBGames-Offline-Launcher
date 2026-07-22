@@ -872,7 +872,7 @@
     display: none;
     align-items: center;
     justify-content: center;
-    z-index: 10100;
+    z-index: 10300;
     background: rgba(6, 8, 12, 0.72);
   }
   .confirm-modal.open {
@@ -926,6 +926,18 @@
     width: 100%;
     min-height: 44px;
     font-size: 14px;
+  }
+  .docs-launch-secondary {
+    margin-top: 8px;
+    min-height: 38px;
+    font-size: 13px;
+    background: #1a1a1a;
+    border-color: #333;
+    color: #d8d8d8;
+  }
+  .docs-launch-secondary:hover:not(:disabled) {
+    background: #242424;
+    color: #fff;
   }
   .docs-modal-dialog {
     width: min(96vw, 980px);
@@ -1737,3 +1749,139 @@
     color: var(--muted, #aaa);
     min-height: 14px;
   }
+
+  .tutorial-root {
+    position: fixed;
+    inset: 0;
+    z-index: 10200;
+    pointer-events: none;
+  }
+  .tutorial-root[hidden] {
+    display: none !important;
+  }
+  .tutorial-blocker {
+    position: fixed;
+    background: rgba(0, 0, 0, 0.4);
+    pointer-events: auto;
+  }
+  .tutorial-spotlight {
+    position: fixed;
+    border-radius: 16px;
+    pointer-events: none;
+    box-shadow:
+      0 0 0 3px #f5d000,
+      0 0 22px 8px rgba(245, 208, 0, 0.55);
+    animation: tutorial-glow-pulse 1.15s ease-in-out infinite;
+    transition: top 0.14s ease, left 0.14s ease, width 0.14s ease, height 0.14s ease;
+  }
+  .tutorial-note {
+    position: fixed;
+    z-index: 10240;
+    pointer-events: auto;
+    width: min(360px, calc(100vw - 24px));
+    max-height: min(72dvh, 640px);
+    overflow: auto;
+    padding: 14px 14px 12px;
+    border-radius: 14px;
+    border: 1px solid #3a3a3a;
+    background: linear-gradient(180deg, #1d1d1d 0%, #151515 100%);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+    color: #f0f0f0;
+    transition: top 0.14s ease, left 0.14s ease, transform 0.14s ease;
+  }
+  .tutorial-target-glow {
+    box-shadow:
+      0 0 0 3px #f5d000,
+      0 0 28px 10px rgba(245, 208, 0, 0.5) !important;
+    animation: tutorial-glow-pulse 1.15s ease-in-out infinite;
+  }
+  @keyframes tutorial-glow-pulse {
+    0%, 100% {
+      box-shadow:
+        0 0 0 3px #f5d000,
+        0 0 18px 6px rgba(245, 208, 0, 0.4);
+    }
+    50% {
+      box-shadow:
+        0 0 0 4px #ffe566,
+        0 0 32px 12px rgba(245, 208, 0, 0.7);
+    }
+  }
+  .tutorial-note h3 {
+    margin: 0 28px 8px 0;
+    font-size: 16px;
+    line-height: 1.3;
+  }
+  .tutorial-skip {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: auto;
+    padding: 4px 8px;
+    font-size: 11px;
+    background: transparent;
+    border: 0;
+    color: #bdbdbd;
+  }
+  .tutorial-skip:hover {
+    color: #fff;
+    background: transparent;
+  }
+  .tutorial-note-body {
+    display: grid;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #d8d8d8;
+  }
+  .tutorial-note-body p {
+    margin: 0;
+  }
+  .tutorial-note-body ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+  }
+  .tutorial-note-body li {
+    margin: 4px 0;
+  }
+  .tutorial-note-body code {
+    font-size: 12px;
+    color: #ffe566;
+  }
+  .tutorial-note-body a.tutorial-link,
+  .tutorial-note-body a {
+    color: #8ec8ff;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .tutorial-note-body a.tutorial-link:hover,
+  .tutorial-note-body a:hover {
+    color: #b7dcff;
+  }
+  .tutorial-callout {
+    margin-top: 2px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid #333;
+    background: #111;
+  }
+  .tutorial-note-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .tutorial-note-actions button {
+    width: auto;
+    min-width: 0;
+  }
+  .tutorial-note-actions button[data-variant="replace"] {
+    background: #f5d000;
+    color: #1a1400;
+    border-color: #c9a800;
+    font-weight: 700;
+  }
+  .tutorial-note-actions button[data-variant="replace"]:hover:not(:disabled) {
+    background: #ffe566;
+  }
+

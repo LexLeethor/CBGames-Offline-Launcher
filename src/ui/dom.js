@@ -4,6 +4,7 @@ const importZipButton = document.getElementById("importZip");
 const replaceZipSelectedButton = document.getElementById("replaceZipSelected");
 const openOpsModalButton = document.getElementById("openOpsModal");
 const openHowToModalButton = document.getElementById("openHowToModal");
+const restartTutorialButton = document.getElementById("restartTutorial");
 const opsModal = document.getElementById("opsModal");
 const closeOpsModalButton = document.getElementById("closeOpsModal");
 const howToModal = document.getElementById("howToModal");

@@ -754,6 +754,9 @@ async function importZipFile(file, options) {
       log("Please choose a .zip file.", "error");
       return;
     }
+    if (typeof onTutorialZipImportStarted === "function") {
+      onTutorialZipImportStarted();
+    }
     const existingGame = replaceGameId && state.gamesById.has(replaceGameId)
       ? state.gamesById.get(replaceGameId)
       : findExistingGameMatchForImport(file.name);
@@ -874,10 +877,12 @@ async function importZipFile(file, options) {
 
       // Check for SharedArrayBuffer usage (known limitation)
       if (detectSharedArrayBufferUsage(processedEntries)) {
-        throw new Error(
-          "This game uses SharedArrayBuffer, which is not supported in the file:// protocol. " +
-          "This is a known limitation of the offline launcher and this game cannot be imported."
-        );
+        const sabDecision = await askSharedArrayBufferDecision();
+        if (sabDecision !== "optionB") {
+          log("Import canceled (SharedArrayBuffer).");
+          return;
+        }
+        log("Importing despite SharedArrayBuffer. The game may not work on file://.");
       }
 
       const gameRecord = {
@@ -956,7 +961,7 @@ async function importZipFile(file, options) {
     } catch (error) {
       console.error(error);
       const msg = error.message || String(error);
-      if (msg.startsWith("This looks like") || msg.includes("SharedArrayBuffer")) {
+      if (msg.startsWith("This looks like")) {
         openWrongZipTypeModal(msg);
       } else {
         log("Import failed: " + msg, "error");
@@ -991,33 +996,69 @@ async function importFromGithub() {
       let downloadUrl = "";
       if (repoRef) {
         setWorkProgress("Checking GitHub release", 0, 0);
+        let releaseMeta = null;
+        let releaseError = null;
         try {
-          sourceMeta = await fetchLatestGithubReleaseInfo(repoRef.owner, repoRef.repo, "");
-          downloadUrl = sourceMeta.downloadUrl;
+          releaseMeta = await fetchLatestGithubReleaseInfo(repoRef.owner, repoRef.repo, "");
         } catch (error) {
+          releaseError = error;
           const message = String(error && error.message ? error.message : error);
           const noRelease = /No latest release found|\/releases\/latest|no \.zip asset/i.test(message);
           if (!noRelease) {
-            throw error;
+            // API itself failed — still try the file-tree path below.
+            log("GitHub release lookup failed; trying api.github.com file tree...");
           }
-          setWorkProgress("No release found, reading repo tree", 0, 0);
-          const snapshot = await fetchGithubRepoTreeSnapshot(repoRef.owner, repoRef.repo, "");
-          const repoZipFile = await buildZipFileFromGithubTree(snapshot, "Downloading repo files");
-          sourceMeta = {
-            provider: "github-tree",
-            owner: snapshot.owner,
-            repo: snapshot.repo,
-            branch: snapshot.branch,
-            treeSha: snapshot.treeSha,
-            lastCheckedAt: Date.now()
-          };
-          await importZipFile(repoZipFile, {
-            githubSource: sourceMeta,
-            manageUi: false
-          });
-          log("Imported from GitHub source.");
-          return;
         }
+
+        if (releaseMeta) {
+          try {
+            const download = await downloadGithubReleaseZip(releaseMeta, "Downloading ZIP");
+            sourceMeta = {
+              ...releaseMeta,
+              etag: download.etag,
+              lastModified: download.lastModified,
+              lastCheckedAt: Date.now()
+            };
+            await importZipFile(download.file, {
+              githubSource: sourceMeta,
+              manageUi: false
+            });
+            log("Imported from GitHub source.");
+            return;
+          } catch (error) {
+            console.error(error);
+            log(
+              "Release ZIP download failed (" +
+              (error.message || String(error)) +
+              "). Falling back to api.github.com individual files..."
+            );
+          }
+        } else if (releaseError) {
+          const message = String(releaseError && releaseError.message ? releaseError.message : releaseError);
+          if (!/No latest release found|\/releases\/latest|no \.zip asset/i.test(message)) {
+            // keep going to tree fallback
+          } else {
+            setWorkProgress("No release found, reading repo tree", 0, 0);
+          }
+        }
+
+        setWorkProgress("Reading repo via api.github.com", 0, 0);
+        const snapshot = await fetchGithubRepoTreeSnapshot(repoRef.owner, repoRef.repo, "");
+        const repoZipFile = await buildZipFileFromGithubTree(snapshot, "Downloading repo files");
+        sourceMeta = {
+          provider: "github-tree",
+          owner: snapshot.owner,
+          repo: snapshot.repo,
+          branch: snapshot.branch,
+          treeSha: snapshot.treeSha,
+          lastCheckedAt: Date.now()
+        };
+        await importZipFile(repoZipFile, {
+          githubSource: sourceMeta,
+          manageUi: false
+        });
+        log("Imported from GitHub source.");
+        return;
       } else if (directUrl && /\.zip(?:$|[?#])/i.test(directUrl)) {
         sourceMeta = {
           provider: "zip-url",
@@ -1031,14 +1072,9 @@ async function importFromGithub() {
         throw new Error("Input must be a GitHub repo or a .zip URL.");
       }
       const download = await downloadZipFromUrl(downloadUrl, "Downloading ZIP");
-      if (sourceMeta.provider === "github-release") {
-        sourceMeta.etag = download.etag;
-        sourceMeta.lastModified = download.lastModified;
-      } else {
-        sourceMeta.url = download.resolvedUrl || sourceMeta.url;
-        sourceMeta.etag = download.etag;
-        sourceMeta.lastModified = download.lastModified;
-      }
+      sourceMeta.url = download.resolvedUrl || sourceMeta.url;
+      sourceMeta.etag = download.etag;
+      sourceMeta.lastModified = download.lastModified;
       sourceMeta.lastCheckedAt = Date.now();
       await importZipFile(download.file, {
         githubSource: sourceMeta,
@@ -1164,7 +1200,39 @@ async function checkAllGithubUpdates() {
           const downloadUrl = source.provider === "github-release"
             ? String(nextSource.downloadUrl || source.downloadUrl || "")
             : String(source.url || "");
-          const download = await downloadZipFromUrl(downloadUrl, "Downloading update");
+          let download = null;
+          if (source.provider === "github-release") {
+            try {
+              download = await downloadGithubReleaseZip(nextSource, "Downloading update");
+            } catch (error) {
+              console.error(error);
+              log(
+                "Release ZIP download failed; falling back to api.github.com file tree for \"" +
+                (selected.name || selected.id) + "\"..."
+              );
+              const latestTree = await fetchGithubRepoTreeSnapshot(source.owner, source.repo, "");
+              const repoZipFile = await buildZipFileFromGithubTree(latestTree, "Downloading repo files");
+              const treeSource = normalizeGithubSource({
+                provider: "github-tree",
+                owner: latestTree.owner,
+                repo: latestTree.repo,
+                branch: latestTree.branch,
+                treeSha: latestTree.treeSha,
+                lastCheckedAt: Date.now()
+              });
+              await importZipFile(repoZipFile, {
+                importMode: "replace",
+                replaceGameId: selected.id,
+                githubSource: treeSource,
+                manageUi: false
+              });
+              updatedCount += 1;
+              log("Updated \"" + (selected.name || selected.id) + "\".");
+              continue;
+            }
+          } else {
+            download = await downloadZipFromUrl(downloadUrl, "Downloading update");
+          }
           const mergedSource = normalizeGithubSource(
             source.provider === "github-release"
               ? {
@@ -1374,12 +1442,24 @@ async function fetchGithubRepoTreeSnapshot(owner, repo, branchHint) {
     const rawEntries = Array.isArray(tree.tree) ? tree.tree : [];
     const fileEntries = rawEntries
       .filter((entry) => entry && entry.type === "blob" && typeof entry.path === "string" && entry.path)
-      .map((entry) => ({
-        path: normalizePath(entry.path),
-        url: toHttpUrl(entry.url || ""),
-        sha: String(entry.sha || ""),
-        size: Number(entry.size) || 0
-      }))
+      .map((entry) => {
+        const sha = String(entry.sha || "").trim();
+        const apiBlobUrl = sha
+          ? (
+              "https://api.github.com/repos/" +
+              encodeURIComponent(owner) + "/" +
+              encodeURIComponent(repo) +
+              "/git/blobs/" +
+              encodeURIComponent(sha)
+            )
+          : "";
+        return {
+          path: normalizePath(entry.path),
+          url: toHttpUrl(entry.url || "") || toHttpUrl(apiBlobUrl),
+          sha,
+          size: Number(entry.size) || 0
+        };
+      })
       .filter((entry) => entry.path && entry.url);
     if (!treeSha) {
       throw new Error("GitHub tree response missing SHA.");
@@ -1495,12 +1575,53 @@ async function buildZipFileFromGithubTree(snapshot, labelPrefix) {
     return new File([zipBlob], fileName, { type: "application/zip" });
   }
 
-async function fetchZipHeadInfo(url) {
+async function downloadGithubReleaseZip(sourceMeta, label) {
+    const source = sourceMeta && typeof sourceMeta === "object" ? sourceMeta : null;
+    const primaryUrl = toHttpUrl(source && source.downloadUrl ? source.downloadUrl : "");
+    let primaryError = null;
+    if (primaryUrl) {
+      try {
+        return await downloadZipFromUrl(primaryUrl, label);
+      } catch (error) {
+        primaryError = error;
+        console.error(error);
+      }
+    }
+    const owner = String(source && source.owner || "").trim();
+    const repo = String(source && source.repo || "").trim();
+    const assetId = Number(source && source.assetId) || 0;
+    if (!owner || !repo || !assetId) {
+      throw primaryError || new Error("Release ZIP download failed and no api.github.com asset id is available.");
+    }
+    log("Direct github.com download failed; retrying release asset via api.github.com...");
+    const apiUrl =
+      "https://api.github.com/repos/" +
+      encodeURIComponent(owner) + "/" +
+      encodeURIComponent(repo) +
+      "/releases/assets/" +
+      encodeURIComponent(String(assetId));
+    return downloadZipFromUrl(apiUrl, label, {
+      headers: {
+        Accept: "application/octet-stream",
+        "X-GitHub-Api-Version": "2022-11-28"
+      },
+      skipHead: true,
+      fileNameHint: String(source.assetName || "") || (repo + "-release.zip")
+    });
+  }
+
+async function fetchZipHeadInfo(url, options) {
+    const opts = options && typeof options === "object" ? options : {};
     const normalizedUrl = toHttpUrl(url);
     if (!normalizedUrl) {
       throw new Error("Invalid ZIP URL.");
     }
-    const response = await fetch(normalizedUrl, { method: "HEAD", cache: "no-store" });
+    const headers = opts.headers && typeof opts.headers === "object" ? opts.headers : undefined;
+    const response = await fetch(normalizedUrl, {
+      method: "HEAD",
+      cache: "no-store",
+      headers
+    });
     if (!response.ok) {
       throw new Error("HEAD request failed (" + response.status + ").");
     }
@@ -1512,31 +1633,43 @@ async function fetchZipHeadInfo(url) {
     };
   }
 
-async function downloadZipFromUrl(url, label) {
+async function downloadZipFromUrl(url, label, options) {
+    const opts = options && typeof options === "object" ? options : {};
     const normalizedUrl = toHttpUrl(url);
     if (!normalizedUrl) {
       throw new Error("Invalid ZIP URL.");
     }
+    const requestHeaders = opts.headers && typeof opts.headers === "object" ? opts.headers : undefined;
     let expectedTotal = 0;
-    try {
-      const head = await fetchZipHeadInfo(normalizedUrl);
-      expectedTotal = Number(head.contentLength) || 0;
-    } catch {
-      expectedTotal = 0;
+    if (!opts.skipHead) {
+      try {
+        const head = await fetchZipHeadInfo(normalizedUrl, { headers: requestHeaders });
+        expectedTotal = Number(head.contentLength) || 0;
+      } catch {
+        expectedTotal = 0;
+      }
     }
-    const response = await fetch(normalizedUrl, { cache: "no-store" });
+    const response = await fetch(normalizedUrl, {
+      cache: "no-store",
+      headers: requestHeaders,
+      redirect: "follow"
+    });
     if (!response.ok) {
       throw new Error("Download failed (" + response.status + ").");
     }
     const contentLength = Number(response.headers.get("content-length")) || 0;
     const total = contentLength || expectedTotal;
+    const fileNameHint = String(opts.fileNameHint || "").trim();
     const reader = response.body && typeof response.body.getReader === "function"
       ? response.body.getReader()
       : null;
     if (!reader) {
       const bytes = new Uint8Array(await response.arrayBuffer());
       setWorkProgress(label || "Downloading ZIP", bytes.byteLength, bytes.byteLength || 1);
-      const fileName = extractZipFileNameFromResponse(response, normalizedUrl);
+      let fileName = extractZipFileNameFromResponse(response, normalizedUrl);
+      if (fileNameHint && (!fileName || fileName === "download.zip" || !/\.zip$/i.test(fileName))) {
+        fileName = fileNameHint;
+      }
       const outName = /\.zip$/i.test(fileName) ? fileName : (fileName + ".zip");
       return {
         file: new File([bytes], outName, { type: "application/zip" }),
@@ -1576,7 +1709,10 @@ async function downloadZipFromUrl(url, label) {
       setWorkProgress(label || "Download complete", loaded || 1, loaded || 1);
     }
     const blob = new Blob(chunks, { type: "application/zip" });
-    const fileName = extractZipFileNameFromResponse(response, normalizedUrl);
+    let fileName = extractZipFileNameFromResponse(response, normalizedUrl);
+    if (fileNameHint && (!fileName || fileName === "download.zip" || !/\.zip$/i.test(fileName))) {
+      fileName = fileNameHint;
+    }
     const outName = /\.zip$/i.test(fileName) ? fileName : (fileName + ".zip");
     return {
       file: new File([blob], outName, { type: "application/zip" }),

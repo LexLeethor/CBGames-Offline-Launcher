@@ -8,6 +8,7 @@ const STORE_SETTINGS = "settings";
 const STORE_ERROR_LOGS = "errorLogs";
 const SETTING_SELECTED_GAME = "selectedGameId";
 const SETTING_AUTO_MIGRATE_EXTRACTOR = "autoMigrateExtractor";
+const SETTING_TUTORIAL_COMPLETED = "tutorialCompleted";
 
 const VFS_ORIGIN = "https://loader.invalid/";
 const VFS_ORIGIN_URL = new URL(VFS_ORIGIN).origin;

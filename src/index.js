@@ -22,6 +22,8 @@ if (networkHostUrlInput && !networkHostUrlInput.value) {
       const hostSetup = window.__CBGAMES_HOST_SETUP__;
       if (hostSetup && Array.isArray(hostSetup.bundles) && hostSetup.bundles.length > 0) {
         await runAutoImport(hostSetup);
+      } else if (typeof maybeStartTutorial === "function") {
+        await maybeStartTutorial();
       }
 
       const urlParams = new URLSearchParams(window.location.search);

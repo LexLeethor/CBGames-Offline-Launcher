@@ -357,6 +357,9 @@ async function launchSelectedGame() {
 
       setWorkProgress("Launch complete", 4, 4);
       log("Launched: " + game.name + " (" + entryPath + ")");
+      if (typeof onTutorialGameLaunched === "function") {
+        onTutorialGameLaunched();
+      }
     } catch (error) {
       console.error(error);
       log("Launch failed: " + (error.message || String(error)), "error");

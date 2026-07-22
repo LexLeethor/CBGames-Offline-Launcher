@@ -105,6 +105,22 @@ function askExportDecision(game) {
     });
   }
 
+function askSharedArrayBufferDecision() {
+    return new Promise((resolve) => {
+      genericChoiceTitle.textContent = "SharedArrayBuffer Detected";
+      genericChoiceMessage.textContent =
+        "This game uses SharedArrayBuffer, which is not supported on the file:// protocol. " +
+        "It may fail to launch or behave incorrectly in the offline launcher.\n\n" +
+        "Import anyway?";
+      genericChoiceOptionAButton.textContent = "Don't Import";
+      genericChoiceOptionBButton.textContent = "Import Anyway";
+      state.genericChoiceResolver = resolve;
+      genericChoiceModal.classList.add("open");
+      genericChoiceModal.setAttribute("aria-hidden", "false");
+      genericChoiceOptionAButton.focus();
+    });
+  }
+
 function closeGithubImportModal() {
     githubImportModal.classList.remove("open");
     githubImportModal.setAttribute("aria-hidden", "true");
@@ -198,7 +214,7 @@ function closeBundlePreviewModal() {
     return resolver;
   }
 
-function closeGameEditModal() {
+function closeGameEditModal(options = {}) {
     gameEditModal.classList.remove("open");
     gameEditModal.setAttribute("aria-hidden", "true");
     if (state.gameEditEditor.cropper) {
@@ -225,6 +241,9 @@ function closeGameEditModal() {
     gameEditPreviewThumb.style.backgroundImage = "";
     gameEditPreviewThumb.classList.add("preview-empty");
     gameEditImageInput.value = "";
+    if (!options.skipTutorial && typeof onTutorialEditClosed === "function") {
+      onTutorialEditClosed();
+    }
   }
 
 async function saveGameEditChanges() {
@@ -256,7 +275,10 @@ async function saveGameEditChanges() {
     }
 
     renderGameCards();
-    closeGameEditModal();
+    closeGameEditModal({ skipTutorial: true });
+    if (typeof onTutorialEditSaved === "function") {
+      onTutorialEditSaved();
+    }
     log("Saved changes for " + game.name + ".");
   }
 
@@ -305,6 +327,9 @@ function openGameEditModal(gameId) {
     }
     gameEditModal.classList.add("open");
     gameEditModal.setAttribute("aria-hidden", "false");
+    if (typeof onTutorialEditOpened === "function") {
+      onTutorialEditOpened();
+    }
   }
 
 async function saveGameEditName(options = {}) {

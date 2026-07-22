@@ -41,6 +41,13 @@ replaceZipSelectedButton.addEventListener("click", async () => {
 
 openOpsModalButton.addEventListener("click", showOpsModal);
   openHowToModalButton.addEventListener("click", showHowToModal);
+  if (restartTutorialButton) {
+    restartTutorialButton.addEventListener("click", () => {
+      if (typeof restartTutorial === "function") {
+        restartTutorial();
+      }
+    });
+  }
   closeOpsModalButton.addEventListener("click", () => {
     hideOpsModal(false);
   });
@@ -844,6 +851,9 @@ function showOpsModal() {
     if (!state.actionInProgress && importZipButton) {
       importZipButton.focus();
     }
+    if (typeof onTutorialOpsOpened === "function") {
+      onTutorialOpsOpened();
+    }
   }
 function hideOpsModal(force) {
     if (!opsModal) {
@@ -856,6 +866,9 @@ function hideOpsModal(force) {
     opsModal.setAttribute("aria-hidden", "true");
     if (openOpsModalButton && !openOpsModalButton.disabled) {
       openOpsModalButton.focus();
+    }
+    if (typeof onTutorialOpsClosed === "function") {
+      onTutorialOpsClosed();
     }
     return true;
   }

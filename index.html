@@ -42,6 +42,7 @@
     </section>
     <section class="panel-block">
       <button id="openHowToModal" type="button" class="docs-launch">What games will work?</button>
+      <button id="restartTutorial" type="button" class="docs-launch docs-launch-secondary">Show tutorial again</button>
     </section>
     <section class="panel-block">
       <details class="advanced log-dropdown">
@@ -117,7 +118,7 @@
         <button id="closeOpsModal" type="button" aria-label="Close">×</button>
       </div>
       <div class="ops-controls">
-        <section class="ops-group ops-group-fixed">
+        <section id="opsAddGamesGroup" class="ops-group ops-group-fixed">
           <div class="ops-group-head">
             <span class="ops-group-title">Add Games</span>
             <span class="ops-group-hint">Import from ZIP or GitHub</span>
@@ -429,6 +430,21 @@
     </div>
   </div>
 </div>
+<div id="tutorialRoot" class="tutorial-root" aria-hidden="true" hidden>
+  <div class="tutorial-blockers" aria-hidden="true">
+    <div id="tutorialBlockerTop" class="tutorial-blocker"></div>
+    <div id="tutorialBlockerLeft" class="tutorial-blocker"></div>
+    <div id="tutorialBlockerRight" class="tutorial-blocker"></div>
+    <div id="tutorialBlockerBottom" class="tutorial-blocker"></div>
+  </div>
+  <div id="tutorialSpotlight" class="tutorial-spotlight" hidden></div>
+  <aside id="tutorialNote" class="tutorial-note" hidden role="dialog" aria-labelledby="tutorialNoteTitle">
+    <button id="tutorialSkip" type="button" class="tutorial-skip">Skip tutorial</button>
+    <h3 id="tutorialNoteTitle"></h3>
+    <div id="tutorialNoteBody" class="tutorial-note-body"></div>
+    <div id="tutorialNoteActions" class="tutorial-note-actions"></div>
+  </aside>
+</div>
 
 <script src="./lib/cropper.min.js"></script>
 <script src="./lib/brotli.js"></script>
@@ -453,6 +469,7 @@
 <script src="./src/ui/modals.js"></script>
 <script src="./src/ui/renderers.js"></script>
 <script src="./src/ui/events.js"></script>
+<script src="./src/ui/tutorial.js"></script>
 <script src="./src/network/auto-import.js"></script>
 <script src="./src/index.js"></script>
 </body>
