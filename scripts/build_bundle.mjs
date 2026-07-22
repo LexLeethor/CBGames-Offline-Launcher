@@ -97,6 +97,7 @@ function main() {
       const b64 = buf.toString("base64");
       content = `// [Binary file - base64 encoded]\n(function(){ eval(atob('${b64}')); })();`;
     }
+    content = content.replace(/<\/script/gi, "<\\/script");
     return `// ---- ${src} ----\n${content.trimEnd()}\n`;
   });
   let js = jsChunks.join("\n").trimEnd() + "\n";
