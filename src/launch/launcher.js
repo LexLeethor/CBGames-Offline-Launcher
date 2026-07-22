@@ -68,7 +68,7 @@ function requestToObjectUrl(rawValue, baseHref) {
   // Expose the resolver for the player window bridge.
   window.__loaderResolve = requestToObjectUrl;
 
-const CURRENT_EXTRACTOR_VERSION = 7;
+const CURRENT_EXTRACTOR_VERSION = 8;
 
 function bytesEqual(a, b) {
     if (a === b) {
@@ -117,9 +117,7 @@ async function analyzeStoredGameMigration(game) {
     const brotliDecodedPaths = buildBrotliDecodedPathSetFromRecords(files);
     const brotliReplacementMap = buildBrotliReplacementMap(brotliDecodedPaths);
     const paths = files.map((file) => normalizePath(file.path || "")).filter(Boolean);
-    const updates = [];
-    let totalBytes = 0;
-
+    const entries = [];
     for (const file of files) {
       const rawBytes = new Uint8Array(await file.blob.arrayBuffer());
       const sourceBytes = reverseFileTransformations(rawBytes, file.transformations);
@@ -127,13 +125,29 @@ async function analyzeStoredGameMigration(game) {
         brotliDecodedPaths,
         brotliReplacementMap
       });
-      const nextBytes = transformed.bytes;
+      entries.push({
+        path: file.path,
+        bytes: transformed.bytes,
+        transformations: transformed.transformations,
+        file
+      });
+    }
+
+    await applyPreLaunchTransformations(entries);
+
+    const updates = [];
+    let totalBytes = 0;
+
+    for (const entry of entries) {
+      const file = entry.file;
+      const rawBytes = new Uint8Array(await file.blob.arrayBuffer());
+      const nextBytes = entry.bytes;
       const type = file.type || mimeFromPath(file.path);
       const blob = new Blob([nextBytes], { type });
       totalBytes += blob.size;
 
       const bytesChanged = !bytesEqual(rawBytes, nextBytes);
-      const metadataChanged = !transformationsEqual(file.transformations, transformed.transformations);
+      const metadataChanged = !transformationsEqual(file.transformations, entry.transformations);
       if (!bytesChanged && !metadataChanged && Number(file.size) === blob.size && file.type === blob.type) {
         continue;
       }
@@ -141,7 +155,7 @@ async function analyzeStoredGameMigration(game) {
       updates.push({
         file,
         blob,
-        transformations: transformed.transformations,
+        transformations: entry.transformations,
         contentChanged: bytesChanged
       });
     }
@@ -292,8 +306,8 @@ async function launchSelectedGame() {
         throw new Error("No files were found for this game in IndexedDB.");
       }
 
-      await buildObjectUrlCacheFromRecords(files, state.playerWindow);
-      await patchDynamicImports();
+      await buildObjectUrlCacheFromRecords(files, state.playerWindow, game.extractorVersion);
+      await patchDynamicImports(game.extractorVersion);
       setWorkProgress("Preparing game assets", 2, 4);
       state.activeEntryPath = chosenEntry;
 

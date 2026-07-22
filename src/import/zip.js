@@ -648,6 +648,97 @@ function replaceGameWithZipFlow() {
     openReplaceTargetGameModal();
   }
 
+async function applyPreLaunchTransformations(entries) {
+    if (!entries || !entries.length) return;
+
+    const recordsByPath = new Map(entries.map(e => [e.path, {
+      path: e.path,
+      bytes: e.bytes,
+      get blob() {
+        return new Blob([this.bytes], { type: mimeFromPath(this.path) });
+      }
+    }]));
+    const dataUrlCache = new Map();
+
+    // 1. Collect worker paths (needs to scan JS files)
+    const workerPaths = await collectWorkerScriptPaths(recordsByPath);
+
+    // 2. Apply transformations
+    for (const entry of entries) {
+      const path = entry.path;
+      const bytes = entry.bytes;
+      let text = null;
+      let changed = false;
+      const transformations = entry.transformations || [];
+
+      // Unity Web Config rewrite
+      if (/\.json$/i.test(path)) {
+        try {
+          text = text || decodeUtf8(bytes);
+          const { text: rewritten, changed: jsonChanged } = rewriteUnityWebConfigText(text, path);
+          if (jsonChanged) {
+            const replacements = [{ original: text, replacement: rewritten }];
+            pushJsonRewriteTransformation(transformations, replacements, "unity_config_rewrite");
+            text = rewritten;
+            changed = true;
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      // JS / UnityWeb patching
+      if (/\.(?:js|mjs|cjs|unityweb)$/i.test(path)) {
+        try {
+          text = text || decodeUtf8(bytes);
+          let jsChanged = false;
+
+          // Emscripten WASM inlining (mostly for workers)
+          if (workerPaths.has(path)) {
+            const patched = await patchEmscriptenWasmScriptText(text, path, recordsByPath, dataUrlCache);
+            if (patched !== text) {
+              text = patched;
+              jsChanged = true;
+            }
+          }
+
+          // importScripts inlining
+          const rewrittenImport = await rewriteImportScriptsText(text, path, recordsByPath, dataUrlCache);
+          if (rewrittenImport !== text) {
+            text = rewrittenImport;
+            jsChanged = true;
+          }
+
+          // Static patches (baseURI, GetDocumentURL)
+          const staticPatched = applyStaticJsPatches(text, path);
+          if (staticPatched !== text) {
+            text = staticPatched;
+            jsChanged = true;
+          }
+
+          // Dynamic import() patching
+          if (!/^Build\//i.test(path)) {
+            const dynamicPatched = await patchDynamicImportsInText(text, path, recordsByPath, dataUrlCache);
+            if (dynamicPatched !== text) {
+              text = dynamicPatched;
+              jsChanged = true;
+            }
+          }
+
+          if (jsChanged) {
+            changed = true;
+            // For now, we don't record complex JS transformations in transformations array 
+            // because they are hard to revert perfectly with literal replacements.
+            // But we still apply them for launch speed.
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      if (changed && text !== null) {
+        entry.bytes = encodeUtf8(text);
+        entry.transformations = transformations.length ? transformations : undefined;
+      }
+    }
+  }
+
 async function importZipFile(file, options) {
     const opts = options && typeof options === "object" ? options : {};
     const requestedMode = opts.importMode === "replace" || opts.importMode === "separate"
@@ -763,6 +854,19 @@ async function importZipFile(file, options) {
       }
 
       const brotliReplacementMap = buildBrotliReplacementMap(brotliDecodedPaths);
+
+      setWorkProgress("Optimizing game assets", 0, 0);
+      for (const entry of processedEntries) {
+        const transformed = applyCurrentExtractorTransformations(entry.path, entry.bytes, {
+          brotliDecodedPaths,
+          brotliReplacementMap
+        });
+        entry.bytes = transformed.bytes;
+        entry.transformations = transformed.transformations;
+      }
+
+      await applyPreLaunchTransformations(processedEntries);
+
       const htmlEntries = processedEntries
         .map((entry) => entry.path)
         .filter((path) => /\.html?$/i.test(path))
@@ -802,12 +906,8 @@ async function importZipFile(file, options) {
       setWorkProgress("Importing game files", 0, processedEntries.length);
 
       for (const entry of processedEntries) {
-        const transformed = applyCurrentExtractorTransformations(entry.path, entry.bytes, {
-          brotliDecodedPaths,
-          brotliReplacementMap
-        });
-        const entryBytes = transformed.bytes;
-        const transformations = transformed.transformations;
+        const entryBytes = entry.bytes;
+        const transformations = entry.transformations;
 
         const blob = new Blob([entryBytes], { type: mimeFromPath(entry.path) });
         totalBytes += blob.size;

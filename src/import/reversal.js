@@ -53,7 +53,7 @@ function reverseFileTransformations(bytes, transformations) {
       if (!transform || typeof transform.type !== "string") {
         continue;
       }
-      if (transform.type === "json_rewrite") {
+      if (transform.type === "json_rewrite" || transform.type === "unity_config_rewrite") {
         out = revertJsonRewrite(out, transform);
       } else if (transform.type === "brotli_replacement") {
         out = revertBrotliReplacement(out, transform);

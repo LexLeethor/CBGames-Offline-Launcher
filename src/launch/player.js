@@ -528,7 +528,8 @@ async function collectWorkerScriptPaths(recordsByPath) {
     return workerPaths;
   }
 
-async function buildObjectUrlCacheFromRecords(records, hostWindow) {
+async function buildObjectUrlCacheFromRecords(records, hostWindow, extractorVersion) {
+    const version = Number(extractorVersion) || 1;
     let host = window;
     try {
       if (
@@ -546,7 +547,8 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
     state.objectUrlHost = host;
     const recordsByPath = new Map(records.map((record) => [record.path, record]));
     const dataUrlCache = new Map();
-    const workerPaths = await collectWorkerScriptPaths(recordsByPath);
+
+    const workerPaths = version < 8 ? await collectWorkerScriptPaths(recordsByPath) : new Set();
 
     async function maybeDecompressBrotli(record) {
       if (!/\.br$/i.test(record.path)) {
@@ -584,30 +586,8 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
             recordsByPath,
             dataUrlCache
           );
-          if (rewrittenText && rewrittenText.indexOf("document.baseURI||self.location.href") !== -1) {
-            const baseDir = (() => {
-              const dir = dirnamePath(decodedPath);
-              if (!dir) {
-                return VFS_ORIGIN;
-              }
-              const encoded = dir.split("/").map(encodeURIComponent).join("/");
-              return VFS_ORIGIN + encoded + "/";
-            })();
-            const prefix =
-              "(function(){try{if(typeof self!=='undefined'){self.__launcherBaseHref=" +
-              JSON.stringify(baseDir) +
-              ";}}catch(_e){}})();";
-            rewrittenText = prefix + rewrittenText.replaceAll(
-              "document.baseURI||self.location.href",
-              "(self.__launcherBaseHref||document.baseURI||self.location.href)"
-            );
-          }
-          if (rewrittenText && rewrittenText.indexOf("_JS_SystemInfo_GetDocumentURL") !== -1) {
-            rewrittenText = rewrittenText.replace(
-              "GetDocumentURL(buffer,bufferSize){if(buffer)stringToUTF8(document.URL,buffer,bufferSize);return lengthBytesUTF8(document.URL)",
-              "GetDocumentURL(buffer,bufferSize){var _u=self.__unityDocUrl||document.URL;if(buffer)stringToUTF8(_u,buffer,bufferSize);return lengthBytesUTF8(_u)"
-            );
-          }
+          rewrittenText = applyStaticJsPatches(rewrittenText, decodedPath);
+
           const jsBlob = new Blob([rewrittenText], { type: "application/javascript" });
           return { decodedPath, blob: jsBlob };
         }
@@ -663,6 +643,7 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
           rewrittenMime = "text/css";
           rewrittenCssCount += 1;
         } else if (/\.json$/i.test(record.path)) {
+          if (version >= 8) continue;
           const originalText = await record.blob.text();
           const rewrite = rewriteUnityWebConfigText(originalText, record.path);
           if (!rewrite.changed) {
@@ -672,6 +653,7 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
           rewrittenMime = "application/json";
           rewrittenUnityConfigCount += 1;
         } else if (/\.(?:js|mjs|cjs|unityweb)$/i.test(record.path)) {
+          if (version >= 8) continue;
           let sourceBlob = record.blob;
           let gzipDecompressed = false;
           if (/\.unityweb$/i.test(record.path) && /framework/i.test(record.path)) {
@@ -693,39 +675,18 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
           const emsPatchedText = workerPaths.has(record.path)
             ? await patchEmscriptenWasmScriptText(originalText, record.path, recordsByPath, dataUrlCache)
             : originalText;
-          rewrittenText = await rewriteImportScriptsText(
+          let rewritten = await rewriteImportScriptsText(
             emsPatchedText,
             record.path,
             recordsByPath,
             dataUrlCache
           );
-          if (rewrittenText && rewrittenText.indexOf("document.baseURI||self.location.href") !== -1) {
-            const baseDir = (() => {
-              const dir = dirnamePath(record.path);
-              if (!dir) {
-                return VFS_ORIGIN;
-              }
-              const encoded = dir.split("/").map(encodeURIComponent).join("/");
-              return VFS_ORIGIN + encoded + "/";
-            })();
-            const prefix =
-              "(function(){try{if(typeof self!=='undefined'){self.__launcherBaseHref=" +
-              JSON.stringify(baseDir) +
-              ";}}catch(_e){}})();";
-            rewrittenText = prefix + rewrittenText.replaceAll(
-              "document.baseURI||self.location.href",
-              "(self.__launcherBaseHref||document.baseURI||self.location.href)"
-            );
-          }
-          if (rewrittenText && rewrittenText.indexOf("_JS_SystemInfo_GetDocumentURL") !== -1) {
-            rewrittenText = rewrittenText.replace(
-              "GetDocumentURL(buffer,bufferSize){if(buffer)stringToUTF8(document.URL,buffer,bufferSize);return lengthBytesUTF8(document.URL)",
-              "GetDocumentURL(buffer,bufferSize){var _u=self.__unityDocUrl||document.URL;if(buffer)stringToUTF8(_u,buffer,bufferSize);return lengthBytesUTF8(_u)"
-            );
-          }
-          if (!gzipDecompressed && rewrittenText === originalText) {
+          rewritten = applyStaticJsPatches(rewritten, record.path);
+
+          if (!gzipDecompressed && rewritten === originalText) {
             continue;
           }
+          rewrittenText = rewritten;
           rewrittenMime = "application/javascript";
         } else {
           continue;
@@ -776,7 +737,94 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow) {
 // Limitations: only string-literal specifiers are handled (not dynamic
 //   expressions like import(getPath()) or template literals).
 // ---------------------------------------------------------------------------
-async function patchDynamicImports() {
+async function patchDynamicImportsInText(text, modulePath, recordsByPath, dataUrlCache) {
+    if (typeof text !== "string" || !text.includes("import(")) return text;
+
+    const importRe = /\bimport\s*\(\s*(['"])((?:[^'"\\]|\\.)*?)\1\s*\)/g;
+    const moduleDir = dirnamePath(modulePath);
+    const moduleBase = moduleDir ? VFS_ORIGIN + moduleDir + "/" : VFS_ORIGIN;
+
+    const replacements = [];
+    let m;
+    importRe.lastIndex = 0;
+    while ((m = importRe.exec(text)) !== null) {
+      const specifier = m[2];
+      const resolvedPath = resolveToPath(specifier, moduleBase);
+      if (!resolvedPath) continue;
+
+      let targetRecord = recordsByPath.get(resolvedPath);
+      if (!targetRecord) {
+        const candidates = buildAssetFallbackCandidates(resolvedPath);
+        for (const c of candidates) {
+          targetRecord = recordsByPath.get(c);
+          if (targetRecord) break;
+        }
+      }
+      if (!targetRecord) continue;
+
+      let dataUrl = dataUrlCache.get("__js_data__:" + targetRecord.path);
+      if (!dataUrl) {
+        try {
+          const targetText = await (typeof targetRecord.blob.text === "function"
+            ? targetRecord.blob.text()
+            : Promise.resolve(decodeUtf8(targetRecord.bytes)));
+          dataUrl = "data:application/javascript;base64," + textToBase64(targetText);
+          dataUrlCache.set("__js_data__:" + targetRecord.path, dataUrl);
+        } catch {
+          continue;
+        }
+      }
+
+      replacements.push({
+        start: m.index,
+        end: m.index + m[0].length,
+        replacement: "import('" + dataUrl + "')",
+      });
+    }
+
+    if (!replacements.length) return text;
+
+    let result = "";
+    let pos = 0;
+    for (const r of replacements) {
+      result += text.slice(pos, r.start) + r.replacement;
+      pos = r.end;
+    }
+    result += text.slice(pos);
+    return result;
+  }
+
+function applyStaticJsPatches(text, path) {
+    let rewrittenText = text;
+    if (rewrittenText.indexOf("document.baseURI||self.location.href") !== -1) {
+      const baseDir = (() => {
+        const dir = dirnamePath(path);
+        if (!dir) {
+          return VFS_ORIGIN;
+        }
+        const encoded = dir.split("/").map(encodeURIComponent).join("/");
+        return VFS_ORIGIN + encoded + "/";
+      })();
+      const prefix =
+        "(function(){try{if(typeof self!=='undefined'){self.__launcherBaseHref=" +
+        JSON.stringify(baseDir) +
+        ";}}catch(_e){}})();";
+      rewrittenText = prefix + rewrittenText.replaceAll(
+        "document.baseURI||self.location.href",
+        "(self.__launcherBaseHref||document.baseURI||self.location.href)"
+      );
+    }
+    if (rewrittenText.indexOf("_JS_SystemInfo_GetDocumentURL") !== -1) {
+      rewrittenText = rewrittenText.replace(
+        "GetDocumentURL(buffer,bufferSize){if(buffer)stringToUTF8(document.URL,buffer,bufferSize);return lengthBytesUTF8(document.URL)",
+        "GetDocumentURL(buffer,bufferSize){var _u=self.__unityDocUrl||document.URL;if(buffer)stringToUTF8(_u,buffer,bufferSize);return lengthBytesUTF8(_u)"
+      );
+    }
+    return rewrittenText;
+  }
+
+async function patchDynamicImports(extractorVersion) {
+    if (Number(extractorVersion) >= 8) return;
     const host = state.objectUrlHost;
     if (!host) return;
 
