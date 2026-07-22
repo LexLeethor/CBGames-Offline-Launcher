@@ -79,6 +79,22 @@ const browser = await chromium.launch({
   await page.waitForLoadState('domcontentloaded');
   console.log('[runner] Launcher loaded.');
 
+  // Skip tutorial if active
+  try {
+    const skipBtn = await page.waitForSelector('#tutorialSkip', { state: 'visible', timeout: 3000 });
+    if (skipBtn) {
+      console.log('[runner] Tutorial active — clicking Skip tutorial');
+      await skipBtn.click();
+    }
+  } catch {
+    // Tutorial not visible within timeout; ensure it is stopped if running
+    await page.evaluate(() => {
+      if (typeof stopTutorial === 'function') {
+        stopTutorial({ markDone: true });
+      }
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Import ZIP
   // ---------------------------------------------------------------------------
