@@ -488,7 +488,11 @@ async function handleSaveImportFile(file) {
   } catch (err) {
     console.error(err);
     const msg = err.message || String(err);
-    if (msg.startsWith("This looks like")) {
+    if (isQuotaExceededError(err)) {
+      const quotaMsg = "Storage Quota Exceeded: Your browser storage is full. Please delete some existing games or free up browser disk space before importing save data.";
+      log("Save import failed: Storage quota exceeded.", "error");
+      openWrongZipTypeModal(quotaMsg, "Storage Quota Exceeded");
+    } else if (msg.startsWith("This looks like")) {
       openWrongZipTypeModal(msg);
     } else {
       log("Could not read save ZIP: " + msg, "error");

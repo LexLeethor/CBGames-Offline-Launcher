@@ -961,8 +961,20 @@ async function importZipFile(file, options) {
     } catch (error) {
       console.error(error);
       const msg = error.message || String(error);
-      if (msg.startsWith("This looks like")) {
-        openWrongZipTypeModal(msg);
+      if (isQuotaExceededError(error)) {
+        const quotaMsg = "Storage Quota Exceeded: Your browser storage is full. Please delete some existing games or free up browser disk space before importing this game.";
+        log("Import failed: Storage quota exceeded.", "error");
+        openWrongZipTypeModal(quotaMsg, "Storage Quota Exceeded");
+        try {
+          if (importMode !== "replace") {
+            await deleteFilesByGameId(gameId);
+            await deleteGameRecord(gameId);
+          }
+        } catch {
+          // best effort cleanup
+        }
+      } else if (msg.startsWith("This looks like")) {
+        openWrongZipTypeModal(msg, "Wrong ZIP Type");
       } else {
         log("Import failed: " + msg, "error");
         try {
@@ -1030,7 +1042,7 @@ async function importFromGithub() {
             log(
               "Release ZIP download failed (" +
               (error.message || String(error)) +
-              "). Falling back to api.github.com individual files..."
+              "). Falling back to GitHub repo ZIP..."
             );
           }
         } else if (releaseError) {
@@ -1038,13 +1050,13 @@ async function importFromGithub() {
           if (!/No latest release found|\/releases\/latest|no \.zip asset/i.test(message)) {
             // keep going to tree fallback
           } else {
-            setWorkProgress("No release found, reading repo tree", 0, 0);
+            setWorkProgress("No release found, reading repo metadata", 0, 0);
           }
         }
 
-        setWorkProgress("Reading repo via api.github.com", 0, 0);
+        setWorkProgress("Reading GitHub repo metadata", 0, 0);
         const snapshot = await fetchGithubRepoTreeSnapshot(repoRef.owner, repoRef.repo, "");
-        const repoZipFile = await buildZipFileFromGithubTree(snapshot, "Downloading repo files");
+        const repoZipFile = await downloadGithubRepoSnapshotZip(snapshot, "Downloading repo ZIP");
         sourceMeta = {
           provider: "github-tree",
           owner: snapshot.owner,
@@ -1181,7 +1193,7 @@ async function checkAllGithubUpdates() {
 
         if (source.provider === "github-tree") {
           const latestTree = await fetchGithubRepoTreeSnapshot(source.owner, source.repo, source.branch);
-          const repoZipFile = await buildZipFileFromGithubTree(latestTree, "Downloading repo files");
+          const repoZipFile = await downloadGithubRepoSnapshotZip(latestTree, "Downloading repo ZIP");
           const mergedSource = normalizeGithubSource({
             provider: "github-tree",
             owner: latestTree.owner,
@@ -1207,11 +1219,11 @@ async function checkAllGithubUpdates() {
             } catch (error) {
               console.error(error);
               log(
-                "Release ZIP download failed; falling back to api.github.com file tree for \"" +
+                "Release ZIP download failed; falling back to GitHub repo ZIP for \"" +
                 (selected.name || selected.id) + "\"..."
               );
               const latestTree = await fetchGithubRepoTreeSnapshot(source.owner, source.repo, "");
-              const repoZipFile = await buildZipFileFromGithubTree(latestTree, "Downloading repo files");
+              const repoZipFile = await downloadGithubRepoSnapshotZip(latestTree, "Downloading repo ZIP");
               const treeSource = normalizeGithubSource({
                 provider: "github-tree",
                 owner: latestTree.owner,
@@ -1414,6 +1426,10 @@ async function fetchGithubRepoTreeSnapshot(owner, repo, branchHint) {
           Accept: "application/vnd.github+json"
         }
       });
+      const repoRateLimitErr = checkGithubResponseRateLimit(repoResponse);
+      if (repoRateLimitErr) {
+        throw repoRateLimitErr;
+      }
       if (!repoResponse.ok) {
         throw new Error("GitHub repo lookup failed (" + repoResponse.status + ").");
       }
@@ -1434,6 +1450,10 @@ async function fetchGithubRepoTreeSnapshot(owner, repo, branchHint) {
         Accept: "application/vnd.github+json"
       }
     });
+    const treeRateLimitErr = checkGithubResponseRateLimit(treeResponse);
+    if (treeRateLimitErr) {
+      throw treeRateLimitErr;
+    }
     if (!treeResponse.ok) {
       throw new Error("GitHub tree lookup failed (" + treeResponse.status + ").");
     }
@@ -1479,16 +1499,22 @@ async function fetchGithubRepoTreeSnapshot(owner, repo, branchHint) {
 async function buildZipFileFromGithubTree(snapshot, labelPrefix) {
     const entries = [];
     const files = Array.isArray(snapshot && snapshot.fileEntries) ? snapshot.fileEntries : [];
+    const owner = String(snapshot && snapshot.owner || "").trim();
+    const repo = String(snapshot && snapshot.repo || "").trim();
+    const branch = String(snapshot && snapshot.branch || "").trim();
     const progressLabel = String(labelPrefix || "Downloading repo files");
     const hasKnownSizes = files.every((file) => Number.isFinite(file && file.size) && Number(file.size) >= 0);
     const totalBytes = hasKnownSizes
       ? files.reduce((sum, file) => sum + (Number(file.size) || 0), 0)
       : 0;
     let downloadedBytes = 0;
-    const updateProgress = () => {
+    const updateProgress = (fileIndex) => {
+      const fileSuffix = files.length > 0
+        ? " (" + (fileIndex + 1) + "/" + files.length + ")"
+        : "";
       if (totalBytes > 0) {
         setWorkProgress(
-          progressLabel,
+          progressLabel + fileSuffix,
           downloadedBytes,
           totalBytes,
           {
@@ -1497,82 +1523,97 @@ async function buildZipFileFromGithubTree(snapshot, labelPrefix) {
           }
         );
       } else {
-        setWorkProgress(progressLabel + " (" + formatBytes(downloadedBytes) + ")", 0, 0);
+        setWorkProgress(progressLabel + fileSuffix + " (" + formatBytes(downloadedBytes) + ")", 0, 0);
       }
     };
-    updateProgress();
+    updateProgress(0);
+    setWorkProgressTree(0, files.length, "", files.map(function(f) { return f.path; }));
+
+    const fetchBytesStreaming = async (fileMeta, fileIndex) => {
+      const rawUrl = owner && repo && branch
+        ? "https://raw.githubusercontent.com/" +
+          encodeURIComponent(owner) + "/" +
+          encodeURIComponent(repo) + "/" +
+          encodeURIComponent(branch) + "/" +
+          fileMeta.path.split("/").map(encodeURIComponent).join("/")
+        : "";
+
+      if (!rawUrl) {
+        throw new Error("Cannot build raw URL for " + fileMeta.path);
+      }
+
+      let lastError = null;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          const res = await fetch(rawUrl, { cache: "no-store" });
+          const rateLimitErr = checkGithubResponseRateLimit(res);
+          if (rateLimitErr) {
+            throw rateLimitErr;
+          }
+          if (!res.ok) {
+            throw new Error("HTTP " + res.status + " for " + fileMeta.path);
+          }
+          if (res.body && typeof res.body.getReader === "function") {
+            const reader = res.body.getReader();
+            const chunks = [];
+            let fileBytes = 0;
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) {
+                break;
+              }
+              if (value) {
+                chunks.push(value);
+                fileBytes += value.byteLength;
+                downloadedBytes += value.byteLength;
+                updateProgress(fileIndex);
+              }
+            }
+            const out = new Uint8Array(fileBytes);
+            let offset = 0;
+            for (const chunk of chunks) {
+              out.set(chunk, offset);
+              offset += chunk.byteLength;
+            }
+            return out;
+          }
+          const buf = await res.arrayBuffer();
+          downloadedBytes += buf.byteLength;
+          updateProgress(fileIndex);
+          return new Uint8Array(buf);
+        } catch (err) {
+          lastError = err;
+          if (isGithubRateLimitError(err)) {
+            throw err;
+          }
+          // undo any bytes counted before the retry
+          if (attempt < 3) {
+            await new Promise((r) => setTimeout(r, 300 * attempt));
+          }
+        }
+      }
+      throw lastError || new Error("Failed to download file " + fileMeta.path);
+    };
+
     for (let i = 0; i < files.length; i += 1) {
       const fileMeta = files[i];
-      const blobResponse = await fetch(fileMeta.url, {
-        cache: "no-store",
-        headers: {
-          Accept: "application/vnd.github.raw"
-        }
-      });
-      if (!blobResponse.ok) {
-        throw new Error("GitHub blob download failed (" + blobResponse.status + ") for " + fileMeta.path + ".");
-      }
-      let bytes = null;
-      const rawType = String(blobResponse.headers.get("content-type") || "").toLowerCase();
-      if (blobResponse.body && typeof blobResponse.body.getReader === "function" && rawType.indexOf("application/json") === -1) {
-        const reader = blobResponse.body.getReader();
-        const chunks = [];
-        let loadedForFile = 0;
-        let lastProgressReported = 0;
-        while (true) {
-          const part = await reader.read();
-          if (part.done) {
-            break;
-          }
-          const chunk = part.value;
-          if (!chunk) {
-            continue;
-          }
-          chunks.push(chunk);
-          loadedForFile += chunk.byteLength;
-          downloadedBytes += chunk.byteLength;
-          if (downloadedBytes - lastProgressReported >= 131072) {
-            updateProgress();
-            lastProgressReported = downloadedBytes;
-          }
-        }
-        bytes = new Uint8Array(loadedForFile);
-        let offset = 0;
-        for (const chunk of chunks) {
-          bytes.set(chunk, offset);
-          offset += chunk.byteLength;
-        }
-        updateProgress();
-      } else {
-        const fallbackResponse = rawType.indexOf("application/json") !== -1
-          ? blobResponse
-          : await fetch(fileMeta.url, {
-              cache: "no-store",
-              headers: {
-                Accept: "application/vnd.github+json"
-              }
-            });
-        if (!fallbackResponse.ok) {
-          throw new Error("GitHub blob fallback failed (" + fallbackResponse.status + ") for " + fileMeta.path + ".");
-        }
-        const blobPayload = await fallbackResponse.json();
-        const encoding = String(blobPayload.encoding || "").toLowerCase();
-        if (encoding !== "base64") {
-          throw new Error("Unsupported blob encoding for " + fileMeta.path + ".");
-        }
-        const content = String(blobPayload.content || "").replace(/\s+/g, "");
-        bytes = base64ToBytes(content);
-        downloadedBytes += bytes.byteLength;
-        updateProgress();
-      }
+      setWorkProgressTree(i, files.length, fileMeta.path);
+      const bytes = await fetchBytesStreaming(fileMeta, i);
       entries.push({
         path: fileMeta.path,
         bytes
       });
+      setWorkProgressTree(i + 1, files.length, fileMeta.path);
     }
+    setWorkProgressTree(files.length, files.length, "");
+
     const zipBlob = createZipStoreArchive(entries);
     const fileName = String(snapshot.repo || "github-repo") + "-" + String(snapshot.branch || "branch") + ".zip";
     return new File([zipBlob], fileName, { type: "application/zip" });
+  }
+
+async function downloadGithubRepoSnapshotZip(snapshot, label) {
+    return buildZipFileFromGithubTree(snapshot, label || "Downloading repo files");
   }
 
 async function downloadGithubReleaseZip(sourceMeta, label) {

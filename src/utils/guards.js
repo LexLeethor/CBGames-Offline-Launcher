@@ -533,3 +533,45 @@ function normalizeErrorText(value, maxLength = 4000) {
     }
     return text.slice(0, Math.max(0, maxLength - 3)) + "...";
   }
+
+function isQuotaExceededError(error) {
+    if (!error) {
+      return false;
+    }
+    if (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED" || error.code === 22) {
+      return true;
+    }
+    const text = String(error.message || error.name || error);
+    return /QuotaExceededError|QUOTA_EXCEEDED_ERR|quota exceeded|exceeded the quota|storage quota/i.test(text);
+  }
+
+function isGithubRateLimitError(error) {
+    if (!error) {
+      return false;
+    }
+    const text = String(error.message || error.name || error);
+    return /rate limit|ratelimit|429/i.test(text);
+  }
+
+function checkGithubResponseRateLimit(response) {
+    if (!response) {
+      return null;
+    }
+    const remaining = response.headers ? response.headers.get("x-ratelimit-remaining") : null;
+    const isRateLimitedStatus = response.status === 403 || response.status === 429;
+    
+    if (isRateLimitedStatus || remaining === "0") {
+      const resetTime = response.headers ? Number(response.headers.get("x-ratelimit-reset")) : 0;
+      let minsText = "";
+      if (resetTime && Number.isFinite(resetTime)) {
+        const diffSecs = Math.max(0, resetTime - Math.floor(Date.now() / 1000));
+        const mins = Math.ceil(diffSecs / 60);
+        minsText = mins > 0 ? ` Rate limit resets in approx ${mins} minute(s).` : "";
+      }
+      return new Error(
+        `GitHub Rate Limit Exceeded (HTTP ${response.status}). You have reached GitHub's API request limit.${minsText} Please wait or download the ZIP manually from GitHub.`
+      );
+    }
+    return null;
+  }
+

@@ -589,7 +589,11 @@ async function importBundleFile(file) {
     } catch (error) {
       console.error(error);
       const msg = error.message || String(error);
-      if (msg.startsWith("This looks like")) {
+      if (isQuotaExceededError(error)) {
+        const quotaMsg = "Storage Quota Exceeded: Your browser storage is full. Please delete some existing games or free up browser disk space before importing this bundle.";
+        log("Bundle import failed: Storage quota exceeded.", "error");
+        openWrongZipTypeModal(quotaMsg, "Storage Quota Exceeded");
+      } else if (msg.startsWith("This looks like")) {
         openWrongZipTypeModal(msg);
       } else {
         log("Bundle import failed: " + msg, "error");
@@ -621,7 +625,13 @@ async function importBundleFile(file) {
       await executeBundleImportPlan(previewData, planGames);
     } catch (error) {
       console.error(error);
-      log("Bundle import failed: " + (error.message || String(error)), "error");
+      if (isQuotaExceededError(error)) {
+        const quotaMsg = "Storage Quota Exceeded: Your browser storage is full. Please delete some existing games or free up browser disk space before importing this bundle.";
+        log("Bundle import failed: Storage quota exceeded.", "error");
+        openWrongZipTypeModal(quotaMsg, "Storage Quota Exceeded");
+      } else {
+        log("Bundle import failed: " + (error.message || String(error)), "error");
+      }
     } finally {
       setActionButtonsDisabled(false);
       clearWorkProgress();

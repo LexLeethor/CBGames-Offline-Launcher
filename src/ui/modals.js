@@ -1,5 +1,6 @@
 "use strict";
-function openWrongZipTypeModal(message) {
+function openWrongZipTypeModal(message, title) {
+  wrongZipTypeTitle.textContent = title || (message && message.startsWith("This looks like") ? "Wrong ZIP Type" : "Import Error");
   wrongZipTypeMessage.textContent = message || "This ZIP cannot be imported here.";
   wrongZipTypeModal.classList.add("open");
   wrongZipTypeModal.setAttribute("aria-hidden", "false");
@@ -9,6 +10,7 @@ function openWrongZipTypeModal(message) {
 function closeWrongZipTypeModal() {
   wrongZipTypeModal.classList.remove("open");
   wrongZipTypeModal.setAttribute("aria-hidden", "true");
+  wrongZipTypeTitle.textContent = "Wrong ZIP Type";
 }
 
 function closeSaveImportModal() {
