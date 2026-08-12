@@ -102,6 +102,8 @@ async function exportGamesBundle(games, progressCallback) {
       if (typeof progressCallback === "function") {
         progressCallback(processedGames, list.length);
       }
+      // Clear files array to allow GC to reclaim memory
+      files.length = 0;
     }
 
     const manifestBytes = encodeUtf8(JSON.stringify(manifest));
@@ -213,51 +215,55 @@ async function downloadGameWithTransformationsReverted(game) {
         URL.revokeObjectURL(url);
       }
       log(`Exported "${game.name}" to ${filename}; reverted ${revertedFileCount} transformed files.`);
-    } finally {
-      setActionButtonsDisabled(false);
-      clearWorkProgress();
-    }
+    // Clear file references
+    files.length = 0;
+  } finally {
+    setActionButtonsDisabled(false);
+    clearWorkProgress();
   }
+}
 
 async function downloadGameStandard(game) {
-    setActionButtonsDisabled(true);
-    try {
-      if (!game) {
-        throw new Error("No game selected.");
-      }
-      setWorkProgress("Preparing game export", 0, 0);
-      log(`Exporting game "${game.name}"...`);
-      const files = await getAllFilesForGame(game.id);
-      
-      const zipEntries = [];
-      for (const file of files) {
-        const rawBytes = new Uint8Array(await file.blob.arrayBuffer());
-        zipEntries.push({
-          path: file.path,
-          bytes: rawBytes
-        });
-      }
-      
-      const bundleZip = createZipStoreArchive(zipEntries);
-      const filename = game.name.trim().replace(/[^a-z0-9]+/gi, "-").toLowerCase() + ".zip";
-      const url = URL.createObjectURL(new Blob([bundleZip], { type: "application/zip" }));
-      
-      try {
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = filename;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-      log(`Exported "${game.name}" to ${filename}.`);
-    } finally {
-      setActionButtonsDisabled(false);
-      clearWorkProgress();
+  setActionButtonsDisabled(true);
+  try {
+    if (!game) {
+      throw new Error("No game selected.");
     }
+    setWorkProgress("Preparing game export", 0, 0);
+    log(`Exporting game "${game.name}"...`);
+    const files = await getAllFilesForGame(game.id);
+      
+    const zipEntries = [];
+    for (const file of files) {
+      const rawBytes = new Uint8Array(await file.blob.arrayBuffer());
+      zipEntries.push({
+        path: file.path,
+        bytes: rawBytes
+      });
+    }
+      
+    const bundleZip = createZipStoreArchive(zipEntries);
+    const filename = game.name.trim().replace(/[^a-z0-9]+/gi, "-").toLowerCase() + ".zip";
+    const url = URL.createObjectURL(new Blob([bundleZip], { type: "application/zip" }));
+      
+    try {
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    log(`Exported "${game.name}" to ${filename}.`);
+    // Clear file references
+    files.length = 0;
+  } finally {
+    setActionButtonsDisabled(false);
+    clearWorkProgress();
   }
+}
 
 async function pickBundleFile() {
     if (window.showOpenFilePicker) {
@@ -419,7 +425,144 @@ async function parseBundlePreviewData(file) {
     };
   }
 
-async function executeBundleImportPlan(previewData, planGames) {
+async function executeBundleImportPlanProgressive(previewData, planGames) {
+    const selected = planGames.filter((item) =>
+      item &&
+      item.selected &&
+      item.mode !== "skip" &&
+      item.preview &&
+      !item.preview.missingPayloadCount
+    );
+    if (!selected.length) {
+      throw new Error("No games were selected to import.");
+    }
+
+    const usedNameKeys = new Set(
+      Array.from(state.gamesById.values())
+        .map((game) => normalizeGameIdentity(game.name || ""))
+        .filter(Boolean)
+    );
+    const reservedIds = new Set(Array.from(state.gamesById.keys()));
+    const totalFiles = selected.reduce((sum, item) => sum + (item.preview.fileCount || 0), 0);
+
+    let importedGames = 0;
+    let importedFiles = 0;
+    let firstGameId = "";
+    const filesStart = performance.now();
+    setWorkProgress("Importing games", 0, totalFiles || 1);
+
+    for (const item of selected) {
+      const preview = item.preview;
+      const rawGame = preview.rawGame;
+      const incoming = normalizeBundleGameRecord({
+        ...rawGame,
+        thumbnailDataUrl: ""
+      });
+      const mode = item.mode;
+      const replaceTarget = mode === "replace" ? preview.conflictGame : null;
+
+      if (replaceTarget) {
+        await deleteFilesByGameId(replaceTarget.id);
+        incoming.id = replaceTarget.id;
+        incoming.sortOrder = Number.isFinite(Number(replaceTarget.sortOrder))
+          ? Number(replaceTarget.sortOrder)
+          : getNextSortOrder();
+        incoming.name = String(replaceTarget.name || incoming.name || "Imported Game");
+      } else {
+        incoming.id = chooseUniqueGameId(incoming.id, reservedIds);
+        incoming.sortOrder = Number.isFinite(Number(incoming.sortOrder))
+          ? Number(incoming.sortOrder)
+          : getNextSortOrder();
+        incoming.name = chooseUniqueGameName(incoming.name, usedNameKeys);
+      }
+
+      if (rawGame && rawGame.thumbnail && typeof rawGame.thumbnail.path === "string") {
+        const thumbPath = normalizePath(rawGame.thumbnail.path);
+        const thumbEntry = previewData.entryByPath.get(thumbPath);
+        if (thumbEntry) {
+          const thumbBytes = await extractEntryBytes(previewData.parsedZip, thumbEntry);
+          const thumbMime = typeof rawGame.thumbnail.type === "string" && rawGame.thumbnail.type
+            ? rawGame.thumbnail.type
+            : mimeFromPath(thumbPath);
+          incoming.thumbnailDataUrl = "data:" + thumbMime + ";base64," + bytesToBase64(thumbBytes);
+        } else if (replaceTarget && typeof replaceTarget.thumbnailDataUrl === "string") {
+          incoming.thumbnailDataUrl = replaceTarget.thumbnailDataUrl;
+        }
+      } else if (replaceTarget && typeof replaceTarget.thumbnailDataUrl === "string") {
+        incoming.thumbnailDataUrl = replaceTarget.thumbnailDataUrl;
+      }
+
+      await putGame(incoming);
+      state.gamesById.set(incoming.id, incoming);
+
+      const fileList = Array.isArray(rawGame && rawGame.files) ? rawGame.files : [];
+      for (const fileInfo of fileList) {
+        if (!fileInfo || typeof fileInfo !== "object") {
+          continue;
+        }
+        const sourcePath = normalizePath(fileInfo.path || "");
+        const zipPath = normalizePath(fileInfo.zipPath || "");
+        if (!sourcePath || !zipPath) {
+          continue;
+        }
+        const zipEntry = previewData.entryByPath.get(zipPath);
+        if (!zipEntry) {
+          throw new Error("Bundle missing file payload: " + zipPath);
+        }
+        let fileBytes = await extractEntryBytes(previewData.parsedZip, zipEntry);
+        const type = typeof fileInfo.type === "string" && fileInfo.type ? fileInfo.type : mimeFromPath(sourcePath);
+        const blob = new Blob([fileBytes], { type });
+        await putFileRecord({
+          gameId: incoming.id,
+          path: sourcePath,
+          size: blob.size,
+          type: blob.type,
+          blob,
+          transformations: Array.isArray(fileInfo.transformations) && fileInfo.transformations.length
+            ? fileInfo.transformations
+            : undefined
+        });
+        fileBytes = null;
+        importedFiles += 1;
+        if (importedFiles % 25 === 0 || importedFiles === totalFiles) {
+          const etaText = formatEtaSeconds(estimateEtaSeconds(filesStart, importedFiles, totalFiles || 1));
+          setWorkProgress(
+            "Importing games",
+            importedFiles,
+            totalFiles || 1,
+            { currentText: String(importedFiles), totalText: String(totalFiles || 1), etaText }
+          );
+        }
+      }
+
+      if (!firstGameId) {
+        firstGameId = incoming.id;
+      }
+      importedGames += 1;
+    }
+
+    const preferredSelected = state.selectedGameId && state.gamesById.has(state.selectedGameId)
+      ? state.selectedGameId
+      : firstGameId;
+
+    setWorkProgress("Refreshing library", 0, 0);
+    await loadLibrary(preferredSelected);
+    if (preferredSelected) {
+      await putSetting(SETTING_SELECTED_GAME, preferredSelected);
+    }
+
+    const skippedCount = planGames.length - selected.length;
+    log(
+      "Imported bundle: " +
+      importedGames +
+      " games and " +
+      importedFiles +
+      " files. Skipped " +
+      skippedCount +
+      " games."
+    );
+  }
+
     const selected = planGames.filter((item) =>
       item &&
       item.selected &&
@@ -527,7 +670,7 @@ async function executeBundleImportPlan(previewData, planGames) {
         if (!zipEntry) {
           throw new Error("Bundle missing file payload: " + zipPath);
         }
-        const fileBytes = await extractEntryBytes(previewData.parsedZip, zipEntry);
+        let fileBytes = await extractEntryBytes(previewData.parsedZip, zipEntry);
         const type = typeof fileInfo.type === "string" && fileInfo.type ? fileInfo.type : mimeFromPath(sourcePath);
         const blob = new Blob([fileBytes], { type });
         await putFileRecord({
@@ -540,6 +683,8 @@ async function executeBundleImportPlan(previewData, planGames) {
             ? fileInfo.transformations
             : undefined
         });
+        // Clear reference to allow GC to reclaim memory
+        fileBytes = null;
         importedFiles += 1;
         if (importedFiles % 25 === 0 || importedFiles === totalFiles) {
           const etaText = formatEtaSeconds(estimateEtaSeconds(filesStart, importedFiles, totalFiles || 1));
@@ -551,7 +696,10 @@ async function executeBundleImportPlan(previewData, planGames) {
           );
         }
       }
+      // Clear metadata reference after importing all files for this game
+      item.preview = null;
     }
+
 
     const selectedFirst = metadataOut.length ? metadataOut[0].gameId : "";
     const preferredSelected = state.selectedGameId && state.gamesById.has(state.selectedGameId)

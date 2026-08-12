@@ -150,6 +150,36 @@ function detectFlashFromStoredFiles(gameId) {
     });
   }
 
+async function processFilesForGameInBatches(gameId, batchSize, onBatch) {
+    return new Promise((resolve, reject) => {
+      const batch = [];
+      const tx = state.db.transaction(STORE_FILES, "readonly");
+      const index = tx.objectStore(STORE_FILES).index("gameId");
+      const request = index.openCursor(IDBKeyRange.only(gameId));
+      
+      request.onsuccess = async (event) => {
+        const cursor = event.target.result;
+        if (cursor) {
+          batch.push(cursor.value);
+          if (batch.length >= batchSize) {
+            await onBatch(batch.splice(0));
+          }
+          cursor.continue();
+        }
+      };
+      
+      tx.oncomplete = async () => {
+        if (batch.length > 0) {
+          await onBatch(batch);
+        }
+        resolve();
+      };
+      
+      request.onerror = () => reject(request.error);
+      tx.onabort = () => reject(tx.error || new Error("Transaction aborted"));
+    });
+  }
+
 async function detectUnityFromStoredFiles(gameId) {
     const files = await getAllFilesForGame(gameId);
     const paths = files.map((file) => normalizePath(file.path || ""));
@@ -168,6 +198,9 @@ async function detectUnityFromStoredFiles(gameId) {
         }
       } catch {
         // ignore parse errors
+      } finally {
+        // Release blob reference after processing
+        file.blob = null;
       }
     }
     return false;
