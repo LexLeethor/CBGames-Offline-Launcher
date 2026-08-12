@@ -1497,6 +1497,13 @@ async function fetchGithubRepoTreeSnapshot(owner, repo, branchHint) {
   }
 
 async function buildZipFileFromGithubTree(snapshot, labelPrefix) {
+    const entries = await downloadGithubTreeEntries(snapshot, labelPrefix);
+    const zipBlob = createZipStoreArchive(entries);
+    const fileName = String(snapshot.repo || "github-repo") + "-" + String(snapshot.branch || "branch") + ".zip";
+    return new File([zipBlob], fileName, { type: "application/zip" });
+  }
+
+async function downloadGithubTreeEntries(snapshot, labelPrefix) {
     const entries = [];
     const files = Array.isArray(snapshot && snapshot.fileEntries) ? snapshot.fileEntries : [];
     const owner = String(snapshot && snapshot.owner || "").trim();
@@ -1595,7 +1602,7 @@ async function buildZipFileFromGithubTree(snapshot, labelPrefix) {
       throw lastError || new Error("Failed to download file " + fileMeta.path);
     };
 
-    for (let i = 0; i < files.length; i += 1) {
+     for (let i = 0; i < files.length; i += 1) {
       const fileMeta = files[i];
       setWorkProgressTree(i, files.length, fileMeta.path);
       const bytes = await fetchBytesStreaming(fileMeta, i);
@@ -1606,10 +1613,31 @@ async function buildZipFileFromGithubTree(snapshot, labelPrefix) {
       setWorkProgressTree(i + 1, files.length, fileMeta.path);
     }
     setWorkProgressTree(files.length, files.length, "");
+    return entries;
+  }
 
-    const zipBlob = createZipStoreArchive(entries);
-    const fileName = String(snapshot.repo || "github-repo") + "-" + String(snapshot.branch || "branch") + ".zip";
-    return new File([zipBlob], fileName, { type: "application/zip" });
+async function importGithubTreeDirect(snapshot, gameName, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    try {
+      setActionButtonsDisabled(true);
+      const entries = await downloadGithubTreeEntries(snapshot, "Downloading " + (gameName || "repo"));
+      const githubSource = {
+        provider: "github-tree",
+        owner: String(snapshot && snapshot.owner || ""),
+        repo: String(snapshot && snapshot.repo || ""),
+        branch: String(snapshot && snapshot.branch || ""),
+        downloadedAt: Date.now()
+      };
+      await importEntriesDirectly(entries, {
+        gameName: gameName || (String(snapshot.repo || "github-repo") + " (" + String(snapshot.branch || "main") + ")"),
+        githubSource: githubSource,
+        importMode: opts.importMode || "separate",
+        replaceGameId: opts.replaceGameId || "",
+        manageUi: true
+      });
+    } finally {
+      setActionButtonsDisabled(false);
+    }
   }
 
 async function downloadGithubRepoSnapshotZip(snapshot, label) {
@@ -1795,4 +1823,202 @@ function zipUrlHasUpdate(previousSource, remoteHeadInfo) {
       return prev.lastModified !== nextLastModified;
     }
     return false;
+  }
+
+async function importEntriesDirectly(entries, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const requestedMode = opts.importMode === "replace" || opts.importMode === "separate"
+      ? opts.importMode
+      : "";
+    const replaceGameId = typeof opts.replaceGameId === "string" ? opts.replaceGameId : "";
+    const incomingGithubSource = normalizeGithubSource(opts.githubSource);
+    const gameName = typeof opts.gameName === "string" ? opts.gameName : "Imported Game";
+    const manageUi = opts.manageUi !== false;
+
+    const fileEntries = Array.isArray(entries) ? entries : [];
+    if (!fileEntries.length) {
+      throw new Error("No files to import.");
+    }
+
+    const existingGame = replaceGameId && state.gamesById.has(replaceGameId)
+      ? state.gamesById.get(replaceGameId)
+      : null;
+
+    let importMode = "separate";
+    if (requestedMode) {
+      importMode = requestedMode === "replace" && existingGame ? "replace" : "separate";
+    } else if (existingGame) {
+      importMode = "separate";
+    }
+
+    if (manageUi) {
+      setActionButtonsDisabled(true);
+    }
+
+    const gameId = importMode === "replace" && existingGame ? existingGame.id : makeId();
+    const preservedThumbnail = importMode === "replace" && existingGame
+      ? (typeof existingGame.thumbnailDataUrl === "string" ? existingGame.thumbnailDataUrl : "")
+      : "";
+    const preservedName = importMode === "replace" && existingGame
+      ? String(existingGame.name || gameName)
+      : gameName;
+    const preservedSortOrder = importMode === "replace" && existingGame
+      ? Number(existingGame.sortOrder)
+      : Number.MAX_SAFE_INTEGER;
+    const resolvedGithubSource = incomingGithubSource || (
+      importMode === "replace" && existingGame ? normalizeGithubSource(existingGame.githubSource) : null
+    );
+
+    try {
+      const processedEntries = [];
+      const brotliDecodedPaths = new Set();
+      const seenPaths = new Map();
+
+      setWorkProgress("Processing entries", 0, fileEntries.length);
+
+      for (let idx = 0; idx < fileEntries.length; idx++) {
+        const entry = fileEntries[idx];
+        const entryBytes = entry.bytes instanceof Uint8Array ? entry.bytes : new Uint8Array(entry.bytes);
+        let path = normalizePath(entry.path || "");
+        let bytes = entryBytes;
+        let brotliDecoded = false;
+
+        if (/\.br$/i.test(path)) {
+          try {
+            bytes = await inflateBrotli(entryBytes);
+            path = path.replace(/\.br$/i, "");
+            brotliDecodedPaths.add(path);
+            brotliDecoded = true;
+          } catch (error) {
+            console.error(error);
+            log("Brotli decode failed for " + entry.path + ". Keeping compressed version.", "error");
+          }
+        }
+
+        if (seenPaths.has(path)) {
+          const existingIndex = seenPaths.get(path);
+          if (brotliDecoded && typeof existingIndex === "number") {
+            processedEntries[existingIndex] = {
+              path,
+              bytes,
+              originalPath: entry.path
+            };
+          }
+          continue;
+        }
+
+        seenPaths.set(path, processedEntries.length);
+        processedEntries.push({
+          path,
+          bytes,
+          originalPath: entry.path
+        });
+
+        if ((idx + 1) % 50 === 0) {
+          setWorkProgress("Processing entries", idx + 1, fileEntries.length);
+        }
+      }
+
+      const brotliReplacementMap = buildBrotliReplacementMap(brotliDecodedPaths);
+
+      setWorkProgress("Optimizing game assets", 0, 0);
+      for (const entry of processedEntries) {
+        const transformed = applyCurrentExtractorTransformations(entry.path, entry.bytes, {
+          brotliDecodedPaths,
+          brotliReplacementMap
+        });
+        entry.bytes = transformed.bytes;
+        entry.transformations = transformed.transformations;
+      }
+
+      await applyPreLaunchTransformations(processedEntries);
+
+      const htmlEntries = processedEntries
+        .map((entry) => entry.path)
+        .filter((path) => /\.html?$/i.test(path))
+        .sort((a, b) => a.localeCompare(b));
+
+      if (detectSharedArrayBufferUsage(processedEntries)) {
+        const sabDecision = await askSharedArrayBufferDecision();
+        if (sabDecision !== "optionB") {
+          log("Import canceled (SharedArrayBuffer).");
+          if (manageUi) setActionButtonsDisabled(false);
+          return;
+        }
+        log("Importing despite SharedArrayBuffer. The game may not work on file://.");
+      }
+
+      const gameRecord = {
+        id: gameId,
+        name: preservedName,
+        zipName: gameName + ".zip",
+        importedAt: Date.now(),
+        extractorVersion: CURRENT_EXTRACTOR_VERSION,
+        sortOrder: Number.isFinite(preservedSortOrder) ? preservedSortOrder : getNextSortOrder(),
+        fileCount: processedEntries.length,
+        totalBytes: 0,
+        htmlEntries,
+        entryPath: chooseBestEntryPath(htmlEntries, ""),
+        thumbnailDataUrl: preservedThumbnail,
+        githubSource: resolvedGithubSource,
+        unityDetected: detectUnityByPaths(processedEntries.map((entry) => entry.path)),
+        flashDetected: detectFlashByPaths(processedEntries.map((entry) => entry.path))
+      };
+
+      if (importMode === "replace" && existingGame) {
+        await deleteFilesByGameId(existingGame.id);
+        log("Replacing existing game: " + (existingGame.name || existingGame.id));
+      }
+
+      let processed = 0;
+      let totalBytes = 0;
+      setWorkProgress("Importing game files", 0, processedEntries.length);
+
+      for (const entry of processedEntries) {
+        const entryBytes = entry.bytes;
+        const transformations = entry.transformations;
+
+        const blob = new Blob([entryBytes], { type: mimeFromPath(entry.path) });
+        totalBytes += blob.size;
+
+        await putFileRecord({
+          gameId,
+          path: entry.path,
+          size: blob.size,
+          type: blob.type,
+          blob,
+          transformations
+        });
+
+        if (!gameRecord.unityDetected && /\.html?$/i.test(entry.path)) {
+          try {
+            const htmlText = decodeUtf8(entryBytes);
+            if (detectUnityByHtmlText(htmlText)) {
+              gameRecord.unityDetected = true;
+            }
+          } catch {
+            // ignore decode errors
+          }
+        }
+
+        processed += 1;
+        if (processed % 20 === 0 || processed === processedEntries.length) {
+          setWorkProgress("Importing game files", processed, processedEntries.length);
+        }
+        if (processed % 40 === 0 || processed === processedEntries.length) {
+          log("Imported " + processed + "/" + processedEntries.length + " files...");
+        }
+      }
+
+      gameRecord.totalBytes = totalBytes;
+      await putGame(gameRecord);
+      state.gamesById.set(gameId, gameRecord);
+      await loadLibrary(gameId);
+
+      log("Imported game: " + preservedName + " (" + processedEntries.length + " files)");
+    } finally {
+      if (manageUi) {
+        setActionButtonsDisabled(false);
+      }
+    }
   }

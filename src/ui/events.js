@@ -1,25 +1,24 @@
 "use strict";
 
-entrySelect.addEventListener("change", async () => {
+entrySelect.addEventListener("change", function() {
   const game = getSelectedGame();
   if (!game || !entrySelect.value) {
     return;
   }
   game.entryPath = entrySelect.value;
   state.gamesById.set(game.id, game);
-  try {
-    await putGame(game);
+  putGame(game).then(() => {
     selectedEntry.textContent = game.entryPath;
     log("Startup file set to " + game.entryPath);
-  } catch (error) {
+  }).catch(error => {
     console.error(error);
     log("Could not save startup file selection.", "error");
-  }
+  });
 });
 
 importZipButton.addEventListener("click", pickZipFile);
-selectedPlayButton.addEventListener("click", async () => {
-  await launchSelectedGame();
+selectedPlayButton.addEventListener("click", function() {
+  launchSelectedGame();
 });
 selectedEditButton.addEventListener("click", () => {
   if (!state.selectedGameId) {
@@ -27,16 +26,14 @@ selectedEditButton.addEventListener("click", () => {
   }
   openGameEditModal(state.selectedGameId);
 });
-selectedDeleteButton.addEventListener("click", async () => {
-  await deleteSelectedGame();
+selectedDeleteButton.addEventListener("click", function() {
+  deleteSelectedGame();
 });
-replaceZipSelectedButton.addEventListener("click", async () => {
-  try {
-    await replaceGameWithZipFlow();
-  } catch (error) {
+replaceZipSelectedButton.addEventListener("click", function() {
+  replaceGameWithZipFlow().catch(error => {
     console.error(error);
     log("Replace import failed: " + (error.message || String(error)), "error");
-  }
+  });
 });
 
 openOpsModalButton.addEventListener("click", showOpsModal);
@@ -62,29 +59,23 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       hideHowToModal();
     }
   });
-  importGithubButton.addEventListener("click", async () => {
-    try {
-      await importFromGithub();
-    } catch (error) {
+  importGithubButton.addEventListener("click", function() {
+    importFromGithub().catch(error => {
       console.error(error);
       log("GitHub import failed: " + (error.message || String(error)), "error");
-    }
+    });
   });
-  checkGithubUpdateButton.addEventListener("click", async () => {
-    try {
-      await checkAllGithubUpdates();
-    } catch (error) {
+  checkGithubUpdateButton.addEventListener("click", function() {
+    checkAllGithubUpdates().catch(error => {
       console.error(error);
       log("GitHub update check failed: " + (error.message || String(error)), "error");
-    }
+    });
   });
-  exportAllGamesButton.addEventListener("click", async () => {
-    try {
-      await downloadAllGamesBundle();
-    } catch (error) {
+  exportAllGamesButton.addEventListener("click", function() {
+    downloadAllGamesBundle().catch(error => {
       console.error(error);
       log("Bundle export failed: " + (error.message || String(error)), "error");
-    }
+    });
   });
   importBundleButton.addEventListener("click", pickBundleFile);
   exportSaveDataButton.addEventListener("click", exportSaveData);
@@ -93,33 +84,27 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     saveImportInput.click();
   });
   if (networkLoadManifestButton) {
-    networkLoadManifestButton.addEventListener("click", async () => {
-      try {
-        await loadNetworkTransferManifest();
-      } catch (error) {
+    networkLoadManifestButton.addEventListener("click", function() {
+      loadNetworkTransferManifest().catch(error => {
         console.error(error);
         setNetworkTransferStatus("Could not load host manifest.", "error");
-      }
+      });
     });
   }
   if (networkImportSelectedButton) {
-    networkImportSelectedButton.addEventListener("click", async () => {
-      try {
-        await importSelectedNetworkTransfers();
-      } catch (error) {
+    networkImportSelectedButton.addEventListener("click", function() {
+      importSelectedNetworkTransfers().catch(error => {
         console.error(error);
         setNetworkTransferStatus("Network import failed: " + (error.message || String(error)), "error");
-      }
+      });
     });
   }
   if (networkUploadToHostButton) {
-    networkUploadToHostButton.addEventListener("click", async () => {
-      try {
-        await uploadNetworkBundleWithOtc();
-      } catch (error) {
+    networkUploadToHostButton.addEventListener("click", function() {
+      uploadNetworkBundleWithOtc().catch(error => {
         console.error(error);
         setNetworkTransferStatus("Host upload failed: " + (error.message || String(error)), "error");
-      }
+      });
     });
   }
   if (networkTransferList) {
@@ -141,21 +126,19 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     });
   }
   if (networkHostUrlInput) {
-    networkHostUrlInput.addEventListener("keydown", async (event) => {
+    networkHostUrlInput.addEventListener("keydown", function(event) {
       if (event.key !== "Enter") {
         return;
       }
       event.preventDefault();
-      await loadNetworkTransferManifest();
+      loadNetworkTransferManifest();
     });
   }
-  exportErrorLogsButton.addEventListener("click", async () => {
-    try {
-      await downloadErrorLogs();
-    } catch (error) {
+  exportErrorLogsButton.addEventListener("click", function() {
+    downloadErrorLogs().catch(error => {
       console.error(error);
       log("Error log export failed: " + (error.message || String(error)), "error");
-    }
+    });
   });
   launchButton.addEventListener("click", launchSelectedGame);
   deleteGameButton.addEventListener("click", deleteSelectedGame);
@@ -164,7 +147,7 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     renderGameCards();
   });
 
-  gamesGrid.addEventListener("click", async (event) => {
+  gamesGrid.addEventListener("click", function(event) {
     if (Date.now() < state.suppressCardClickUntil) {
       event.preventDefault();
       return;
@@ -180,24 +163,27 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     }
 
     if (action === "edit-game") {
-      await selectGameById(gameId);
-      openGameEditModal(gameId);
+      selectGameById(gameId).then(() => {
+        openGameEditModal(gameId);
+      });
       return;
     }
     if (action === "launch") {
-      await selectGameById(gameId);
-      await launchSelectedGame();
+      selectGameById(gameId).then(() => {
+        launchSelectedGame();
+      });
       return;
     }
     if (action === "delete") {
-      await selectGameById(gameId);
-      await deleteSelectedGame();
+      selectGameById(gameId).then(() => {
+        deleteSelectedGame();
+      });
       return;
     }
-    await selectGameById(gameId);
+    selectGameById(gameId);
   });
 
-  gamesGrid.addEventListener("dblclick", async (event) => {
+  gamesGrid.addEventListener("dblclick", function(event) {
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
       return;
@@ -206,8 +192,9 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     if (!gameId || !state.gamesById.has(gameId)) {
       return;
     }
-    await selectGameById(gameId);
-    await launchSelectedGame();
+    selectGameById(gameId).then(() => {
+      launchSelectedGame();
+    });
   });
 
   gamesGrid.addEventListener("pointerdown", (event) => {
@@ -344,12 +331,12 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     gameEditImageInput.value = "";
     gameEditImageInput.click();
   });
-  gameEditNameInput.addEventListener("keydown", async (event) => {
+  gameEditNameInput.addEventListener("keydown", function(event) {
     if (event.key !== "Enter") {
       return;
     }
     event.preventDefault();
-    await saveGameEditChanges();
+    saveGameEditChanges();
   });
   gameEditNameInput.addEventListener("input", () => {
     const value = gameEditNameInput.value.trim();
@@ -361,40 +348,35 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     }
     loadGameEditImageSource(gameEditImageInput.files[0]);
   });
-  saveGameEditChangesButton.addEventListener("click", async () => {
-    try {
-      await saveGameEditChanges();
-    } catch (error) {
+  saveGameEditChangesButton.addEventListener("click", function() {
+    saveGameEditChanges().catch(error => {
       console.error(error);
       log("Could not save changes.", "error");
-    }
+    });
   });
-  exportSelectedGameButton.addEventListener("click", async () => {
-    try {
-      const gameId = state.selectedGameId;
-      const game = gameId ? state.gamesById.get(gameId) : null;
-      if (!game) {
-        log("Select a game in the library first to export.", "error");
-        return;
-      }
-      const choice = await askExportDecision(game);
+  exportSelectedGameButton.addEventListener("click", function() {
+    const gameId = state.selectedGameId;
+    const game = gameId ? state.gamesById.get(gameId) : null;
+    if (!game) {
+      log("Select a game in the library first to export.", "error");
+      return;
+    }
+    askExportDecision(game).then(choice => {
       if (choice === "optionA") {
-        await downloadGameStandard(game);
+        return downloadGameStandard(game);
       } else if (choice === "optionB") {
-        await downloadGameWithTransformationsReverted(game);
+        return downloadGameWithTransformationsReverted(game);
       }
-    } catch (error) {
+    }).catch(error => {
       console.error(error);
       log("Could not export game.", "error");
-    }
+    });
   });
-  removeGameEditImageButton.addEventListener("click", async () => {
-    try {
-      await removeGameEditImage();
-    } catch (error) {
+  removeGameEditImageButton.addEventListener("click", function() {
+    removeGameEditImage().catch(error => {
       console.error(error);
       log("Could not remove game image.", "error");
-    }
+    });
   });
 
   genericChoiceOptionBButton.addEventListener("click", () => {
@@ -677,11 +659,11 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     }
   });
 
-  zipInput.addEventListener("change", async () => {
+  zipInput.addEventListener("change", function() {
     if (!zipInput.files || !zipInput.files.length) {
       return;
     }
-    await importZipFile(zipInput.files[0]);
+    importZipFile(zipInput.files[0]);
   });
   replaceZipInput.addEventListener("change", async () => {
     if (!replaceZipInput.files || !replaceZipInput.files.length) {

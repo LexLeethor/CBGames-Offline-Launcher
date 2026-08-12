@@ -563,6 +563,8 @@ async function executeBundleImportPlanProgressive(previewData, planGames) {
     );
   }
 
+async function executeBundleImportPlan(previewData, planGames) {
+
     const selected = planGames.filter((item) =>
       item &&
       item.selected &&
@@ -784,4 +786,14 @@ async function importBundleFile(file) {
       setActionButtonsDisabled(false);
       clearWorkProgress();
     }
+  }
+
+  // Expose functions to global scope for classic script usage
+  if (typeof window !== "undefined") {
+    window.exportGamesBundle = exportGamesBundle;
+    window.exportAllGamesBundle = exportAllGamesBundle;
+    window.downloadAllGamesBundle = downloadAllGamesBundle;
+    window.downloadGameWithTransformationsReverted = downloadGameWithTransformationsReverted;
+    window.downloadGameStandard = downloadGameStandard;
+    window.pickBundleFile = pickBundleFile;
   }
