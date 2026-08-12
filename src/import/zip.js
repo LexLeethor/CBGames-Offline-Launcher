@@ -1511,10 +1511,25 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
     const branch = String(snapshot && snapshot.branch || "").trim();
     const progressLabel = String(labelPrefix || "Downloading repo files");
     const hasKnownSizes = files.every((file) => Number.isFinite(file && file.size) && Number(file.size) >= 0);
-    const totalBytes = hasKnownSizes
+    let totalBytes = hasKnownSizes
       ? files.reduce((sum, file) => sum + (Number(file.size) || 0), 0)
       : 0;
     let downloadedBytes = 0;
+    const ensureTotalAtLeast = (value) => {
+      const actual = Number(value || 0);
+      if (actual > 0 && actual > totalBytes) {
+        totalBytes = actual;
+      }
+    };
+    const adjustTotalForActualSize = (actualLength, pointerLength) => {
+      const actual = Number(actualLength || 0);
+      const pointer = Number(pointerLength || 0);
+      const delta = actual - pointer;
+      if (delta > 0 && totalBytes > 0) {
+        totalBytes += delta;
+      }
+      ensureTotalAtLeast(downloadedBytes + actual);
+    };
     const updateProgress = (fileIndex) => {
       const fileSuffix = files.length > 0
         ? " (" + (fileIndex + 1) + "/" + files.length + ")"
@@ -1549,9 +1564,105 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
         throw new Error("Cannot build raw URL for " + fileMeta.path);
       }
 
+      const streamResponseToUint8Array = async (response, fileIndex) => {
+        if (!response || !response.body || typeof response.body.getReader !== "function") {
+          const buf = await response.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          downloadedBytes += bytes.length;
+          updateProgress(fileIndex);
+          return bytes;
+        }
+        const reader = response.body.getReader();
+        const chunks = [];
+        let totalLength = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            totalLength += value.byteLength;
+            downloadedBytes += value.byteLength;
+            updateProgress(fileIndex);
+          }
+        }
+        const out = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+          out.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        return out;
+      };
+
       let lastError = null;
       for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
+          // Try GitHub API blob endpoint first (CORS-friendly) to detect LFS pointers
+          if (fileMeta && fileMeta.sha) {
+            try {
+              const blobApi =
+                "https://api.github.com/repos/" + encodeURIComponent(owner) + 
+                "/" + encodeURIComponent(repo) + 
+                "/git/blobs/" + encodeURIComponent(fileMeta.sha);
+              const blobResp = await fetch(blobApi, { cache: "no-store", headers: { Accept: "application/vnd.github+json" } });
+              if (blobResp && blobResp.ok) {
+                const blobJson = await blobResp.json();
+                const b64 = String(blobJson.content || "").replace(/\n/g, "");
+                if (b64) {
+                  try {
+                    const decoded = typeof atob === "function" ? atob(b64) : (new TextDecoder().decode(Uint8Array.from(atob(b64), c=>c.charCodeAt(0))));
+                    if (decoded && decoded.startsWith("version https://git-lfs.github.com/spec/v1")) {
+                      const oidMatch = decoded.match(/oid sha256:([a-f0-9]{64})/i);
+                      const sizeMatch = decoded.match(/size (\d+)/i);
+                      const oid = oidMatch ? oidMatch[1] : "";
+                      const size = sizeMatch ? Number(sizeMatch[1]) : (fileMeta.size || 0);
+                      console.info("LFS: pointer detected via api.github.com for", fileMeta.path, { oid, size });
+
+                      // Try media.githubusercontent.com as a pragmatic fallback — some media URLs serve the real object
+                      try {
+                        const mediaUrl = owner && repo && branch
+                          ? "https://media.githubusercontent.com/media/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + "/" + encodeURIComponent(branch) + "/" + fileMeta.path.split("/").map(encodeURIComponent).join("/")
+                          : null;
+                        if (mediaUrl) {
+                          console.debug("LFS: attempting media.githubusercontent.com fallback", mediaUrl);
+                          const mediaResp = await fetch(mediaUrl, { cache: "no-store", redirect: "follow" });
+                          if (mediaResp && mediaResp.ok) {
+                            const mediaLength = Number(mediaResp.headers.get("content-length")) || size || 0;
+                            if (mediaLength > 0) {
+                              adjustTotalForActualSize(mediaLength, fileMeta.size);
+                              ensureTotalAtLeast(downloadedBytes + mediaLength);
+                              updateProgress(fileIndex);
+                            }
+                            const mediaBytes = await streamResponseToUint8Array(mediaResp, fileIndex);
+                            console.info("LFS: media.githubusercontent.com returned object for", fileMeta.path);
+                            ensureTotalAtLeast(downloadedBytes);
+                            updateProgress(fileIndex);
+                            return mediaBytes;
+                          }
+                        }
+                      } catch (mediaErr) {
+                        console.debug("LFS: media fallback failed", mediaErr);
+                      }
+
+                      const batchJson = JSON.stringify({ operation: "download", objects: [{ oid, size }] });
+                      const curlCmd = "curl -s -X POST 'https://github.com/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + ".git/info/lfs/objects/batch' -H 'Accept: application/vnd.git-lfs+json' -H 'Content-Type: application/json' -d '" + batchJson.replace(/'/g, "'\\''") + "'" + " | jq -r '.objects[0].actions.download.href'";
+                      throw new Error(
+                        "Git LFS pointer detected for '" + fileMeta.path + "' (oid=" + oid + ", size=" + size + ").\n" +
+                        "CORS prevents the browser from calling the Git LFS batch API.\n" +
+                        "You can run this command locally to get the presigned download URL:\n" +
+                        curlCmd
+                      );
+                    }
+                  } catch (e) {
+                    // ignore decode failures and continue
+                  }
+                }
+              }
+            } catch (e) {
+              // ignore API errors and fall back to raw fetch
+            }
+          }
+
           const res = await fetch(rawUrl, { cache: "no-store" });
           const rateLimitErr = checkGithubResponseRateLimit(res);
           if (rateLimitErr) {
@@ -1562,8 +1673,103 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
           }
           if (res.body && typeof res.body.getReader === "function") {
             const reader = res.body.getReader();
+            // Probe the first chunk to detect LFS pointer
+            const firstRead = await reader.read();
+            if (firstRead && !firstRead.done && firstRead.value) {
+              try {
+                const probeBytes = firstRead.value;
+                const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+                if (contentType.includes("text") || contentType.includes("application/octet-stream") || contentType.includes("application/x-git-lfs")) {
+                  const probeText = (() => {
+                    try { return new TextDecoder().decode(probeBytes); } catch { return ""; }
+                  })();
+                  if (probeText.startsWith("version https://git-lfs.github.com/spec/v1")) {
+                    // Parse pointer
+                    const oidMatch = probeText.match(/oid sha256:([a-f0-9]{64})/i);
+                    const sizeMatch = probeText.match(/size (\d+)/i);
+                    if (oidMatch) {
+                      const oid = oidMatch[1];
+                      const size = sizeMatch ? Number(sizeMatch[1]) : 0;
+                      console.info("LFS: detected pointer in repo file", fileMeta.path, { oid, size });
+                      if (size > 0) {
+                        adjustTotalForActualSize(size, fileMeta.size);
+                        ensureTotalAtLeast(downloadedBytes + size);
+                        updateProgress(fileIndex);
+                      }
+
+                      // derive owner/repo/branch from snapshot
+                      const rawUrl = owner && repo && branch
+                        ? "https://raw.githubusercontent.com/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + "/" + encodeURIComponent(branch) + "/" + fileMeta.path.split("/").map(encodeURIComponent).join("/")
+                        : null;
+                      if (rawUrl) {
+                        // Try media.githubusercontent.com before calling batch API (some media URLs serve real object)
+                        try {
+                          const mediaUrl = "https://media.githubusercontent.com/media/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + "/" + encodeURIComponent(branch) + "/" + fileMeta.path.split("/").map(encodeURIComponent).join("/");
+                          console.debug("LFS: attempting media.githubusercontent.com fallback for repo file", mediaUrl);
+                          const mediaResp = await fetch(mediaUrl, { cache: "no-store", redirect: "follow" });
+                          if (mediaResp && mediaResp.ok) {
+                            const mediaLength = Number(mediaResp.headers.get("content-length")) || size || 0;
+                            if (mediaLength > 0) {
+                              adjustTotalForActualSize(mediaLength, fileMeta.size);
+                              ensureTotalAtLeast(downloadedBytes + mediaLength);
+                              updateProgress(fileIndex);
+                            }
+                            const mediaBytes = await streamResponseToUint8Array(mediaResp, fileIndex);
+                            console.info("LFS: media.githubusercontent.com returned object for repo file", fileMeta.path);
+                            ensureTotalAtLeast(downloadedBytes);
+                            updateProgress(fileIndex);
+                            return mediaBytes;
+                          }
+                        } catch (mediaErr) {
+                          console.debug("LFS: media fallback failed for repo file", mediaErr);
+                        }
+
+                        const batchUrl = "https://github.com/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + ".git/info/lfs/objects/batch";
+                        const batchBody = JSON.stringify({ operation: "download", objects: [{ oid, size }] });
+                        try {
+                          console.debug("LFS: calling batch API for repo file", batchUrl);
+                          const batchResp = await fetch(batchUrl, {
+                            method: "POST",
+                            headers: { Accept: "application/vnd.git-lfs+json", "Content-Type": "application/json" },
+                            body: batchBody
+                          });
+                          if (batchResp && batchResp.ok) {
+                            const batchJson = await batchResp.json();
+                            const actions = batchJson && batchJson.objects && batchJson.objects[0] && batchJson.objects[0].actions;
+                            const downloadAction = actions && (actions.download || actions.get);
+                            if (downloadAction && downloadAction.href) {
+                              console.info("LFS: obtained download href for repo file", downloadAction.href);
+                              const objResp = await fetch(downloadAction.href, { cache: "no-store", redirect: "follow" });
+                              if (objResp && objResp.ok) {
+                                const objBytes = await streamResponseToUint8Array(objResp, fileIndex);
+                                adjustTotalForActualSize(objBytes.length, fileMeta.size);
+                                ensureTotalAtLeast(downloadedBytes);
+                                updateProgress(fileIndex);
+                                return objBytes;
+                              }
+                            }
+                          }
+                        } catch (e) {
+                          console.error("LFS batch/download failed for repo file", e);
+                        }
+                      }
+                    }
+                  }
+                }
+              } catch (e) {
+                console.error("LFS probe error for", fileMeta.path, e);
+              }
+            }
+
+            // No LFS pointer handling or failed — continue streaming including first chunk
             const chunks = [];
             let fileBytes = 0;
+            if (firstRead && firstRead.value) {
+              chunks.push(firstRead.value);
+              fileBytes += firstRead.value.byteLength || firstRead.value.length || 0;
+              downloadedBytes += firstRead.value.byteLength || firstRead.value.length || 0;
+              updateProgress(fileIndex);
+            }
             while (true) {
               const { done, value } = await reader.read();
               if (done) {
@@ -1732,6 +1938,173 @@ async function downloadZipFromUrl(url, label, options) {
     const reader = response.body && typeof response.body.getReader === "function"
       ? response.body.getReader()
       : null;
+    // Try LFS pointer handling before streaming the whole response
+    if (reader) {
+      const lfsResult = await tryHandleLfsPointer();
+      if (lfsResult && lfsResult.file) {
+        // We obtained the real object packaged as a file/zip
+        return lfsResult;
+      }
+      var probeChunk = lfsResult && lfsResult.probeChunk ? lfsResult.probeChunk : null;
+    }
+    // Detect Git LFS pointer files served from raw.githubusercontent.com and
+    // automatically fetch the real object via the Git LFS batch API when possible.
+    async function tryHandleLfsPointer() {
+      try {
+        console.debug("LFS: trying to detect pointer for", normalizedUrl);
+        // Only attempt when response looks textual or small
+        const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+        if (!contentType.includes("text") && !contentType.includes("application/octet-stream") && !contentType.includes("application/x-git-lfs")) {
+          console.debug("LFS: skipping due to content-type", contentType);
+          return null;
+        }
+        // Read a small prefix to detect pointer
+        const probe = reader ? await reader.read() : null;
+        if (!probe || probe.done || !probe.value) {
+          if (probe && probe.done) {
+            console.debug("LFS: stream ended before probe");
+            return null;
+          }
+          console.debug("LFS: no probe data available");
+          return null;
+        }
+        const firstBytes = probe.value;
+        const text = (() => {
+          try {
+            return new TextDecoder().decode(firstBytes);
+          } catch (e) {
+            console.debug("LFS: decode error", e && e.message);
+            return "";
+          }
+        })();
+        if (!text.startsWith("version https://git-lfs.github.com/spec/v1")) {
+          // Not an LFS pointer, push the chunk back to stream by returning it
+          console.debug("LFS: not a pointer; first bytes:", text.slice(0, 200));
+          return { probeChunk: firstBytes };
+        }
+
+        // Parse pointer
+        const oidMatch = text.match(/oid sha256:([a-f0-9]{64})/i);
+        const sizeMatch = text.match(/size (\d+)/i);
+        if (!oidMatch) {
+          console.debug("LFS: pointer missing oid");
+          return null;
+        }
+        const oid = oidMatch[1];
+        const size = sizeMatch ? Number(sizeMatch[1]) : 0;
+        console.info("LFS: detected pointer", { oid, size });
+
+        // Attempt to extract owner/repo from raw.githubusercontent.com URL
+        const rawMatch = normalizedUrl.match(/^https?:\/\/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)$/i);
+        if (!rawMatch) {
+          console.debug("LFS: could not parse owner/repo from URL");
+          return null;
+        }
+        const owner = rawMatch[1];
+        const repo = rawMatch[2];
+        const branch = rawMatch[3];
+
+        const branchUrl = owner && repo && branch
+          ? "https://media.githubusercontent.com/media/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + "/" + encodeURIComponent(branch) + "/" + normalizedUrl.split("/").slice(5).map(encodeURIComponent).join("/")
+          : null;
+        if (branchUrl) {
+          try {
+            console.debug("LFS: attempting media.githubusercontent.com fallback for direct URL", branchUrl);
+            const mediaResp = await fetch(branchUrl, { cache: "no-store", redirect: "follow" });
+            if (mediaResp && mediaResp.ok) {
+              const mediaSize = Number(mediaResp.headers.get("content-length")) || size || 1;
+              setWorkProgress("Downloading LFS object", 0, mediaSize);
+              const mediaBuf = await mediaResp.arrayBuffer();
+              console.info("LFS: media.githubusercontent.com returned object for direct URL");
+              const mediaBytes = new Uint8Array(mediaBuf);
+              if (mediaBytes.length > size) {
+                setWorkProgress("Downloading LFS object", mediaBytes.length, mediaSize);
+              }
+              const pathParts = normalizedUrl.split("/");
+              const fileName = pathParts[pathParts.length - 1] || (oid + ".bin");
+              if (mediaBytes.length >= 4 && mediaBytes[0] === 0x50 && mediaBytes[1] === 0x4b && mediaBytes[2] === 0x03 && mediaBytes[3] === 0x04) {
+                return {
+                  file: new File([mediaBytes], fileName, { type: "application/zip" }),
+                  resolvedUrl: branchUrl,
+                  etag: normalizeHttpHeaderToken(mediaResp.headers.get("etag") || ""),
+                  lastModified: normalizeHttpHeaderToken(mediaResp.headers.get("last-modified") || "")
+                };
+              }
+              const zipBytes = createZipStoreArchive([{ path: fileName, bytes: mediaBytes }]);
+              return {
+                file: new File([zipBytes], fileName + ".zip", { type: "application/zip" }),
+                resolvedUrl: branchUrl,
+                etag: normalizeHttpHeaderToken(mediaResp.headers.get("etag") || ""),
+                lastModified: normalizeHttpHeaderToken(mediaResp.headers.get("last-modified") || "")
+              };
+            }
+          } catch (mediaErr) {
+            console.debug("LFS: direct media fallback failed", mediaErr);
+          }
+        }
+
+        const batchUrl = "https://github.com/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + ".git/info/lfs/objects/batch";
+        const batchBody = JSON.stringify({ operation: "download", objects: [{ oid, size }] });
+        console.debug("LFS: calling batch API", batchUrl);
+        const batchResp = await fetch(batchUrl, {
+          method: "POST",
+          headers: {
+            Accept: "application/vnd.git-lfs+json",
+            "Content-Type": "application/json"
+          },
+          body: batchBody
+        });
+        if (!batchResp.ok) {
+          console.debug("LFS: batch API failed", batchResp.status);
+          return null;
+        }
+        const batchJson = await batchResp.json();
+        const actions = batchJson && batchJson.objects && batchJson.objects[0] && batchJson.objects[0].actions;
+        const downloadAction = actions && (actions.download || actions.get);
+        if (!downloadAction || !downloadAction.href) {
+          console.debug("LFS: no download action in batch response");
+          return null;
+        }
+        const downloadHref = downloadAction.href;
+        console.info("LFS: obtained download href", downloadHref);
+
+        const objResp = await fetch(downloadHref, { cache: "no-store", redirect: "follow" });
+        if (!objResp.ok) throw new Error("LFS object download failed (" + objResp.status + ")");
+        const objSize = Number(objResp.headers.get("content-length")) || size || 1;
+        setWorkProgress("Downloading LFS object", 0, objSize);
+        const objBuf = await objResp.arrayBuffer();
+        const objBytes = new Uint8Array(objBuf);
+
+        if (objBytes.length !== objSize) {
+          setWorkProgress("Downloading LFS object", objBytes.length, objSize);
+        }
+
+        // Determine filename from original path
+        const pathParts = normalizedUrl.split("/");
+        const fileName = pathParts[pathParts.length - 1] || (oid + ".bin");
+
+        // If the object is already a ZIP, return it; otherwise package into a ZIP
+        if (objBytes.length >= 4 && objBytes[0] === 0x50 && objBytes[1] === 0x4b && objBytes[2] === 0x03 && objBytes[3] === 0x04) {
+          console.info("LFS: downloaded zip object, returning as zip");
+          return {
+            file: new File([objBytes], fileName, { type: "application/zip" }),
+            resolvedUrl: downloadHref,
+            etag: normalizeHttpHeaderToken(objResp.headers.get("etag") || ""),
+            lastModified: normalizeHttpHeaderToken(objResp.headers.get("last-modified") || "")
+          };
+        }
+
+        // Create a simple zip with the single file using createZipStoreArchive
+        console.info("LFS: wrapping object into zip", fileName);
+        const zipBytes = createZipStoreArchive([{ path: fileName, bytes: objBytes }]);
+        const zipFile = new File([zipBytes], fileName + ".zip", { type: "application/zip" });
+        return { file: zipFile, resolvedUrl: downloadHref, etag: normalizeHttpHeaderToken(objResp.headers.get("etag") || ""), lastModified: normalizeHttpHeaderToken(objResp.headers.get("last-modified") || "") };
+      } catch (error) {
+        // If anything fails, don't block normal download flow
+        console.error("LFS detection/fetch failed:", error);
+        return null;
+      }
+    }
     if (!reader) {
       const bytes = new Uint8Array(await response.arrayBuffer());
       setWorkProgress(label || "Downloading ZIP", bytes.byteLength, bytes.byteLength || 1);
@@ -1751,6 +2124,10 @@ async function downloadZipFromUrl(url, label, options) {
     let loaded = 0;
     let lastReported = 0;
     const chunks = [];
+    if (probeChunk) {
+      chunks.push(probeChunk);
+      loaded += probeChunk.byteLength || probeChunk.length || 0;
+    }
     setWorkProgress(label || "Downloading ZIP", 0, total > 0 ? total : 0);
     while (true) {
       const part = await reader.read();
