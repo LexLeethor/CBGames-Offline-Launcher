@@ -1,14 +1,197 @@
 "use strict";
-function log(message, type = "info") {
+function log(message, type = "info", meta) {
     const line = document.createElement("div");
     if (type === "error") {
       line.className = "error";
     }
     const timestamp = new Date().toLocaleTimeString();
-    line.textContent = "[" + timestamp + "] " + message;
+    const text = typeof message === "string" ? message : (message && message.message) || String(message);
+    line.textContent = "[" + timestamp + "] " + text;
     statusBox.append(line);
     statusBox.scrollTop = statusBox.scrollHeight;
+
+    // Persist detailed logs for later debugging (kept bounded to avoid exhausting storage)
+    try {
+      const entry = {
+        ts: Date.now(),
+        time: new Date().toISOString(),
+        level: String(type || "info"),
+        message: text,
+        meta: meta || undefined,
+        url: (typeof location !== "undefined" && location.href) ? location.href : "",
+        userAgent: (typeof navigator !== "undefined" && navigator.userAgent) ? navigator.userAgent : "",
+        deviceMemory: (typeof navigator !== "undefined" && typeof navigator.deviceMemory !== "undefined") ? navigator.deviceMemory : null,
+        stack: (message && message.stack) ? String(message.stack) : (new Error().stack ? String(new Error().stack) : undefined)
+      };
+      appendErrorLog(entry);
+    } catch (e) {
+      // best-effort logging; swallow errors so logging never breaks app flow
+    }
   }
+
+// --- persistent error log helpers (localStorage-backed, size-limited) ---
+const ERROR_LOG_KEY = "cbgames:errorLogs:v1";
+const ERROR_LOG_MAX_BYTES = 512 * 1024; // ~512KB max stored JSON
+const ERROR_LOG_MAX_ENTRIES = 2000;
+
+function loadErrorLogs() {
+  try {
+    const raw = localStorage.getItem(ERROR_LOG_KEY) || "[]";
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveErrorLogs(arr) {
+  try {
+    let logs = Array.isArray(arr) ? arr.slice() : [];
+    // trim by entries first
+    while (logs.length > ERROR_LOG_MAX_ENTRIES) logs.shift();
+    let json = JSON.stringify(logs);
+    // trim by total bytes
+    while (json.length > ERROR_LOG_MAX_BYTES && logs.length) {
+      logs.shift();
+      json = JSON.stringify(logs);
+    }
+    localStorage.setItem(ERROR_LOG_KEY, json);
+  } catch (e) {
+    // ignore storage errors
+  }
+}
+
+function appendErrorLog(entry) {
+  try {
+    const logs = loadErrorLogs();
+    logs.push(entry);
+    saveErrorLogs(logs);
+  } catch (e) {
+    // ignore
+  }
+}
+
+function clearErrorLogs() {
+  try { localStorage.removeItem(ERROR_LOG_KEY); } catch (e) { }
+}
+
+function downloadErrorLogs() {
+  try {
+    const logs = loadErrorLogs();
+    const blob = new Blob([JSON.stringify(logs, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "cbgames-error-logs-" + Date.now() + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    // ignore
+  }
+}
+
+// Expose helpers for debugging/collection
+try {
+  if (typeof window !== "undefined") {
+    window.cbgames = window.cbgames || {};
+    window.cbgames.getErrorLogs = loadErrorLogs;
+    window.cbgames.clearErrorLogs = clearErrorLogs;
+    window.cbgames.downloadErrorLogs = downloadErrorLogs;
+  }
+} catch (e) {}
+
+// Upload helper: try to relay logs to a server (Cloudflare Worker recommended)
+async function uploadErrorLogsToEndpoint(endpointUrl, options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const maxChunkSize = Number(opts.maxChunkSize) || 150 * 1024; // 150KB per POST by default
+  const logs = loadErrorLogs();
+  if (!logs || !logs.length) return { success: true, parts: 0 };
+
+  // prepare chunks of entries so JSON stays small
+  const parts = [];
+  let cur = [];
+  for (const entry of logs) {
+    cur.push(entry);
+    try {
+      if (JSON.stringify(cur).length > maxChunkSize) {
+        cur.pop();
+        parts.push(cur.slice());
+        cur = [entry];
+      }
+    } catch (e) {
+      // on stringify error, skip this entry
+      cur.pop();
+      parts.push(cur.slice());
+      cur = [];
+    }
+  }
+  if (cur.length) parts.push(cur.slice());
+
+  const results = [];
+  for (let i = 0; i < parts.length; i++) {
+    const chunk = parts[i];
+    const payload = JSON.stringify({ part: i + 1, total: parts.length, logs: chunk });
+    const blob = new Blob([payload], { type: 'application/json' });
+
+    // Prefer sendBeacon for reliability across navigations; fall back to fetch
+    let ok = false;
+    try {
+      if (navigator && typeof navigator.sendBeacon === 'function') {
+        ok = navigator.sendBeacon(endpointUrl, blob);
+      }
+    } catch (e) {
+      ok = false;
+    }
+
+    if (!ok) {
+      try {
+        const resp = await fetch(endpointUrl, {
+          method: 'POST',
+          mode: 'cors',
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+          keepalive: true
+        });
+        ok = resp && resp.ok;
+      } catch (e) {
+        ok = false;
+      }
+    }
+    results.push({ part: i + 1, ok });
+    // small delay to avoid hammering network on flaky connections
+    if (!ok) await new Promise((r) => setTimeout(r, 300));
+  }
+
+  return { success: results.every(r => r.ok), parts: parts.length, results };
+}
+
+try {
+  if (typeof window !== "undefined") {
+    window.cbgames = window.cbgames || {};
+    window.cbgames.uploadErrorLogs = uploadErrorLogsToEndpoint;
+  }
+} catch (e) {}
+
+// Install global handlers to capture uncaught errors and promise rejections
+try {
+  if (typeof window !== "undefined" && window.addEventListener) {
+    window.addEventListener("error", function (ev) {
+      try {
+        const err = ev && (ev.error || ev.message) ? (ev.error || ev.message) : "Unknown error";
+        log(err, "error", { filename: ev && ev.filename, lineno: ev && ev.lineno, colno: ev && ev.colno });
+      } catch (e) {}
+    });
+    window.addEventListener("unhandledrejection", function (ev) {
+      try {
+        const reason = ev && ev.reason ? ev.reason : "Unhandled rejection";
+        log(reason, "error", { unhandledRejection: true });
+      } catch (e) {}
+    });
+  }
+} catch (e) {}
 
 function setUpdateScanStatus(text) {
     if (!updateScanStatus) {
