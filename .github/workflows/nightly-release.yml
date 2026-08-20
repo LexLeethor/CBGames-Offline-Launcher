@@ -3,7 +3,12 @@ name: Nightly Build Launcher Bundles
 on:
   schedule:
     - cron: '0 3 * * *' # daily at 03:00 UTC
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional version string (e.g., 2026.08.19 or 1.2.3)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -20,7 +25,11 @@ jobs:
 
       - name: Set version and Update Extractor Version
         run: |
-          VERSION="$(date -u +%Y.%m.%d)"
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="$(date -u +%Y.%m.%d)"
+          fi
           VERSION_CLEAN="$(echo "$VERSION" | tr -d '.')"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_ENV
@@ -33,7 +42,7 @@ jobs:
       - name: Build release bundle
         run: node scripts/build_bundle.mjs --minify --out dist/index.html
 
-      - name: Upload Bundles
+      - name: Upload Bundles (artifact)
         uses: actions/upload-artifact@v3
         with:
           name: launcher-bundles
@@ -53,57 +62,5 @@ jobs:
             dist/index.debug.html
             dist/index.html
           generate_release_notes: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-name: Nightly release
-
-on:
-  schedule:
-    - cron: '0 2 * * *'     # every day at 02:00 UTC (adjust as needed)
-  workflow_dispatch: {}     # allow manual run
-
-jobs:
-  build-and-release:
-    runs-on: ubuntu-latest
-    env:
-      NODE_VERSION: '18'    # adjust if needed
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run build
-        run: npm run build      # adjust to your build script, or skip tests if desired
-
-      - name: Package build output
-        run: |
-          mkdir -p release
-          git rev-parse --short HEAD > release/commit.txt
-          zip -r release/artifact.zip ./dist || true   # change ./dist to your output folder
-
-      - name: Create or update release
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: nightlies/${{ github.run_id }}
-          name: Nightly ${{ github.run_number }} - ${{ github.run_id }}
-          body: |
-            Nightly build for ${{ github.repository }}.
-            Commit: ${{ github.sha }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload release asset
-        uses: softprops/action-gh-release@v1
-        with:
-          files: release/artifact.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
