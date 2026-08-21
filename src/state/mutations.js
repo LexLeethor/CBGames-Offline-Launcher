@@ -131,6 +131,12 @@ async function loadLibrary(preferredGameId) {
     }
 
     state.gamesById = new Map(games.map((game) => [game.id, game]));
+    try {
+      await recoverInterruptedGithubImports();
+    } catch (error) {
+      console.error(error);
+      log("Could not recover unfinished GitHub imports.", "error");
+    }
     let nextOrder = 0;
     let changedOrder = false;
     for (const game of sortedGames()) {

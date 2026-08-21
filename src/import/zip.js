@@ -744,6 +744,227 @@ async function applyPreLaunchTransformations(entries) {
     }
   }
 
+function getAutoThumbnailCandidateScore(path) {
+    const normalized = normalizePath(path).toLowerCase();
+    if (!normalized) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    const fileName = normalized.split("/").pop() || "";
+    const stem = fileName.includes(".") ? fileName.slice(0, fileName.lastIndexOf(".")) : fileName;
+    const directory = normalized.includes("/") ? normalized.slice(0, normalized.lastIndexOf("/")) : "";
+    const candidates = [
+      ["thumbnail", 0],
+      ["thumb", 1],
+      ["cover", 2],
+      ["poster", 3],
+      ["boxart", 4],
+      ["gamecover", 5],
+      ["art", 6]
+    ];
+
+    for (const [token, score] of candidates) {
+      const matchesStem =
+        stem === token ||
+        stem.startsWith(token + "-") ||
+        stem.startsWith(token + "_") ||
+        stem.endsWith("-" + token) ||
+        stem.endsWith("_" + token);
+      if (matchesStem) {
+        return score;
+      }
+    }
+
+    for (const [token, score] of candidates) {
+      const directoryMatches =
+        directory === token ||
+        directory.endsWith("/" + token) ||
+        directory.includes("/" + token + "/");
+      if (directoryMatches) {
+        return score;
+      }
+    }
+
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+function findAutoThumbnailDataUrl(entries) {
+    if (!Array.isArray(entries) || !entries.length) {
+      return "";
+    }
+
+    let selected = null;
+    for (const entry of entries) {
+      const path = normalizePath(entry && entry.path ? entry.path : "");
+      const mime = mimeFromPath(path);
+      if (!path || !/^image\//.test(mime)) {
+        continue;
+      }
+
+      const score = getAutoThumbnailCandidateScore(path);
+      if (score === Number.MAX_SAFE_INTEGER) {
+        continue;
+      }
+
+      const bytes = entry && entry.bytes instanceof Uint8Array
+        ? entry.bytes
+        : new Uint8Array(entry && entry.bytes ? entry.bytes : []);
+      if (!bytes.length) {
+        continue;
+      }
+
+      if (!selected || score < selected.score || (score === selected.score && path.length < selected.path.length)) {
+        selected = { score, path, bytes };
+      }
+    }
+
+    if (!selected) {
+      return "";
+    }
+
+    return "data:" + mimeFromPath(selected.path) + ";base64," + bytesToBase64(selected.bytes);
+  }
+
+function pickFirstStringValue(target, keys) {
+    if (!target || typeof target !== "object") {
+      return "";
+    }
+    for (const key of keys) {
+      const value = target[key];
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+    return "";
+  }
+
+function pickNestedStringValue(target, keys, nestedKeys) {
+    if (!target || typeof target !== "object") {
+      return "";
+    }
+
+    for (const key of keys) {
+      const value = target[key];
+      if (value && typeof value === "object") {
+        const nested = pickFirstStringValue(value, nestedKeys);
+        if (nested) {
+          return nested;
+        }
+      }
+    }
+    return pickFirstStringValue(target, keys);
+  }
+
+function resolveLauncherMetadataImagePath(value) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+    if (value && typeof value === "object") {
+      for (const key of ["path", "src", "file", "url", "image", "thumbnail"]) {
+        if (typeof value[key] === "string" && value[key].trim()) {
+          return value[key].trim();
+        }
+      }
+    }
+    return "";
+  }
+
+function detectLauncherMetadata(entries) {
+    if (!Array.isArray(entries) || !entries.length) {
+      return { name: "", thumbnailDataUrl: "" };
+    }
+
+    const metadataCandidates = new Set([
+      "launcher.json",
+      "cbgames.json",
+      "game.json",
+      "metadata.json",
+      ".launcher.json",
+      ".cbgames-metadata.json"
+    ]);
+
+    const entryMap = new Map();
+    for (const entry of entries) {
+      const path = normalizePath(entry && entry.path ? entry.path : "");
+      if (!path) {
+        continue;
+      }
+      entryMap.set(path, entry);
+      const fileName = path.split("/").pop() || "";
+      if (fileName) {
+        entryMap.set(fileName.toLowerCase(), entry);
+      }
+    }
+
+    let metadataEntry = null;
+    let metadataPath = "";
+    for (const entry of entries) {
+      const path = normalizePath(entry && entry.path ? entry.path : "");
+      if (!path) {
+        continue;
+      }
+      const fileName = path.split("/").pop() || "";
+      const lower = fileName.toLowerCase();
+      if (metadataCandidates.has(lower) || lower.endsWith("-launcher.json") || lower.endsWith("-cbgames.json") || lower.endsWith("-game.json")) {
+        metadataEntry = entry;
+        metadataPath = path;
+        break;
+      }
+    }
+
+    if (!metadataEntry) {
+      return { name: "", thumbnailDataUrl: "" };
+    }
+
+    try {
+      const jsonText = decodeUtf8(metadataEntry.bytes instanceof Uint8Array ? metadataEntry.bytes : new Uint8Array(metadataEntry.bytes || []));
+      const json = JSON.parse(jsonText);
+      if (!json || typeof json !== "object") {
+        return { name: "", thumbnailDataUrl: "" };
+      }
+
+      const name = pickNestedStringValue(json, ["name", "title", "gameName", "displayName", "label"], ["name", "title", "gameName", "displayName"])
+        || pickNestedStringValue(json, ["game", "launcher", "metadata"], ["name", "title", "gameName", "displayName"])
+        || pickNestedStringValue(json, ["config"], ["name", "title", "gameName", "displayName"]);
+
+      const imagePathValue = resolveLauncherMetadataImagePath(
+        pickNestedStringValue(json, ["thumbnail", "cover", "image", "icon", "poster"], ["path", "src", "file", "url", "image", "thumbnail"])
+          || json.thumbnail
+          || json.cover
+          || json.image
+          || json.icon
+          || json.poster
+          || (json.launcher && (json.launcher.thumbnail || json.launcher.cover || json.launcher.image || json.launcher.icon))
+          || (json.game && (json.game.thumbnail || json.game.cover || json.game.image || json.game.icon))
+      );
+
+      let thumbnailDataUrl = "";
+      if (imagePathValue) {
+        const targetPath = normalizePath(imagePathValue);
+        const thumbEntry = entryMap.get(targetPath) || entryMap.get(targetPath.split("/").pop() || "");
+        if (thumbEntry && thumbEntry.bytes) {
+          const bytes = thumbEntry.bytes instanceof Uint8Array
+            ? thumbEntry.bytes
+            : new Uint8Array(thumbEntry.bytes || []);
+          if (bytes.length) {
+            const mime = mimeFromPath(targetPath);
+            if (/^image\//.test(mime)) {
+              thumbnailDataUrl = "data:" + mime + ";base64," + bytesToBase64(bytes);
+            }
+          }
+        }
+      }
+
+      return {
+        name: String(name || "").trim(),
+        thumbnailDataUrl,
+        path: metadataPath
+      };
+    } catch {
+      return { name: "", thumbnailDataUrl: "" };
+    }
+  }
+
 async function importZipFile(file, options) {
     const opts = options && typeof options === "object" ? options : {};
     const requestedMode = opts.importMode === "replace" || opts.importMode === "separate"
@@ -826,6 +1047,7 @@ async function importZipFile(file, options) {
       const processedEntries = [];
       const brotliDecodedPaths = new Set();
       const seenPaths = new Map();
+      let launcherMetadata = { name: "", thumbnailDataUrl: "" };
       for (const entry of zip.entries) {
         const entryBytes = await extractEntryBytes(zip, entry);
         let path = entry.path;
@@ -862,6 +1084,7 @@ async function importZipFile(file, options) {
       }
 
       const brotliReplacementMap = buildBrotliReplacementMap(brotliDecodedPaths);
+      launcherMetadata = detectLauncherMetadata(processedEntries);
 
       setWorkProgress("Optimizing game assets", 0, 0);
       for (const entry of processedEntries) {
@@ -890,9 +1113,11 @@ async function importZipFile(file, options) {
         log("Importing despite SharedArrayBuffer. The game may not work on file://.");
       }
 
+      const autoThumbnailDataUrl = findAutoThumbnailDataUrl(processedEntries);
+      const effectiveName = String(launcherMetadata.name || preservedName || deriveGameName(file.name)).trim() || deriveGameName(file.name);
       const gameRecord = {
         id: gameId,
-        name: preservedName,
+        name: effectiveName,
         zipName: file.name,
         importedAt: Date.now(),
         extractorVersion: CURRENT_EXTRACTOR_VERSION,
@@ -901,7 +1126,7 @@ async function importZipFile(file, options) {
         totalBytes: 0,
         htmlEntries,
         entryPath: chooseBestEntryPath(htmlEntries, ""),
-        thumbnailDataUrl: preservedThumbnail,
+        thumbnailDataUrl: preservedThumbnail || launcherMetadata.thumbnailDataUrl || autoThumbnailDataUrl,
         githubSource: resolvedGithubSource,
         unityDetected: detectUnityByPaths(processedEntries.map((entry) => entry.path)),
         flashDetected: detectFlashByPaths(processedEntries.map((entry) => entry.path))
@@ -1505,6 +1730,59 @@ async function fetchGithubRepoTreeSnapshot(owner, repo, branchHint) {
     };
   }
 
+async function cleanupInterruptedGithubImport(game) {
+    if (!game || !game.id) {
+      return;
+    }
+    const label = game.name || game.id;
+    const notice = "Deleted unfinished GitHub import for \"" + label + "\".";
+    try {
+      log(notice);
+    } catch (error) {
+      console.warn("Failed to log removal notice", error);
+    }
+    try {
+      if (typeof openWrongZipTypeModal === "function") {
+        openWrongZipTypeModal(notice, "Import Cleaned Up");
+      }
+    } catch (error) {
+      console.warn("Failed to show cleanup modal", error);
+    }
+    try {
+      await deleteFilesByGameId(game.id);
+    } catch (error) {
+      console.warn("Failed to delete partial GitHub files", error);
+    }
+    try {
+      await deleteGameRecord(game.id);
+    } catch (error) {
+      console.warn("Failed to delete partial GitHub game record", error);
+    }
+    state.gamesById.delete(game.id);
+    if (state.selectedGameId === game.id) {
+      state.selectedGameId = null;
+      await putSetting(SETTING_SELECTED_GAME, "");
+    }
+  }
+
+async function recoverInterruptedGithubImports() {
+    const unfinished = Array.from(state.gamesById.values()).filter((game) => game && game.importInProgress);
+    if (!unfinished.length) {
+      return;
+    }
+    const stale = unfinished.filter((game) => {
+      const importedAt = Number(game.importedAt) || 0;
+      return importedAt > 0 && (Date.now() - importedAt) > 15000;
+    });
+    if (!stale.length) {
+      return;
+    }
+
+    for (const game of stale) {
+      await cleanupInterruptedGithubImport(game);
+    }
+  }
+
 async function buildZipFileFromGithubTree(snapshot, labelPrefix) {
     const entries = await downloadGithubTreeEntries(snapshot, labelPrefix);
     const zipBlob = createZipStoreArchive(entries);
@@ -1646,66 +1924,72 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
       let lastError = null;
       for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
-          // Try GitHub API blob endpoint first (CORS-friendly) to detect LFS pointers
+          // Prefer raw blob bytes from the GitHub API; this avoids decoding a whole base64 payload
+          // for every normal file, while still letting us detect LFS pointer content immediately.
           if (fileMeta && fileMeta.sha) {
             try {
               const blobApi =
-                "https://api.github.com/repos/" + encodeURIComponent(owner) + 
-                "/" + encodeURIComponent(repo) + 
+                "https://api.github.com/repos/" + encodeURIComponent(owner) +
+                "/" + encodeURIComponent(repo) +
                 "/git/blobs/" + encodeURIComponent(fileMeta.sha);
-              const blobResp = await fetch(blobApi, { cache: "no-store", headers: { Accept: "application/vnd.github+json" } });
+              const blobResp = await fetch(blobApi, {
+                cache: "no-store",
+                headers: { Accept: "application/vnd.github.raw+json" }
+              });
               if (blobResp && blobResp.ok) {
-                const blobJson = await blobResp.json();
-                const b64 = String(blobJson.content || "").replace(/\n/g, "");
-                if (b64) {
+                const blobBytes = await streamResponseToUint8Array(blobResp, fileIndex);
+                const probeText = (() => {
                   try {
-                    const decoded = typeof atob === "function" ? atob(b64) : (new TextDecoder().decode(Uint8Array.from(atob(b64), c=>c.charCodeAt(0))));
-                    if (decoded && decoded.startsWith("version https://git-lfs.github.com/spec/v1")) {
-                      const oidMatch = decoded.match(/oid sha256:([a-f0-9]{64})/i);
-                      const sizeMatch = decoded.match(/size (\d+)/i);
-                      const oid = oidMatch ? oidMatch[1] : "";
-                      const size = sizeMatch ? Number(sizeMatch[1]) : (fileMeta.size || 0);
-                      console.info("LFS: pointer detected via api.github.com for", fileMeta.path, { oid, size });
-
-                      // Try media.githubusercontent.com as a pragmatic fallback — some media URLs serve the real object
-                      try {
-                        const mediaUrl = owner && repo && branch
-                          ? "https://media.githubusercontent.com/media/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + "/" + encodeURIComponent(branch) + "/" + fileMeta.path.split("/").map(encodeURIComponent).join("/")
-                          : null;
-                        if (mediaUrl) {
-                          console.debug("LFS: attempting media.githubusercontent.com fallback", mediaUrl);
-                          const mediaResp = await fetch(mediaUrl, { cache: "no-store", redirect: "follow" });
-                          if (mediaResp && mediaResp.ok) {
-                            const mediaLength = Number(mediaResp.headers.get("content-length")) || size || 0;
-                            if (mediaLength > 0) {
-                              adjustTotalForActualSize(mediaLength, fileMeta.size);
-                              ensureTotalAtLeast(downloadedBytes + mediaLength);
-                              updateProgress(fileIndex);
-                            }
-                            const mediaBytes = await streamResponseToUint8Array(mediaResp, fileIndex);
-                            console.info("LFS: media.githubusercontent.com returned object for", fileMeta.path);
-                            ensureTotalAtLeast(downloadedBytes);
-                            updateProgress(fileIndex);
-                            return mediaBytes;
-                          }
-                        }
-                      } catch (mediaErr) {
-                        console.debug("LFS: media fallback failed", mediaErr);
-                      }
-
-                      const batchJson = JSON.stringify({ operation: "download", objects: [{ oid, size }] });
-                      const curlCmd = "curl -s -X POST 'https://github.com/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + ".git/info/lfs/objects/batch' -H 'Accept: application/vnd.git-lfs+json' -H 'Content-Type: application/json' -d '" + batchJson.replace(/'/g, "'\\''") + "'" + " | jq -r '.objects[0].actions.download.href'";
-                      throw new Error(
-                        "Git LFS pointer detected for '" + fileMeta.path + "' (oid=" + oid + ", size=" + size + ").\n" +
-                        "CORS prevents the browser from calling the Git LFS batch API.\n" +
-                        "You can run this command locally to get the presigned download URL:\n" +
-                        curlCmd
-                      );
-                    }
-                  } catch (e) {
-                    // ignore decode failures and continue
+                    return new TextDecoder().decode(blobBytes.slice(0, 256));
+                  } catch {
+                    return "";
                   }
+                })();
+
+                if (probeText.startsWith("version https://git-lfs.github.com/spec/v1")) {
+                  const oidMatch = probeText.match(/oid sha256:([a-f0-9]{64})/i);
+                  const sizeMatch = probeText.match(/size (\d+)/i);
+                  const oid = oidMatch ? oidMatch[1] : "";
+                  const size = sizeMatch ? Number(sizeMatch[1]) : (fileMeta.size || 0);
+                  console.info("LFS: pointer detected via raw blob API for", fileMeta.path, { oid, size });
+
+                  try {
+                    const mediaUrl = owner && repo && branch
+                      ? "https://media.githubusercontent.com/media/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + "/" + encodeURIComponent(branch) + "/" + fileMeta.path.split("/").map(encodeURIComponent).join("/")
+                      : null;
+                    if (mediaUrl) {
+                      console.debug("LFS: attempting media.githubusercontent.com fallback", mediaUrl);
+                      const mediaResp = await fetch(mediaUrl, { cache: "no-store", redirect: "follow" });
+                      if (mediaResp && mediaResp.ok) {
+                        const mediaLength = Number(mediaResp.headers.get("content-length")) || size || 0;
+                        if (mediaLength > 0) {
+                          adjustTotalForActualSize(mediaLength, fileMeta.size);
+                          ensureTotalAtLeast(downloadedBytes + mediaLength);
+                          updateProgress(fileIndex);
+                        }
+                        const mediaBytes = await streamResponseToUint8Array(mediaResp, fileIndex);
+                        console.info("LFS: media.githubusercontent.com returned object for", fileMeta.path);
+                        ensureTotalAtLeast(downloadedBytes);
+                        updateProgress(fileIndex);
+                        return mediaBytes;
+                      }
+                    }
+                  } catch (mediaErr) {
+                    console.debug("LFS: media fallback failed", mediaErr);
+                  }
+
+                  const batchJson = JSON.stringify({ operation: "download", objects: [{ oid, size }] });
+                  const curlCmd = "curl -s -X POST 'https://github.com/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + ".git/info/lfs/objects/batch' -H 'Accept: application/vnd.git-lfs+json' -H 'Content-Type: application/json' -d '" + batchJson.replace(/'/g, "'\\''") + "'" + " | jq -r '.objects[0].actions.download.href'";
+                  throw new Error(
+                    "Git LFS pointer detected for '" + fileMeta.path + "' (oid=" + oid + ", size=" + size + ").\n" +
+                    "CORS prevents the browser from calling the Git LFS batch API.\n" +
+                    "You can run this command locally to get the presigned download URL:\n" +
+                    curlCmd
+                  );
                 }
+
+                // Non-LFS raw blob: this is the true file bytes. Avoid the extra raw.githubusercontent.com fetch.
+                return blobBytes;
               }
             } catch (e) {
               // ignore API errors and fall back to raw fetch
@@ -1961,6 +2245,19 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
           // finalize: recompute stored-file stats and mark complete
           try {
             const stored = await getAllFilesForGame(gameId);
+            const metadataEntries = [];
+            for (const f of Array.isArray(stored) ? stored : []) {
+              let bytes = new Uint8Array();
+              try {
+                if (f && f.blob && typeof f.blob.arrayBuffer === "function") {
+                  bytes = new Uint8Array(await f.blob.arrayBuffer());
+                }
+              } catch (err) {
+                console.warn('Failed to read blob for launcher metadata detection', err);
+              }
+              metadataEntries.push({ path: f && f.path ? f.path : "", bytes });
+            }
+            const metadata = detectLauncherMetadata(metadataEntries);
             gameRecord.fileCount = Array.isArray(stored) ? stored.length : gameRecord.fileCount;
             gameRecord.totalBytes = Array.isArray(stored) ? stored.reduce((s, f) => s + (Number(f.size) || 0), 0) : gameRecord.totalBytes;
             // compute html entries and best entryPath
@@ -1968,6 +2265,12 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
             const htmlEntries = paths.filter((p) => /\.html?$/i.test(p)).sort((a, b) => a.localeCompare(b));
             gameRecord.htmlEntries = htmlEntries;
             gameRecord.entryPath = chooseBestEntryPath(htmlEntries, "");
+            if (metadata.name) {
+              gameRecord.name = metadata.name;
+            }
+            if (metadata.thumbnailDataUrl) {
+              gameRecord.thumbnailDataUrl = metadata.thumbnailDataUrl;
+            }
             // detect Unity/Flash heuristics
             gameRecord.unityDetected = detectUnityByPaths(paths);
             gameRecord.flashDetected = detectFlashByPaths(paths);
@@ -2415,6 +2718,7 @@ async function importEntriesDirectly(entries, options) {
       const processedEntries = [];
       const brotliDecodedPaths = new Set();
       const seenPaths = new Map();
+      let launcherMetadata = { name: "", thumbnailDataUrl: "" };
 
       setWorkProgress("Processing entries", 0, fileEntries.length);
 
@@ -2462,6 +2766,7 @@ async function importEntriesDirectly(entries, options) {
       }
 
       const brotliReplacementMap = buildBrotliReplacementMap(brotliDecodedPaths);
+      launcherMetadata = detectLauncherMetadata(processedEntries);
 
       setWorkProgress("Optimizing game assets", 0, 0);
       for (const entry of processedEntries) {
@@ -2490,9 +2795,11 @@ async function importEntriesDirectly(entries, options) {
         log("Importing despite SharedArrayBuffer. The game may not work on file://.");
       }
 
+      const autoThumbnailDataUrl = findAutoThumbnailDataUrl(processedEntries);
+      const effectiveName = String(launcherMetadata.name || preservedName || gameName || "Imported Game").trim() || gameName || "Imported Game";
       const gameRecord = {
         id: gameId,
-        name: preservedName,
+        name: effectiveName,
         zipName: gameName + ".zip",
         importedAt: Date.now(),
         extractorVersion: CURRENT_EXTRACTOR_VERSION,
@@ -2501,7 +2808,7 @@ async function importEntriesDirectly(entries, options) {
         totalBytes: 0,
         htmlEntries,
         entryPath: chooseBestEntryPath(htmlEntries, ""),
-        thumbnailDataUrl: preservedThumbnail,
+        thumbnailDataUrl: preservedThumbnail || launcherMetadata.thumbnailDataUrl || autoThumbnailDataUrl,
         githubSource: resolvedGithubSource,
         unityDetected: detectUnityByPaths(processedEntries.map((entry) => entry.path)),
         flashDetected: detectFlashByPaths(processedEntries.map((entry) => entry.path))
