@@ -298,7 +298,7 @@ async function exportSaveData() {
     const date = new Date().toISOString().slice(0, 10);
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "save-data-" + date + ".zip";
+    a.download = "save-data-" + date + ".data";
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 
