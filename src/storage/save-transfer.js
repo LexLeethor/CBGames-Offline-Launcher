@@ -412,15 +412,64 @@ async function applySaveImport(plan) {
       }
       const sourcePrefix = "/idbfs/" + entry.sourceHash + "/";
       const targetPrefix = "/idbfs/" + targetHash + "/";
+      // Write imported records. Do NOT clear existing keys. When a
+      // `/PlayerPrefs` file is imported, also ensure a sibling parent entry
+      // exists (same timestamp/mode but no contents) so Unity won't recreate
+      // it. We attempt to create the parent only if it does not already exist.
+      // Read existing keys first to know whether parent entries already exist.
+      const existing = await readAllRecordsFromStore(db, IDBFS_STORE);
+      const existingKeys = new Set(existing.map((r) => String(r.key)));
+
       await new Promise((resolve, reject) => {
         const tx = db.transaction(IDBFS_STORE, "readwrite");
         const store = tx.objectStore(IDBFS_STORE);
-        for (const rec of entry.records) {
+        const recs = Array.from(entry.records || []);
+        // write parents before children by sorting by key length
+        recs.sort((a, b) => {
+          const ka = String(a.key).startsWith(sourcePrefix)
+            ? (targetPrefix + String(a.key).slice(sourcePrefix.length))
+            : String(a.key);
+          const kb = String(b.key).startsWith(sourcePrefix)
+            ? (targetPrefix + String(b.key).slice(sourcePrefix.length))
+            : String(b.key);
+          return ka.length - kb.length;
+        });
+        for (const rec of recs) {
           const key = String(rec.key);
           const targetKey = key.startsWith(sourcePrefix)
             ? targetPrefix + key.slice(sourcePrefix.length)
             : key;
-          store.put(deserializeValue(rec.value), targetKey);
+          const val = deserializeValue(rec.value);
+          store.put(val, targetKey);
+
+          // If this is a PlayerPrefs file, also ensure a parent metadata
+          // entry exists at the containing path (without contents).
+          if (targetKey.endsWith("/PlayerPrefs")) {
+            const parentKey = targetKey.slice(0, targetKey.lastIndexOf("/PlayerPrefs"));
+            if (!existingKeys.has(parentKey)) {
+              const parentVal = {};
+              if (val && typeof val === "object") {
+                if (val.timestamp) {
+                  // Ensure timestamp is a Date instance (not a string/number)
+                  try {
+                    parentVal.timestamp = (val.timestamp instanceof Date)
+                      ? new Date(val.timestamp.getTime())
+                      : new Date(val.timestamp);
+                  } catch (e) {
+                    parentVal.timestamp = new Date();
+                  }
+                } else {
+                  parentVal.timestamp = new Date();
+                }
+              } else {
+                parentVal.timestamp = new Date();
+              }
+              // Parent should be a directory-like entry — use directory mode 16877
+              parentVal.mode = 16877;
+              try { store.put(parentVal, parentKey); } catch (e) { /* ignore */ }
+              existingKeys.add(parentKey);
+            }
+          }
         }
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
