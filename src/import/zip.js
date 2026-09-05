@@ -2278,6 +2278,10 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
             gameRecord.importedAt = Date.now();
             await putGame(gameRecord);
             state.gamesById.set(gameId, gameRecord);
+            await loadLibrary(gameId);
+            if (!(opts.importMode === "replace" && replaceGameIdOpt && state.gamesById.has(replaceGameIdOpt))) {
+              openGameEditModal(gameId);
+            }
           } catch (e) {
             console.error('Failed to finalize streamed game', e);
           }
@@ -2864,7 +2868,12 @@ async function importEntriesDirectly(entries, options) {
       state.gamesById.set(gameId, gameRecord);
       await loadLibrary(gameId);
 
-      log("Imported game: " + preservedName + " (" + processedEntries.length + " files)");
+      if (importMode === "replace" && existingGame) {
+        log("Replaced game \"" + (existingGame.name || gameRecord.name) + "\" (" + formatBytes(totalBytes) + ")");
+      } else {
+        log("Saved game \"" + gameRecord.name + "\" (" + formatBytes(totalBytes) + ")");
+        openGameEditModal(gameId);
+      }
     } finally {
       if (manageUi) {
         setActionButtonsDisabled(false);
