@@ -102,6 +102,9 @@ const libraryBytes = document.getElementById("libraryBytes");
 const quotaUsage = document.getElementById("quotaUsage");
 const storageDonut = document.getElementById("storageDonut");
 const storageUsedPct = document.getElementById("storageUsedPct");
+const liveGameOverlay = document.getElementById("liveGameOverlay");
+const liveGameSubtitle = document.getElementById("liveGameSubtitle");
+const closeRunningGameButton = document.getElementById("closeRunningGameButton");
 
 const exportSaveDataButton = document.getElementById("exportSaveData");
 const importSaveDataButton = document.getElementById("importSaveData");

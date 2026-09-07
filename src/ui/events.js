@@ -155,6 +155,30 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       log("Error log export failed: " + (error.message || String(error)), "error");
     });
   });
+  if (closeRunningGameButton) {
+    closeRunningGameButton.addEventListener("click", function() {
+      const currentWindow = window;
+      if (state.playerWindow && !state.playerWindow.closed) {
+        state.playerWindow.close();
+      }
+      setLiveGameMode(false, "");
+      clearObjectUrls();
+      state.activeEntryPath = null;
+      state.playerWindow = null;
+      if (currentWindow && currentWindow.location) {
+        currentWindow.location.reload();
+      }
+    });
+  }
+  window.addEventListener("beforeunload", (event) => {
+    if (!state.liveGameMode) {
+      return;
+    }
+    const message = "A game is still running. Closing this tab may break the game. Are you sure?";
+    event.preventDefault();
+    event.returnValue = message;
+    return message;
+  });
   launchButton.addEventListener("click", launchSelectedGame);
   deleteGameButton.addEventListener("click", deleteSelectedGame);
   gameSearch.addEventListener("input", () => {

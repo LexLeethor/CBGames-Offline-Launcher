@@ -2272,6 +2272,57 @@ function rewriteDocumentHtml(htmlText, entryPath, runtimeBridgeOptions = {}) {
       manifestLink.remove();
     }
 
+    const gameTitle = String(runtimeBridgeOptions.gameName || documentNode.title || "Game");
+    documentNode.title = gameTitle;
+
+    const faviconSvg = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#121212"/><path d="M18 20h28a8 8 0 0 1 8 8v8a8 8 0 0 1-8 8H18a8 8 0 0 1-8-8v-8a8 8 0 0 1 8-8zm-2 10h8v6h6v8h-6v6h-8v-6H8v-8h8v-6zm26 0h8v6h8v8h-8v6h-8v-6h-8v-8h8v-6zm-4 4v6h-6v8h6v6h8v-6h6v-8h-6v-6h-8z" fill="#f5f5f5"/></svg>'
+    );
+    const faviconHref = typeof runtimeBridgeOptions.thumbnailDataUrl === "string" && runtimeBridgeOptions.thumbnailDataUrl
+      ? runtimeBridgeOptions.thumbnailDataUrl
+      : faviconSvg;
+
+    const getFaviconMimeType = (href) => {
+      if (typeof href !== "string") {
+        return "image/png";
+      }
+      if (href.startsWith("data:image/")) {
+        const match = href.match(/^data:(image\/[a-z0-9.+-]+);/i);
+        return match ? match[1] : "image/png";
+      }
+      if (/\.svg(?:\?|#|$)/i.test(href)) {
+        return "image/svg+xml";
+      }
+      if (/\.jpg|\.jpeg(?:\?|#|$)/i.test(href)) {
+        return "image/jpeg";
+      }
+      if (/\.webp(?:\?|#|$)/i.test(href)) {
+        return "image/webp";
+      }
+      return "image/png";
+    };
+
+    const faviconLinks = Array.from(documentNode.head.querySelectorAll('link[rel~="icon"]'));
+    let faviconLink = faviconLinks[0];
+    if (!faviconLink) {
+      faviconLink = documentNode.createElement("link");
+      documentNode.head.appendChild(faviconLink);
+    }
+    const faviconMimeType = getFaviconMimeType(faviconHref);
+    faviconLink.setAttribute("rel", "icon");
+    faviconLink.setAttribute("type", faviconMimeType);
+    faviconLink.setAttribute("href", faviconHref);
+
+    const shortcutLink = documentNode.querySelector('link[rel~="shortcut"][rel~="icon"]')
+      || documentNode.querySelector('link[rel="shortcut icon"]')
+      || documentNode.createElement("link");
+    if (!shortcutLink.parentNode) {
+      documentNode.head.appendChild(shortcutLink);
+    }
+    shortcutLink.setAttribute("rel", "shortcut icon");
+    shortcutLink.setAttribute("type", faviconMimeType);
+    shortcutLink.setAttribute("href", faviconHref);
+
     // Strip Cloudflare challenge/telemetry snippets that are unusable offline.
     for (const scriptElement of documentNode.querySelectorAll("script")) {
       const src = String(scriptElement.getAttribute("src") || "").toLowerCase();

@@ -333,6 +333,7 @@ async function launchSelectedGame() {
         gameName: game.name || "",
         zipName: game.zipName || "",
         entryPath,
+        thumbnailDataUrl: typeof game.thumbnailDataUrl === "string" ? game.thumbnailDataUrl : "",
         freeBlobAfterLoad: Boolean(game.blobFreeAfterLoad)
       });
       setWorkProgress("Opening player window", 3, 4);
@@ -357,6 +358,7 @@ async function launchSelectedGame() {
       }
 
       setWorkProgress("Launch complete", 4, 4);
+      setLiveGameMode(true, game.name || "Game");
       log("Launched: " + game.name + " (" + entryPath + ")");
       if (typeof onTutorialGameLaunched === "function") {
         onTutorialGameLaunched();
@@ -397,6 +399,7 @@ async function deleteSelectedGame() {
 
       clearObjectUrls();
       state.activeEntryPath = null;
+      setLiveGameMode(false, "");
 
       if (state.playerWindow && !state.playerWindow.closed) {
         state.playerWindow.close();

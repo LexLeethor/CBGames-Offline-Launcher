@@ -549,6 +549,13 @@ function animateStorageDonutTo(targetPct) {
     state.storagePctAnimationFrame = requestAnimationFrame(tick);
   }
 
+function getSelectedGame() {
+    if (!state.selectedGameId) {
+      return null;
+    }
+    return state.gamesById.get(state.selectedGameId) || null;
+  }
+
 async function refreshStorageSummary() {
     const games = Array.from(state.gamesById.values());
     const totalBytes = games.reduce((sum, game) => sum + (Number(game.totalBytes) || 0), 0);
@@ -576,6 +583,100 @@ async function refreshStorageSummary() {
       quotaUsage.textContent = "Unsupported";
       animateStorageDonutTo(0);
     }
+  }
+
+function updateTabTitleAndIcon() {
+    const active = Boolean(state.liveGameMode);
+    const gameName = typeof state.liveGameName === "string" ? state.liveGameName.trim() : "";
+    const defaultTitle = "CBGames Offline Launcher";
+    document.title = active && gameName ? gameName + " — " + defaultTitle : defaultTitle;
+
+    const getMimeTypeFromHref = (href) => {
+      if (typeof href !== "string") {
+        return "image/png";
+      }
+      if (href.startsWith("data:image/")) {
+        const match = href.match(/^data:(image\/[a-z0-9.+-]+);/i);
+        return match ? match[1] : "image/png";
+      }
+      if (/\.svg(?:\?|#|$)/i.test(href)) {
+        return "image/svg+xml";
+      }
+      if (/\.jpg|\.jpeg(?:\?|#|$)/i.test(href)) {
+        return "image/jpeg";
+      }
+      if (/\.webp(?:\?|#|$)/i.test(href)) {
+        return "image/webp";
+      }
+      return "image/png";
+    };
+
+    const setIconHref = (href) => {
+      const candidates = Array.from(document.head.querySelectorAll('link[rel~="icon"]'));
+      const fallbackLink = document.head.querySelector('link[rel="shortcut icon"]') || document.head.querySelector('link[rel~="shortcut"][rel~="icon"]');
+      if (fallbackLink && !candidates.includes(fallbackLink)) {
+        candidates.push(fallbackLink);
+      }
+      if (!candidates.length) {
+        const created = document.createElement("link");
+        created.setAttribute("rel", "icon");
+        document.head.appendChild(created);
+        candidates.push(created);
+      }
+      const mimeType = getMimeTypeFromHref(href);
+      for (const link of candidates) {
+        link.type = mimeType;
+        link.href = href;
+        link.setAttribute("href", href);
+        link.setAttribute("rel", link.getAttribute("rel") === "shortcut icon" ? "shortcut icon" : "icon");
+      }
+    };
+
+    if (active && gameName) {
+      const game = getSelectedGame();
+      const thumbnail = game && typeof game.thumbnailDataUrl === "string" && game.thumbnailDataUrl
+        ? game.thumbnailDataUrl
+        : "";
+      const href = thumbnail || "./favicon.png";
+      setIconHref(href);
+    } else {
+      setIconHref("./favicon.png");
+    }
+  }
+
+function updateLiveGameOverlay() {
+    const active = Boolean(state.liveGameMode);
+    document.body.classList.toggle("live-game", active);
+    if (liveGameOverlay) {
+      liveGameOverlay.setAttribute("aria-hidden", active ? "false" : "true");
+      liveGameOverlay.style.display = active ? "flex" : "none";
+    }
+    if (liveGameSubtitle) {
+      liveGameSubtitle.textContent = active
+        ? "Keep this tab open for best game compatibility."
+        : "Ready to launch";
+    }
+    updateTabTitleAndIcon();
+    if (!active && state.liveGameMonitorHandle) {
+      clearInterval(state.liveGameMonitorHandle);
+      state.liveGameMonitorHandle = 0;
+    }
+    if (active && !state.liveGameMonitorHandle) {
+      state.liveGameMonitorHandle = window.setInterval(() => {
+        if (!state.playerWindow || state.playerWindow.closed) {
+          clearObjectUrls();
+          state.activeEntryPath = null;
+          state.playerWindow = null;
+          setLiveGameMode(false, "");
+        }
+      }, 700);
+    }
+  }
+
+function setLiveGameMode(active, gameName) {
+    state.liveGameMode = Boolean(active);
+    state.liveGameName = typeof gameName === "string" && gameName ? gameName : "";
+    updateLiveGameOverlay();
   }
 
 function updateSelectedGameInfo(game) {
