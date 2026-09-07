@@ -575,6 +575,25 @@
     gap: 8px;
     margin-top: 8px;
   }
+  .selected-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 8px 10px;
+    border: 1px solid #2d2d2d;
+    border-radius: 8px;
+    background: #1a1a1a;
+    color: #ececec;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .selected-toggle input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #78a9ff;
+    flex-shrink: 0;
+  }
   .selected-startup-picker {
     margin-top: 8px;
     display: grid;

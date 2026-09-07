@@ -80,8 +80,17 @@ async function loadLibrary(preferredGameId) {
       ...game,
       githubSource: normalizeGithubSource(game.githubSource),
       unityDetected: Boolean(game.unityDetected),
-      flashDetected: typeof game.flashDetected === "boolean" ? game.flashDetected : false
+      flashDetected: typeof game.flashDetected === "boolean" ? game.flashDetected : false,
+      blobFreeAfterLoad: typeof game.blobFreeAfterLoad === "boolean"
+        ? game.blobFreeAfterLoad
+        : Boolean(game.unityDetected)
     }));
+
+    for (const game of games) {
+      if (typeof game.blobFreeAfterLoad !== "boolean") {
+        game.blobFreeAfterLoad = Boolean(game.unityDetected);
+      }
+    }
 
     // One-time backfill for older saves that predate flashDetected.
     for (let i = 0; i < games.length; i += 1) {
@@ -131,6 +140,20 @@ async function loadLibrary(preferredGameId) {
     }
 
     state.gamesById = new Map(games.map((game) => [game.id, game]));
+    for (const game of sortedGames()) {
+      if (typeof game.blobFreeAfterLoad !== "boolean") {
+        game.blobFreeAfterLoad = Boolean(game.unityDetected);
+      }
+      if (Boolean(game.blobFreeAfterLoad) !== Boolean(game.unityDetected) && game.unityDetected) {
+        game.blobFreeAfterLoad = true;
+      }
+      if (Boolean(game.blobFreeAfterLoad) !== Boolean(game.unityDetected) && !game.unityDetected && typeof game.blobFreeAfterLoad !== "boolean") {
+        game.blobFreeAfterLoad = false;
+      }
+      if (typeof game.blobFreeAfterLoad === "boolean") {
+        await putGame(game);
+      }
+    }
     try {
       await recoverInterruptedGithubImports();
     } catch (error) {

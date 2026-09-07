@@ -27,6 +27,7 @@ const state = {
   gamesById: new Map(),
   selectedGameId: null,
   objectUrls: new Map(),
+  loadedObjectUrls: new Set(),
   objectUrlHost: window,
   activeEntryPath: null,
   playerWindow: null,

@@ -93,6 +93,7 @@ const selectedThumb = document.getElementById("selectedThumb");
 const selectedPlayButton = document.getElementById("selectedPlayBtn");
 const selectedEditButton = document.getElementById("selectedEditBtn");
 const selectedDeleteButton = document.getElementById("selectedDeleteBtn");
+const selectedBlobToggle = document.getElementById("selectedBlobToggle");
 const selectedImported = document.getElementById("selectedImported");
 const selectedSize = document.getElementById("selectedSize");
 const selectedEntry = document.getElementById("selectedEntry");

@@ -29,6 +29,21 @@ selectedEditButton.addEventListener("click", () => {
 selectedDeleteButton.addEventListener("click", function() {
   deleteSelectedGame();
 });
+selectedBlobToggle.addEventListener("change", async function() {
+  const game = getSelectedGame();
+  if (!game) {
+    return;
+  }
+  game.blobFreeAfterLoad = Boolean(selectedBlobToggle.checked);
+  state.gamesById.set(game.id, game);
+  try {
+    await putGame(game);
+    log((game.blobFreeAfterLoad ? "Enabled" : "Disabled") + " loaded-blob cleanup for " + game.name + ".");
+  } catch (error) {
+    console.error(error);
+    log("Could not save blob cleanup setting for " + (game.name || "this game") + ".", "error");
+  }
+});
 replaceZipSelectedButton.addEventListener("click", function() {
   replaceGameWithZipFlow().catch(error => {
     console.error(error);
@@ -804,16 +819,52 @@ openOpsModalButton.addEventListener("click", showOpsModal);
   // Listen for runtime errors posted from launched games and persist them for export.
   window.addEventListener("message", (event) => {
     const payload = event && event.data;
-    if (!payload || typeof payload !== "object" || payload.__cbgamesPlayerLog !== true) {
+    if (!payload || typeof payload !== "object") {
+      return;
+    }
+    if (payload.__cbgamesPlayerLog === true) {
+      if (state.playerWindow && event.source && event.source !== state.playerWindow) {
+        return;
+      }
+      persistPlayerError(payload).catch((error) => {
+        console.error(error);
+        log("Could not save game error log.", "error");
+      });
+      return;
+    }
+    if (payload.__cbgamesPlayerLifecycle !== true) {
       return;
     }
     if (state.playerWindow && event.source && event.source !== state.playerWindow) {
       return;
     }
-    persistPlayerError(payload).catch((error) => {
-      console.error(error);
-      log("Could not save game error log.", "error");
-    });
+    const gameId = typeof payload.gameId === "string" ? payload.gameId : "";
+    const game = gameId ? state.gamesById.get(gameId) : null;
+    if (payload.kind === "blob-loaded") {
+      const loadedUrls = Array.isArray(payload.loadedUrls) ? payload.loadedUrls : [];
+      for (const url of loadedUrls) {
+        if (typeof url === "string" && url.startsWith("blob:")) {
+          state.loadedObjectUrls.add(url);
+        }
+      }
+      return;
+    }
+    if (payload.kind !== "blob-ready") {
+      return;
+    }
+    if (!game || game.blobFreeAfterLoad !== true) {
+      return;
+    }
+    window.setTimeout(() => {
+      if (!state.playerWindow || state.playerWindow.closed) {
+        return;
+      }
+      if (event.source && event.source !== state.playerWindow) {
+        return;
+      }
+      clearObjectUrls({ loadedOnly: true });
+      log("Freed loaded blob memory for " + (game.name || "this game") + ".");
+    }, 1000);
   });
 
   if (networkHostUrlInput && !networkHostUrlInput.value) {

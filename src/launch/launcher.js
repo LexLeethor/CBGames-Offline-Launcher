@@ -332,7 +332,8 @@ async function launchSelectedGame() {
         gameId: game.id,
         gameName: game.name || "",
         zipName: game.zipName || "",
-        entryPath
+        entryPath,
+        freeBlobAfterLoad: Boolean(game.blobFreeAfterLoad)
       });
       setWorkProgress("Opening player window", 3, 4);
 
@@ -416,7 +417,10 @@ async function deleteSelectedGame() {
     }
   }
 
-function clearObjectUrls() {
+function revokeSingleObjectUrl(pathOrUrl) {
+    if (!pathOrUrl) {
+      return false;
+    }
     let host = window;
     try {
       if (
@@ -430,15 +434,105 @@ function clearObjectUrls() {
     } catch {
       host = window;
     }
-    for (const url of state.objectUrls.values()) {
+
+    const exactPathMatch = state.objectUrls.get(pathOrUrl);
+    const exactUrlMatch = typeof pathOrUrl === "string" && pathOrUrl.startsWith("blob:")
+      ? Array.from(state.objectUrls.entries()).find(([, url]) => url === pathOrUrl)
+      : null;
+    const matchEntry = exactPathMatch
+      ? [pathOrUrl, exactPathMatch]
+      : exactUrlMatch;
+
+    if (!matchEntry) {
+      return false;
+    }
+
+    const [path, url] = matchEntry;
+    try {
+      host.URL.revokeObjectURL(url);
+    } catch {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore revocation errors for already-dead URLs
+      }
+    }
+    state.objectUrls.delete(path);
+    state.loadedObjectUrls.delete(url);
+    return true;
+  }
+
+function clearObjectUrls(options = {}) {
+    const loadedOnly = Boolean(options.loadedOnly);
+    const specificPaths = Array.isArray(options.paths) ? options.paths : [];
+    const specificUrls = Array.isArray(options.urls) ? options.urls : [];
+    let host = window;
+    try {
+      if (
+        state.objectUrlHost &&
+        state.objectUrlHost.URL &&
+        typeof state.objectUrlHost.URL.createObjectURL === "function" &&
+        typeof state.objectUrlHost.URL.revokeObjectURL === "function"
+      ) {
+        host = state.objectUrlHost;
+      }
+    } catch {
+      host = window;
+    }
+    const toDelete = [];
+    if (specificPaths.length || specificUrls.length) {
+      for (const path of specificPaths) {
+        const url = state.objectUrls.get(path);
+        if (typeof url === "string") {
+          toDelete.push([path, url]);
+        }
+      }
+      for (const url of specificUrls) {
+        if (typeof url !== "string") {
+          continue;
+        }
+        const match = Array.from(state.objectUrls.entries()).find(([, mappedUrl]) => mappedUrl === url);
+        if (match) {
+          toDelete.push(match);
+        }
+      }
+    } else {
+      for (const [path, url] of state.objectUrls.entries()) {
+        if (loadedOnly && !state.loadedObjectUrls.has(url)) {
+          continue;
+        }
+        toDelete.push([path, url]);
+      }
+    }
+    for (const [, url] of toDelete) {
       try {
         host.URL.revokeObjectURL(url);
       } catch {
-        URL.revokeObjectURL(url);
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // ignore revocation errors for already-dead URLs
+        }
       }
     }
-    state.objectUrls.clear();
+    for (const [path] of toDelete) {
+      state.objectUrls.delete(path);
+      state.loadedObjectUrls.delete(state.objectUrls.get(path));
+    }
+    if (loadedOnly) {
+      state.loadedObjectUrls.clear();
+    }
     state.objectUrlHost = window;
+  }
+
+  try {
+    if (typeof window !== "undefined") {
+      window.cbgames = window.cbgames || {};
+      window.cbgames.revokeSingleObjectUrl = revokeSingleObjectUrl;
+      window.cbgames.clearObjectUrls = clearObjectUrls;
+    }
+  } catch {
+    // ignore window exposure errors
   }
 
 async function persistPlayerError(payload) {

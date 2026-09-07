@@ -590,8 +590,14 @@ function updateSelectedGameInfo(game) {
       selectedPlayButton.disabled = true;
       selectedEditButton.disabled = true;
       selectedDeleteButton.disabled = true;
+      selectedBlobToggle.checked = false;
+      selectedBlobToggle.disabled = true;
       setEmptyEntryState("Select a saved game");
       return;
+    }
+
+    if (typeof game.blobFreeAfterLoad !== "boolean") {
+      game.blobFreeAfterLoad = Boolean(game.unityDetected);
     }
 
     gameMeta.textContent = game.name || "Selected game";
@@ -608,6 +614,8 @@ function updateSelectedGameInfo(game) {
     selectedPlayButton.disabled = false;
     selectedEditButton.disabled = false;
     selectedDeleteButton.disabled = false;
+    selectedBlobToggle.checked = Boolean(game.blobFreeAfterLoad);
+    selectedBlobToggle.disabled = false;
 
     const chosenEntry = populateEntryOptions(game.htmlEntries || [], game.entryPath || "");
     selectedEntry.textContent = chosenEntry || game.entryPath || "-";

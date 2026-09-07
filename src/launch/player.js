@@ -960,7 +960,8 @@ function injectRuntimeBridge(documentNode, options = {}) {
       gameId: typeof options.gameId === "string" ? options.gameId : "",
       gameName: typeof options.gameName === "string" ? options.gameName : "",
       entryPath: typeof options.entryPath === "string" ? normalizePath(options.entryPath) : "",
-      zipSlug
+      zipSlug,
+      freeBlobAfterLoad: Boolean(options.freeBlobAfterLoad)
     };
     const script = documentNode.createElement("script");
     script.textContent = `
@@ -1025,6 +1026,25 @@ function injectRuntimeBridge(documentNode, options = {}) {
     );
     try {
       host.postMessage(payload, "*");
+    } catch (_error) {
+      // ignore report failure
+    }
+  };
+
+  var __reportBlobReady = function () {
+    var host = __getLauncherHost();
+    if (!host || !__launcherBridgeMeta.freeBlobAfterLoad) {
+      return;
+    }
+    try {
+      host.postMessage({
+        __cbgamesPlayerLifecycle: true,
+        kind: "blob-ready",
+        timestamp: Date.now(),
+        gameId: __launcherBridgeMeta.gameId || "",
+        gameName: __launcherBridgeMeta.gameName || "",
+        entryPath: __launcherBridgeMeta.entryPath || ""
+      }, "*");
     } catch (_error) {
       // ignore report failure
     }
@@ -1211,6 +1231,243 @@ function injectRuntimeBridge(documentNode, options = {}) {
       message: String(kind || "network") + " blocked by launcher policy: " + String(targetUrl || "")
     });
   };
+
+  var __blobIdleDelayMs = 5000;
+  var __activeNetworkRequests = 0;
+  var __blobIdleTimer = 0;
+  var __loadedBlobUrls = {};
+
+  var __trackLoadedBlob = function (url) {
+    if (typeof url !== "string" || !url.startsWith("blob:")) {
+      return;
+    }
+    __loadedBlobUrls[url] = true;
+    var host = __getLauncherHost();
+    if (!host) {
+      return;
+    }
+    try {
+      host.postMessage({
+        __cbgamesPlayerLifecycle: true,
+        kind: "blob-loaded",
+        loadedUrls: [url],
+        timestamp: Date.now(),
+        gameId: __launcherBridgeMeta.gameId || "",
+        gameName: __launcherBridgeMeta.gameName || "",
+        entryPath: __launcherBridgeMeta.entryPath || ""
+      }, "*");
+    } catch (_error) {
+      // ignore report failure
+    }
+  };
+
+  var __markLoadedFromPerformance = function () {
+    try {
+      if (!window.performance || typeof window.performance.getEntriesByType !== "function") {
+        return;
+      }
+      var entries = window.performance.getEntriesByType("resource") || [];
+      for (var i = 0; i < entries.length; i++) {
+        var entry = entries[i];
+        var name = entry && entry.name;
+        if (typeof name === "string" && name.startsWith("blob:")) {
+          __trackLoadedBlob(name);
+        }
+      }
+    } catch (_error) {
+      // ignore
+    }
+  };
+
+  var __watchDomAssetLoads = function () {
+    var selectorList = [
+      "script[src]",
+      "link[href]",
+      "img[src]",
+      "audio[src]",
+      "video[src]",
+      "source[src]",
+      "object[data]",
+      "embed[src]",
+      "iframe[src]"
+    ];
+
+    var attachAssetListener = function (element) {
+      if (!element || element.__cbgamesBlobTracked) {
+        return;
+      }
+      var attrName = "src";
+      var tagName = String(element.tagName || "").toLowerCase();
+      if (tagName === "object" || tagName === "embed") {
+        attrName = "data";
+      }
+      var url = element.getAttribute(attrName);
+      if (typeof url !== "string" || !url.startsWith("blob:")) {
+        return;
+      }
+      element.__cbgamesBlobTracked = true;
+      var finish = function () {
+        __trackLoadedBlob(url);
+      };
+      element.addEventListener("load", finish, { once: true });
+      element.addEventListener("error", finish, { once: true });
+      element.addEventListener("abort", finish, { once: true });
+    };
+
+    var scanNode = function (root) {
+      if (!root || typeof root.querySelectorAll !== "function") {
+        return;
+      }
+      for (var i = 0; i < selectorList.length; i++) {
+        var matches = root.querySelectorAll(selectorList[i]);
+        for (var j = 0; j < matches.length; j++) {
+          attachAssetListener(matches[j]);
+        }
+      }
+    };
+
+    scanNode(document);
+
+    if (typeof MutationObserver === "function") {
+      var observer = new MutationObserver(function (mutations) {
+        for (var i = 0; i < mutations.length; i++) {
+          var addedNodes = mutations[i].addedNodes || [];
+          for (var j = 0; j < addedNodes.length; j++) {
+            var node = addedNodes[j];
+            if (!node || !(node.nodeType === 1)) {
+              continue;
+            }
+            scanNode(node);
+          }
+        }
+      });
+      observer.observe(document.documentElement || document.body, {
+        childList: true,
+        subtree: true
+      });
+    }
+  };
+
+  var __scheduleBlobIdleCheck = function () {
+    if (!__launcherBridgeMeta.freeBlobAfterLoad) {
+      return;
+    }
+    if (__blobIdleTimer) {
+      clearTimeout(__blobIdleTimer);
+    }
+    __blobIdleTimer = setTimeout(function () {
+      if (__activeNetworkRequests === 0) {
+        __markLoadedFromPerformance();
+        var host = __getLauncherHost();
+        if (host && Object.keys(__loadedBlobUrls).length) {
+          try {
+            host.postMessage({
+              __cbgamesPlayerLifecycle: true,
+              kind: "blob-ready",
+              loadedUrls: Object.keys(__loadedBlobUrls),
+              timestamp: Date.now(),
+              gameId: __launcherBridgeMeta.gameId || "",
+              gameName: __launcherBridgeMeta.gameName || "",
+              entryPath: __launcherBridgeMeta.entryPath || ""
+            }, "*");
+          } catch (_error) {
+            // ignore report failure
+          }
+        }
+      } else {
+        __scheduleBlobIdleCheck();
+      }
+    }, __blobIdleDelayMs);
+  };
+
+  var __trackRequestStart = function () {
+    if (!__launcherBridgeMeta.freeBlobAfterLoad) {
+      return;
+    }
+    __activeNetworkRequests += 1;
+    __scheduleBlobIdleCheck();
+  };
+
+  var __trackRequestEnd = function (url) {
+    if (!__launcherBridgeMeta.freeBlobAfterLoad) {
+      return;
+    }
+    __activeNetworkRequests = Math.max(0, __activeNetworkRequests - 1);
+    if (typeof url === "string" && url.startsWith("blob:")) {
+      __trackLoadedBlob(url);
+    }
+    if (__activeNetworkRequests === 0) {
+      __scheduleBlobIdleCheck();
+    }
+  };
+
+  var __wrapFetch = function () {
+    var originalFetch = self.fetch;
+    if (typeof originalFetch !== "function") {
+      return;
+    }
+    self.fetch = function (input, init) {
+      __trackRequestStart();
+      var result = originalFetch.apply(this, arguments);
+      Promise.resolve(result).then(function (response) {
+        try {
+          var url = typeof input === "string" ? input : (input && input.url ? String(input.url) : "");
+          if (typeof response === "object" && response && typeof response.url === "string" && response.url.startsWith("blob:")) {
+            __trackLoadedBlob(response.url);
+          } else if (url.startsWith("blob:")) {
+            __trackLoadedBlob(url);
+          }
+        } catch (_error) {
+          // ignore
+        }
+        __trackRequestEnd(typeof input === "string" ? input : (input && input.url ? String(input.url) : ""));
+      }, function () {
+        __trackRequestEnd(typeof input === "string" ? input : (input && input.url ? String(input.url) : ""));
+      });
+      return result;
+    };
+  };
+
+  var __wrapXmlHttpRequest = function () {
+    var OriginalXhr = self.XMLHttpRequest;
+    if (!OriginalXhr) {
+      return;
+    }
+    function PatchedXhr() {
+      var xhr = new OriginalXhr();
+      var origOpen = xhr.open;
+      var origSend = xhr.send;
+      xhr.open = function () {
+        __trackRequestStart();
+        return origOpen.apply(this, arguments);
+      };
+      xhr.send = function () {
+        var cleanup = function () {
+          var target = xhr.responseURL || xhr.response && xhr.response.url || "";
+          __trackRequestEnd(target);
+        };
+        this.addEventListener("loadend", cleanup, { once: true });
+        this.addEventListener("error", cleanup, { once: true });
+        this.addEventListener("abort", cleanup, { once: true });
+        return origSend.apply(this, arguments);
+      };
+      return xhr;
+    }
+    self.XMLHttpRequest = PatchedXhr;
+  };
+
+  if (__launcherBridgeMeta.freeBlobAfterLoad) {
+    __watchDomAssetLoads();
+    __wrapFetch();
+    __wrapXmlHttpRequest();
+    if (document.readyState === "complete") {
+      __scheduleBlobIdleCheck();
+    } else {
+      window.addEventListener("load", function () {
+        __scheduleBlobIdleCheck();
+      }, { once: true });
+    }
+  }
 
   var normalizeVirtualDataUrl = function (value) {
     var text = String(value == null ? "" : value);
