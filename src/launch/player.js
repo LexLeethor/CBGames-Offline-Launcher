@@ -1433,6 +1433,11 @@ function injectRuntimeBridge(documentNode, options = {}) {
     if (!OriginalXhr) {
       return;
     }
+    // IMPORTANT: keep the pre-regression relative-URL remap here.
+    // A plain XMLHttpRequest to "favicon.ico" or "./asset.json" must be resolved
+    // against the VFS/base document before open() is called. If we skip this and
+    // let Chromium see a relative URL against an about:blank popup, it throws
+    // "Failed to execute 'open' on 'XMLHttpRequest': Invalid URL".
     function PatchedXhr() {
       var xhr = new OriginalXhr();
       var origOpen = xhr.open;
