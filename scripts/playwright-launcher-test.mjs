@@ -34,6 +34,7 @@ const FIXTURE_ZIP    = path.join(__dirname, '../test-fixtures', 'webgl-test-game
 const AUTOTEST_TIMEOUT_MS = 10 * 60 * 1000;
 const PAUSE_MS  = parseInt(process.env.PAUSE_MS ?? (process.env.CI ? '0' : '3000'), 10);
 const HEADLESS  = process.env.HEADLESS === '1' || Boolean(process.env.CI);
+const PLAYWRIGHT_EXECUTABLE_PATH = process.env.PLAYWRIGHT_EXECUTABLE_PATH || '/root/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell';
 
 // ---------------------------------------------------------------------------
 // ZIP resolution
@@ -55,7 +56,7 @@ async function main() {
 const browser = await chromium.launch({
   headless: HEADLESS,
   args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'],
-  executablePath: '/root/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell',
+  executablePath: PLAYWRIGHT_EXECUTABLE_PATH,
 });
 
   const context = await browser.newContext();
