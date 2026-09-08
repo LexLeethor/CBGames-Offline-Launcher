@@ -43,4 +43,4 @@ Known issues
 
 Unsolvable Issues
 
-- **SharedArrayBuffer** Simply not supported in the context of the launcher. One game i know uses this is Terraria WASM by MecuryWorkshop https://github.com/MercuryWorkshop/terraria-wasm
+- **SharedArrayBuffer** Simply not supported in the context of the launcher. One game that I know uses this is Terraria WASM by MercuryWorkshop. https://github.com/MercuryWorkshop/terraria-wasm
