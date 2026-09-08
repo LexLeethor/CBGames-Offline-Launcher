@@ -1437,9 +1437,59 @@ function injectRuntimeBridge(documentNode, options = {}) {
       var xhr = new OriginalXhr();
       var origOpen = xhr.open;
       var origSend = xhr.send;
-      xhr.open = function () {
+      xhr.open = function (method, url) {
+        var rest = Array.prototype.slice.call(arguments, 2);
+        var originalUrl = url;
+        var mappedUrl = mapValue(url);
+        var originalIsRelative = typeof originalUrl === "string" && originalUrl.trim() &&
+          !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(originalUrl) &&
+          !originalUrl.startsWith("//");
+
+        if (originalIsRelative && (!mappedUrl || mappedUrl === originalUrl)) {
+          try {
+            var baseForRelative = (typeof document !== "undefined" && document.baseURI)
+              ? (document.baseURI && !/^(blob:|about:)/i.test(document.baseURI) ? document.baseURI : __launcherVfsOrigin)
+              : __launcherVfsOrigin;
+            var absoluteRelativeUrl = new URL(originalUrl, baseForRelative).href;
+            var remappedRelative = mapValue(absoluteRelativeUrl);
+            if (typeof remappedRelative === "string" && remappedRelative.trim()) {
+              mappedUrl = remappedRelative;
+            }
+          } catch (_relativeError) {
+            // ignore and fall back below
+          }
+        }
+
+        if (typeof mappedUrl !== "string") {
+          mappedUrl = String(mappedUrl == null ? "" : mappedUrl);
+        }
+        if (!mappedUrl) {
+          mappedUrl = typeof originalUrl === "string" ? originalUrl : "";
+        }
+        if (!mappedUrl) {
+          mappedUrl = "about:blank";
+        }
+
+        var blockedTarget = __getBlockedNetworkTarget(mappedUrl) || __getBlockedNetworkTarget(originalUrl);
+        xhr.__cbgamesBlockedNetworkTarget = blockedTarget || "";
+        if (xhr.__cbgamesBlockedNetworkTarget) {
+          __trackRequestStart();
+          return origOpen.apply(this, [method, "about:blank"].concat(rest));
+        }
+
         __trackRequestStart();
-        return origOpen.apply(this, arguments);
+        try {
+          return origOpen.apply(this, [method, mappedUrl].concat(rest));
+        } catch (mappedOpenError) {
+          var fallbackUrl = typeof originalUrl === "string" && originalUrl.trim()
+            ? originalUrl
+            : "about:blank";
+          try {
+            return origOpen.apply(this, [method, fallbackUrl].concat(rest));
+          } catch (_originalOpenError) {
+            return origOpen.apply(this, [method, "about:blank"].concat(rest));
+          }
+        }
       };
       xhr.send = function () {
         var cleanup = function () {
@@ -1770,6 +1820,25 @@ function injectRuntimeBridge(documentNode, options = {}) {
     var rest = Array.prototype.slice.call(arguments, 2);
     var originalUrl = url;
     var mappedUrl = mapValue(url);
+    var originalIsRelative = typeof originalUrl === "string" && originalUrl.trim() &&
+      !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(originalUrl) &&
+      !originalUrl.startsWith("//");
+
+    if (originalIsRelative && (!mappedUrl || mappedUrl === originalUrl)) {
+      try {
+        var baseForRelative = (typeof document !== "undefined" && document.baseURI)
+          ? (document.baseURI && !/^(blob:|about:)/i.test(document.baseURI) ? document.baseURI : __launcherVfsOrigin)
+          : __launcherVfsOrigin;
+        var absoluteRelativeUrl = new URL(originalUrl, baseForRelative).href;
+        var remappedRelative = mapValue(absoluteRelativeUrl);
+        if (typeof remappedRelative === "string" && remappedRelative.trim()) {
+          mappedUrl = remappedRelative;
+        }
+      } catch (_relativeError) {
+        // ignore and fall back below
+      }
+    }
+
     if (typeof mappedUrl !== "string") {
       mappedUrl = String(mappedUrl == null ? "" : mappedUrl);
     }
@@ -1779,11 +1848,13 @@ function injectRuntimeBridge(documentNode, options = {}) {
     if (!mappedUrl) {
       mappedUrl = "about:blank";
     }
+
     var blockedTarget = __getBlockedNetworkTarget(mappedUrl) || __getBlockedNetworkTarget(originalUrl);
     this.__cbgamesBlockedNetworkTarget = blockedTarget || "";
     if (this.__cbgamesBlockedNetworkTarget) {
       return nativeOpen.apply(this, [method, "about:blank"].concat(rest));
     }
+
     try {
       return nativeOpen.apply(this, [method, mappedUrl].concat(rest));
     } catch (mappedOpenError) {
