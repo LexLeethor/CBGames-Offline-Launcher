@@ -36,3 +36,11 @@ Tested Games (Working)
 | Ultrakill | ✓ |
 | Bad Piggies | ✓ |
 | Clover Pit | ✓ |
+
+Known issues
+
+- **Nested module imports:** Games that use static ES module imports with relative specifiers (e.g. `import './foo.js'` from modules nested in subfolders) can fail.
+
+Unsolvable Issues
+
+- **SharedArrayBuffer** Simply not supported in the context of the launcher. One game i know uses this is Terraria WASM by MecuryWorkshop https://github.com/MercuryWorkshop/terraria-wasm
