@@ -1031,6 +1031,293 @@ function injectRuntimeBridge(documentNode, options = {}) {
     }
   };
 
+  var __fpsOverlay = null;
+  var __fpsOverlayLabel = null;
+  var __fpsOverlayChart = null;
+  var __fpsOverlayResizeHandle = null;
+  var __fpsOverlayHistory = [];
+  var __fpsOverlayMoved = false;
+  var __fpsOverlayLastPosition = "";
+  var __drawFpsOverlayChart = function () {
+    if (!__fpsOverlayChart) return;
+    var width = __fpsOverlayChart.clientWidth || 190;
+    var height = __fpsOverlayChart.clientHeight || 62;
+    var ratio = Math.max(1, window.devicePixelRatio || 1);
+    __fpsOverlayChart.width = width * ratio;
+    __fpsOverlayChart.height = height * ratio;
+    var context = __fpsOverlayChart.getContext("2d");
+    if (!context) return;
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = "rgba(11,13,15,0.72)";
+    context.fillRect(0, 0, width, height);
+    var padding = 10;
+    var values = __fpsOverlayHistory;
+    var minimum = values.length ? Math.min.apply(null, values) : 0;
+    var maximum = values.length ? Math.max.apply(null, values) : 60;
+    if (maximum - minimum < 8) {
+      var midpoint = (maximum + minimum) / 2;
+      minimum = Math.max(0, midpoint - 4);
+      maximum = midpoint + 4;
+    }
+    context.strokeStyle = "rgba(255,255,255,0.16)";
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(padding, height / 2);
+    context.lineTo(width - padding, height / 2);
+    context.stroke();
+    if (!__fpsOverlayHistory.length) return;
+    context.strokeStyle = "#a7adb3";
+    context.lineWidth = 1.5;
+    context.beginPath();
+    __fpsOverlayHistory.forEach(function (value, index) {
+      var x = padding + (width - (padding * 2)) * index / Math.max(1, __fpsOverlayHistory.length - 1);
+      var normalized = (Math.max(minimum, Math.min(maximum, value)) - minimum) / Math.max(1, maximum - minimum);
+      var y = height - padding - ((height - (padding * 2)) * normalized);
+      if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
+    });
+    context.stroke();
+  };
+  var __updateFpsOverlay = function (fps) {
+    if (!__fpsOverlay) return;
+    __fpsOverlayHistory.push(Number(fps) || 0);
+    if (__fpsOverlayHistory.length > 60) __fpsOverlayHistory.shift();
+    if (__fpsOverlayLabel) __fpsOverlayLabel.textContent = "FPS " + (Number(fps) || 0).toFixed(1);
+    __drawFpsOverlayChart();
+  };
+  var __setFpsOverlay = function (settings) {
+    var config = settings && typeof settings === "object" ? settings : {};
+    if (!__fpsOverlay) {
+      __fpsOverlay = document.createElement("div");
+      __fpsOverlayLabel = document.createElement("div");
+      __fpsOverlayChart = document.createElement("canvas");
+      __fpsOverlayResizeHandle = document.createElement("span");
+      __fpsOverlayLabel.textContent = "FPS --";
+      __fpsOverlayResizeHandle.textContent = "◢";
+      __fpsOverlay.append(__fpsOverlayLabel, __fpsOverlayChart, __fpsOverlayResizeHandle);
+      __fpsOverlay.style.position = "fixed";
+      __fpsOverlay.style.zIndex = "2147483647";
+      __fpsOverlay.style.pointerEvents = "auto";
+      __fpsOverlay.style.width = "210px";
+      __fpsOverlay.style.height = "112px";
+      __fpsOverlay.style.boxSizing = "border-box";
+      __fpsOverlay.style.padding = "8px 9px 10px";
+      __fpsOverlay.style.border = "1px solid rgba(255,255,255,0.24)";
+      __fpsOverlay.style.borderRadius = "8px";
+      __fpsOverlay.style.background = "rgba(20,22,24,0.76)";
+      __fpsOverlay.style.backdropFilter = "blur(8px)";
+      __fpsOverlay.style.webkitBackdropFilter = "blur(8px)";
+      __fpsOverlay.style.boxShadow = "0 8px 24px rgba(0,0,0,0.28)";
+      __fpsOverlay.style.overflow = "hidden";
+      __fpsOverlay.style.userSelect = "none";
+      __fpsOverlay.style.touchAction = "none";
+      __fpsOverlay.style.color = "#c4c9ce";
+      __fpsOverlay.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+      __fpsOverlay.style.fontWeight = "600";
+      __fpsOverlay.style.cursor = "move";
+      __fpsOverlay.style.display = "flex";
+      __fpsOverlay.style.flexDirection = "column";
+      __fpsOverlayLabel.style.fontSize = "14px";
+      __fpsOverlayLabel.style.color = "#c4c9ce";
+      __fpsOverlayLabel.style.paddingBottom = "5px";
+      __fpsOverlayLabel.style.marginBottom = "5px";
+      __fpsOverlayLabel.style.borderBottom = "1px solid rgba(255,255,255,0.16)";
+      __fpsOverlayLabel.style.letterSpacing = "0.02em";
+      __fpsOverlayChart.style.display = "block";
+      __fpsOverlayChart.style.width = "calc(100% - 16px)";
+      __fpsOverlayChart.style.margin = "0 8px";
+      __fpsOverlayChart.style.height = "auto";
+      __fpsOverlayChart.style.flex = "1 1 auto";
+      __fpsOverlayChart.style.minHeight = "0";
+      __fpsOverlayChart.style.border = "1px solid rgba(255,255,255,0.12)";
+      __fpsOverlayChart.style.borderRadius = "3px";
+      __fpsOverlayResizeHandle.style.position = "absolute";
+      __fpsOverlayResizeHandle.style.right = "2px";
+      __fpsOverlayResizeHandle.style.bottom = "0";
+      __fpsOverlayResizeHandle.style.width = "22px";
+      __fpsOverlayResizeHandle.style.height = "22px";
+      __fpsOverlayResizeHandle.style.lineHeight = "22px";
+      __fpsOverlayResizeHandle.style.textAlign = "right";
+      __fpsOverlayResizeHandle.style.cursor = "nwse-resize";
+      __fpsOverlayResizeHandle.style.fontSize = "14px";
+      __fpsOverlayResizeHandle.style.color = "rgba(255,255,255,0.55)";
+      __fpsOverlayResizeHandle.style.background = "rgba(255,255,255,0.08)";
+      __fpsOverlayResizeHandle.style.borderRadius = "4px 0 0 0";
+      __fpsOverlay.addEventListener("pointerdown", function (event) {
+        event.preventDefault();
+        try { __fpsOverlay.setPointerCapture(event.pointerId); } catch (_error) {}
+        if (event.target === __fpsOverlayResizeHandle) {
+          var startWidth = __fpsOverlay.offsetWidth;
+          var startHeight = __fpsOverlay.offsetHeight;
+          var startX = event.clientX;
+          var startY = event.clientY;
+          var resize = function (moveEvent) {
+            __fpsOverlay.style.width = Math.max(150, Math.min(520, startWidth + moveEvent.clientX - startX)) + "px";
+            __fpsOverlay.style.height = Math.max(90, Math.min(320, startHeight + moveEvent.clientY - startY)) + "px";
+            __drawFpsOverlayChart();
+          };
+          var stopResize = function () {
+            __fpsOverlay.removeEventListener("pointermove", resize);
+            __fpsOverlay.removeEventListener("pointerup", stopResize);
+            __fpsOverlay.removeEventListener("pointercancel", stopResize);
+            try { __fpsOverlay.releasePointerCapture(event.pointerId); } catch (_error) {}
+          };
+          __fpsOverlay.addEventListener("pointermove", resize);
+          __fpsOverlay.addEventListener("pointerup", stopResize);
+          __fpsOverlay.addEventListener("pointercancel", stopResize);
+          return;
+        }
+        var rect = __fpsOverlay.getBoundingClientRect();
+        var startLeft = rect.left;
+        var startTop = rect.top;
+        var startX = event.clientX;
+        var startY = event.clientY;
+        var move = function (moveEvent) {
+          __fpsOverlayMoved = true;
+          __fpsOverlay.style.left = Math.max(0, Math.min(window.innerWidth - rect.width, startLeft + moveEvent.clientX - startX)) + "px";
+          __fpsOverlay.style.top = Math.max(0, Math.min(window.innerHeight - rect.height, startTop + moveEvent.clientY - startY)) + "px";
+          __fpsOverlay.style.right = "auto";
+          __fpsOverlay.style.bottom = "auto";
+        };
+        var stopMove = function () {
+          __fpsOverlay.removeEventListener("pointermove", move);
+          __fpsOverlay.removeEventListener("pointerup", stopMove);
+          __fpsOverlay.removeEventListener("pointercancel", stopMove);
+          try { __fpsOverlay.releasePointerCapture(event.pointerId); } catch (_error) {}
+        };
+        __fpsOverlay.addEventListener("pointermove", move);
+        __fpsOverlay.addEventListener("pointerup", stopMove);
+        __fpsOverlay.addEventListener("pointercancel", stopMove);
+      });
+      document.documentElement.appendChild(__fpsOverlay);
+    }
+    var size = Math.max(12, Math.min(48, Number(config.size) || 18));
+    var opacity = Math.max(0.2, Math.min(1, Number(config.opacity) || 0.85));
+    var position = String(config.position || "top-right");
+    __fpsOverlayLabel.style.fontSize = Math.max(12, Math.min(32, size)) + "px";
+    if (position !== __fpsOverlayLastPosition) __fpsOverlayMoved = false;
+    __fpsOverlayLastPosition = position;
+    __fpsOverlay.style.opacity = String(opacity);
+    if (!__fpsOverlayMoved) {
+      __fpsOverlay.style.top = "auto";
+      __fpsOverlay.style.right = "auto";
+      __fpsOverlay.style.bottom = "auto";
+      __fpsOverlay.style.left = "auto";
+      if (position === "top-left" || position === "bottom-left") __fpsOverlay.style.left = "12px";
+      if (position === "top-right" || position === "bottom-right") __fpsOverlay.style.right = "12px";
+      if (position === "top-left" || position === "top-right") __fpsOverlay.style.top = "12px";
+      if (position === "bottom-left" || position === "bottom-right") __fpsOverlay.style.bottom = "12px";
+    }
+    __drawFpsOverlayChart();
+    __fpsOverlay.style.display = config.enabled ? "flex" : "none";
+  };
+
+  window.addEventListener("message", async function (event) {
+    var payload = event && event.data;
+    if (!payload || (payload.__cbgamesDebugCommand !== true && payload.__cbgamesMetricsControl !== true && payload.__cbgamesFpsOverlayControl !== true)) {
+      return;
+    }
+    var host = __getLauncherHost();
+    if (!host || event.source !== host) {
+      return;
+    }
+    if (payload.__cbgamesMetricsControl === true) {
+      if (payload.enabled) {
+        __startMetrics();
+      } else {
+        __stopMetrics();
+      }
+      try {
+        host.postMessage({
+          __cbgamesMetricsStatus: true,
+          enabled: Boolean(payload.enabled),
+          timestamp: Date.now()
+        }, "*");
+      } catch (_error) {
+        // ignore status response failure
+      }
+      return;
+    }
+    if (payload.__cbgamesFpsOverlayControl === true) {
+      __setFpsOverlay(payload);
+      return;
+    }
+    var result = "";
+    var ok = true;
+    try {
+      var value = window.eval(String(payload.command || ""));
+      if (value && typeof value.then === "function") {
+        value = await value;
+      }
+      result = __errorArgToString(value);
+    } catch (error) {
+      ok = false;
+      result = __errorArgToString(error);
+    }
+    try {
+      host.postMessage({
+        __cbgamesDebugResponse: true,
+        requestId: String(payload.requestId || ""),
+        ok: ok,
+        result: result
+      }, "*");
+    } catch (_error) {
+      // ignore response failure
+    }
+  });
+
+  var __metricsFrameCount = 0;
+  var __metricsLastReportTime = 0;
+  var __metricsSample = 0;
+  var __metricsEnabled = false;
+  var __metricsFrameRequest = 0;
+  var __stopMetrics = function () {
+    __metricsEnabled = false;
+    if (__metricsFrameRequest) window.cancelAnimationFrame(__metricsFrameRequest);
+    __metricsFrameRequest = 0;
+    if (__fpsOverlay) __fpsOverlay.style.display = "none";
+  };
+  var __startMetrics = function () {
+    __stopMetrics();
+    __metricsEnabled = true;
+    __metricsFrameCount = 0;
+    __metricsSample = 0;
+    __metricsLastReportTime = performance.now();
+    __metricsFrameRequest = window.requestAnimationFrame(__trackMetricsFrame);
+  };
+  var __sendMetrics = function (now) {
+    var host = __getLauncherHost();
+    if (!host) {
+      return;
+    }
+    var elapsed = Math.max(1, now - __metricsLastReportTime);
+    try {
+      host.postMessage({
+        __cbgamesPlayerMetrics: true,
+        fps: (__metricsFrameCount * 1000) / elapsed,
+        canvasCount: document.querySelectorAll("canvas").length,
+        sample: ++__metricsSample,
+        timestamp: Date.now()
+      }, "*");
+    } catch (_error) {
+      // ignore metrics reporting failure
+    }
+    __metricsFrameCount = 0;
+    __metricsLastReportTime = now;
+  };
+  var __trackMetricsFrame = function (now) {
+    if (!__metricsEnabled) return;
+    __metricsFrameCount += 1;
+    if (now - __metricsLastReportTime >= 1000) {
+      var currentFps = (__metricsFrameCount * 1000) / Math.max(1, now - __metricsLastReportTime);
+      if (__fpsOverlay && __fpsOverlay.style.display !== "none") {
+        __updateFpsOverlay(currentFps);
+      }
+      __sendMetrics(now);
+    }
+    __metricsFrameRequest = window.requestAnimationFrame(__trackMetricsFrame);
+  };
+
   var __reportBlobReady = function () {
     var host = __getLauncherHost();
     if (!host || !__launcherBridgeMeta.freeBlobAfterLoad) {
@@ -2266,19 +2553,34 @@ function injectRuntimeBridge(documentNode, options = {}) {
     });
   });
 
-  if (window.console && typeof window.console.error === "function") {
-    var __nativeConsoleError = window.console.error.bind(window.console);
-    window.console.error = function () {
-      var parts = [];
-      for (var i = 0; i < arguments.length; i++) {
-        parts.push(__errorArgToString(arguments[i]));
-      }
-      __reportLauncherError({
-        kind: "console.error",
-        message: parts.join(" | ")
-      });
-      return __nativeConsoleError.apply(window.console, arguments);
-    };
+  if (window.console) {
+    var __consoleMethods = [
+      ["log", "info"],
+      ["info", "info"],
+      ["warn", "warning"],
+      ["error", "error"],
+      ["debug", "debug"]
+    ];
+    for (var __consoleIndex = 0; __consoleIndex < __consoleMethods.length; __consoleIndex++) {
+      (function (__method, __level) {
+        if (typeof window.console[__method] !== "function") {
+          return;
+        }
+        var __nativeConsoleMethod = window.console[__method].bind(window.console);
+        window.console[__method] = function () {
+          var parts = [];
+          for (var i = 0; i < arguments.length; i++) {
+            parts.push(__errorArgToString(arguments[i]));
+          }
+          __reportLauncherError({
+            kind: "console." + __method,
+            level: __level,
+            message: parts.join(" | ")
+          });
+          return __nativeConsoleMethod.apply(window.console, arguments);
+        };
+      })(__consoleMethods[__consoleIndex][0], __consoleMethods[__consoleIndex][1]);
+    }
   }
 
   // Suppress popups that mention file:// from bundled games.

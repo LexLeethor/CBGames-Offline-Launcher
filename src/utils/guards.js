@@ -176,7 +176,7 @@ function normalizeGithubSource(raw) {
       const repo = String(source.repo || "").trim();
       const branch = String(source.branch || "").trim();
       const treeSha = String(source.treeSha || "").trim();
-      if (!owner || !repo || !branch || !treeSha) {
+      if (!owner || !repo || !branch) {
         return null;
       }
       return {

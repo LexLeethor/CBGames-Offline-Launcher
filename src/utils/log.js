@@ -1,44 +1,50 @@
 "use strict";
 function log(message, type = "info", meta) {
     const line = document.createElement("div");
-    if (type === "error") {
-      line.className = "error";
-    }
+    const level = String(type || "info").toLowerCase();
+    line.className = level === "error" ? "error" : "log-" + level;
     const timestamp = new Date().toLocaleTimeString();
     const text = typeof message === "string" ? message : (message && message.message) || String(message);
     line.textContent = "[" + timestamp + "] " + text;
     statusBox.append(line);
     statusBox.scrollTop = statusBox.scrollHeight;
+    if (liveGameStatus) {
+      liveGameStatus.append(line.cloneNode(true));
+      liveGameStatus.scrollTop = liveGameStatus.scrollHeight;
+    }
 
-    // Persist detailed logs for later debugging (kept bounded to avoid exhausting storage)
-    try {
-      const entry = {
-        ts: Date.now(),
-        time: new Date().toISOString(),
-        level: String(type || "info"),
-        message: text,
-        meta: meta || undefined,
-        url: (typeof location !== "undefined" && location.href) ? location.href : "",
-        userAgent: (typeof navigator !== "undefined" && navigator.userAgent) ? navigator.userAgent : "",
-        deviceMemory: (typeof navigator !== "undefined" && typeof navigator.deviceMemory !== "undefined") ? navigator.deviceMemory : null,
-        stack: (message && message.stack) ? String(message.stack) : (new Error().stack ? String(new Error().stack) : undefined)
-      };
-      appendErrorLog(entry);
-    } catch (e) {
-      // best-effort logging; swallow errors so logging never breaks app flow
+    if (String(type || "info").toLowerCase() === "error") {
+      try {
+        const entry = {
+          ts: Date.now(),
+          time: new Date().toISOString(),
+          level: "error",
+          message: text,
+          meta: meta || undefined,
+          url: (typeof location !== "undefined" && location.href) ? location.href : "",
+          userAgent: (typeof navigator !== "undefined" && navigator.userAgent) ? navigator.userAgent : "",
+          deviceMemory: (typeof navigator !== "undefined" && typeof navigator.deviceMemory !== "undefined") ? navigator.deviceMemory : null,
+          stack: (message && message.stack) ? String(message.stack) : (new Error().stack ? String(new Error().stack) : undefined)
+        };
+        appendErrorLog(entry);
+      } catch (e) {
+        // best-effort logging; swallow errors so logging never breaks app flow
+      }
     }
   }
 
 // --- persistent error log helpers (localStorage-backed, size-limited) ---
 const ERROR_LOG_KEY = "cbgames:errorLogs:v1";
 const ERROR_LOG_MAX_BYTES = 512 * 1024; // ~512KB max stored JSON
-const ERROR_LOG_MAX_ENTRIES = 2000;
+const ERROR_LOG_MAX_ENTRIES = 50;
 
 function loadErrorLogs() {
   try {
     const raw = localStorage.getItem(ERROR_LOG_KEY) || "[]";
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((entry) => String(entry && entry.level || "").toLowerCase() === "error").slice(-ERROR_LOG_MAX_ENTRIES)
+      : [];
   } catch (e) {
     return [];
   }
@@ -46,7 +52,9 @@ function loadErrorLogs() {
 
 function saveErrorLogs(arr) {
   try {
-    let logs = Array.isArray(arr) ? arr.slice() : [];
+    let logs = Array.isArray(arr)
+      ? arr.filter((entry) => String(entry && entry.level || "").toLowerCase() === "error").slice(-ERROR_LOG_MAX_ENTRIES)
+      : [];
     // trim by entries first
     while (logs.length > ERROR_LOG_MAX_ENTRIES) logs.shift();
     let json = JSON.stringify(logs);
@@ -60,6 +68,49 @@ function saveErrorLogs(arr) {
     // ignore storage errors
   }
 }
+
+function formatConsoleArgument(value) {
+  if (value instanceof Error) {
+    return value.stack || value.message || String(value);
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "undefined") {
+    return "undefined";
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function installConsoleActivityInterceptor() {
+  if (typeof window === "undefined" || !window.console || window.__cbgamesConsoleActivityInstalled) {
+    return;
+  }
+  window.__cbgamesConsoleActivityInstalled = true;
+  const methods = [
+    ["log", "info"],
+    ["info", "info"],
+    ["warn", "warning"],
+    ["error", "error"],
+    ["debug", "debug"]
+  ];
+  for (const [method, level] of methods) {
+    const original = window.console[method];
+    if (typeof original !== "function") {
+      continue;
+    }
+    window.console[method] = function(...args) {
+      original.apply(window.console, args);
+      log(args.map(formatConsoleArgument).join(" "), level, { consoleMethod: method });
+    };
+  }
+}
+
+installConsoleActivityInterceptor();
 
 function appendErrorLog(entry) {
   try {

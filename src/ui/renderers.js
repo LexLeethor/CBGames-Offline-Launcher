@@ -403,7 +403,7 @@ function initGameEditCropper() {
       autoCropArea: 1,
       responsive: true,
       background: false,
-      zoomable: true,
+      zoomable: false,
       movable: true,
       rotatable: false,
       scalable: false,
@@ -656,6 +656,15 @@ function updateLiveGameOverlay() {
         ? "Keep this tab open for best game compatibility."
         : "Ready to launch";
     }
+    if (!active && liveGameDebug) {
+      liveGameDebug.open = false;
+      liveGameOverlay.classList.remove("is-debugging");
+      liveGameOverlay.classList.remove("is-debug-near");
+    }
+    if (active && liveGameStatus && typeof statusBox !== "undefined") {
+      liveGameStatus.replaceChildren(...Array.from(statusBox.children).map((entry) => entry.cloneNode(true)));
+      liveGameStatus.scrollTop = liveGameStatus.scrollHeight;
+    }
     updateTabTitleAndIcon();
     if (!active && state.liveGameMonitorHandle) {
       clearInterval(state.liveGameMonitorHandle);
@@ -677,6 +686,74 @@ function setLiveGameMode(active, gameName) {
     state.liveGameMode = Boolean(active);
     state.liveGameName = typeof gameName === "string" && gameName ? gameName : "";
     updateLiveGameOverlay();
+  }
+
+function renderLiveGameMetrics(payload) {
+    if (!liveGameMetrics) {
+      return;
+    }
+    const fps = Number(payload && payload.fps);
+    liveGameMetrics.innerHTML =
+      "<div><strong>FPS</strong><span>" + (Number.isFinite(fps) ? fps.toFixed(1) : "unavailable") + "</span></div>" +
+      "<div><strong>Canvas/WebGL</strong><span>" + (Number.isFinite(Number(payload.canvasCount)) ? String(payload.canvasCount) : "unavailable") + " canvas</span></div>" +
+      "<div><strong>Sample</strong><span>#" + (Number.isFinite(Number(payload.sample)) ? String(payload.sample) : "?") + " · " + new Date(Number(payload.timestamp) || Date.now()).toLocaleTimeString() + "</span></div>";
+
+    state.liveGameMetricsHistory.push({
+      fps: Number.isFinite(fps) ? fps : 0,
+    });
+    if (state.liveGameMetricsHistory.length > 60) {
+      state.liveGameMetricsHistory.shift();
+    }
+    drawLiveGamePerformanceChart();
+  }
+
+function drawLiveGamePerformanceChart() {
+    const drawChart = (canvas, key, color, unit, fixedMax) => {
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const ratio = Math.max(1, window.devicePixelRatio || 1);
+      const width = Math.max(180, Math.floor(rect.width));
+      const height = Math.max(80, Math.floor(rect.height));
+      if (canvas.width !== width * ratio || canvas.height !== height * ratio) {
+        canvas.width = width * ratio;
+        canvas.height = height * ratio;
+      }
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      context.clearRect(0, 0, width, height);
+      context.fillStyle = "#0b0d0f";
+      context.fillRect(0, 0, width, height);
+      const padding = { top: 8, right: 8, bottom: 16, left: 38 };
+      const chartWidth = Math.max(1, width - padding.left - padding.right);
+      const chartHeight = Math.max(1, height - padding.top - padding.bottom);
+      const values = state.liveGameMetricsHistory.map((entry) => Number(entry[key]) || 0);
+      const maxValue = fixedMax || Math.max(1, ...values) * 1.2;
+      context.strokeStyle = "#24282c";
+      context.lineWidth = 1;
+      for (let row = 0; row <= 2; row += 1) {
+        const y = padding.top + (chartHeight * row / 2);
+        context.beginPath();
+        context.moveTo(padding.left, y);
+        context.lineTo(width - padding.right, y);
+        context.stroke();
+      }
+      context.fillStyle = "#8b949e";
+      context.font = "9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+      context.fillText(maxValue.toFixed(maxValue < 10 ? 1 : 0) + " " + unit, 3, padding.top + 3);
+      context.fillText("0", 22, height - padding.bottom + 3);
+      if (!values.length) return;
+      context.strokeStyle = color;
+      context.lineWidth = 1.5;
+      context.beginPath();
+      values.forEach((value, index) => {
+        const x = padding.left + (chartWidth * index / Math.max(1, values.length - 1));
+        const y = padding.top + chartHeight - (chartHeight * Math.max(0, Math.min(maxValue, value)) / maxValue);
+        if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
+      });
+      context.stroke();
+    };
+    drawChart(liveGameFpsChart, "fps", "#a7adb3", "FPS", null);
   }
 
 function updateSelectedGameInfo(game) {

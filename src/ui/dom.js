@@ -104,6 +104,16 @@ const storageDonut = document.getElementById("storageDonut");
 const storageUsedPct = document.getElementById("storageUsedPct");
 const liveGameOverlay = document.getElementById("liveGameOverlay");
 const liveGameSubtitle = document.getElementById("liveGameSubtitle");
+const liveGameDebug = document.getElementById("liveGameDebug");
+const liveGameCommandForm = document.getElementById("liveGameCommandForm");
+const liveGameCommand = document.getElementById("liveGameCommand");
+const liveGameMetrics = document.getElementById("liveGameMetrics");
+const liveGameFpsChart = document.getElementById("liveGameFpsChart");
+const liveGameFpsOverlayEnabled = document.getElementById("liveGameFpsOverlayEnabled");
+const liveGameFpsOverlayOpacity = document.getElementById("liveGameFpsOverlayOpacity");
+const liveGameFpsOverlayOpacityValue = document.getElementById("liveGameFpsOverlayOpacityValue");
+const liveGameDivider = document.getElementById("liveGameDivider");
+const liveGameStatus = document.getElementById("liveGameStatus");
 const closeRunningGameButton = document.getElementById("closeRunningGameButton");
 
 const exportSaveDataButton = document.getElementById("exportSaveData");

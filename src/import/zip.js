@@ -2169,13 +2169,17 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
     const replaceGameIdOpt = typeof opts.replaceGameId === "string" ? opts.replaceGameId : "";
     try {
       setActionButtonsDisabled(true);
-      const githubSource = {
+      const githubSource = normalizeGithubSource(opts.githubSource) || normalizeGithubSource({
         provider: "github-tree",
         owner: String(snapshot && snapshot.owner || ""),
         repo: String(snapshot && snapshot.repo || ""),
         branch: String(snapshot && snapshot.branch || ""),
-        downloadedAt: Date.now()
-      };
+        treeSha: String(snapshot && snapshot.treeSha || ""),
+        lastCheckedAt: Date.now()
+      });
+      if (!githubSource) {
+        throw new Error("GitHub repo metadata is incomplete.");
+      }
 
       if (opts.streamDuringDownload) {
         // Create a game record early so we can store files as they arrive

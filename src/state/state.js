@@ -29,6 +29,8 @@ const state = {
   liveGameMode: false,
   liveGameName: "",
   liveGameMonitorHandle: 0,
+  liveGameMetricsHistory: [],
+  liveGameDebugLeftWidth: 360,
   objectUrls: new Map(),
   loadedObjectUrls: new Set(),
   objectUrlHost: window,

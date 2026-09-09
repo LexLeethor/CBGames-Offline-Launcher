@@ -170,6 +170,114 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       }
     });
   }
+  if (liveGameDebug) {
+    const postFpsOverlaySettings = () => {
+      if (!state.playerWindow || state.playerWindow.closed) return;
+      state.playerWindow.postMessage({
+        __cbgamesFpsOverlayControl: true,
+        enabled: Boolean(liveGameDebug.open && liveGameFpsOverlayEnabled && liveGameFpsOverlayEnabled.checked),
+        opacity: Number(liveGameFpsOverlayOpacity && liveGameFpsOverlayOpacity.value) || 0.85
+      }, "*");
+    };
+    liveGameDebug.addEventListener("toggle", function() {
+      liveGameOverlay.classList.toggle("is-debugging", liveGameDebug.open);
+      if (liveGameDebug.open) {
+        state.liveGameMetricsHistory = [];
+        if (typeof drawLiveGamePerformanceChart === "function") {
+          drawLiveGamePerformanceChart();
+        }
+      }
+      if (state.playerWindow && !state.playerWindow.closed) {
+        state.playerWindow.postMessage({
+          __cbgamesMetricsControl: true,
+          enabled: liveGameDebug.open
+        }, "*");
+        postFpsOverlaySettings();
+      }
+      if (liveGameDebug.open && liveGameCommand) {
+        liveGameCommand.focus();
+      }
+    });
+    const updateFpsOverlayControls = () => {
+      if (liveGameFpsOverlayOpacityValue) liveGameFpsOverlayOpacityValue.textContent = Math.round(Number(liveGameFpsOverlayOpacity.value || 0.85) * 100) + "%";
+      postFpsOverlaySettings();
+    };
+    liveGameFpsOverlayEnabled.addEventListener("change", updateFpsOverlayControls);
+    liveGameFpsOverlayOpacity.addEventListener("input", updateFpsOverlayControls);
+  }
+  if (liveGameDivider) {
+    const setDebugLeftWidth = (width) => {
+      const screen = liveGameDivider.closest(".live-game-debug-screen");
+      if (!screen) return;
+      const totalWidth = screen.getBoundingClientRect().width;
+      state.liveGameDebugLeftWidth = Math.max(240, Math.min(totalWidth - 320, width));
+      screen.style.setProperty("--debug-left-width", state.liveGameDebugLeftWidth + "px");
+    };
+    liveGameDivider.addEventListener("pointerdown", function(event) {
+      const screen = liveGameDivider.closest(".live-game-debug-screen");
+      if (!screen) return;
+      liveGameDivider.setPointerCapture(event.pointerId);
+      const move = (moveEvent) => {
+        const rect = screen.getBoundingClientRect();
+        setDebugLeftWidth(moveEvent.clientX - rect.left);
+      };
+      const stop = () => {
+        liveGameDivider.removeEventListener("pointermove", move);
+        liveGameDivider.removeEventListener("pointerup", stop);
+        liveGameDivider.removeEventListener("pointercancel", stop);
+      };
+      liveGameDivider.addEventListener("pointermove", move);
+      liveGameDivider.addEventListener("pointerup", stop);
+      liveGameDivider.addEventListener("pointercancel", stop);
+    });
+    liveGameDivider.addEventListener("keydown", function(event) {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      setDebugLeftWidth(state.liveGameDebugLeftWidth + (event.key === "ArrowRight" ? 24 : -24));
+    });
+    window.addEventListener("resize", drawLiveGamePerformanceChart);
+  }
+  if (liveGameCommandForm) {
+    liveGameCommandForm.addEventListener("submit", function(event) {
+      event.preventDefault();
+      const command = String(liveGameCommand && liveGameCommand.value || "").trim();
+      if (!command) {
+        return;
+      }
+      if (!state.playerWindow || state.playerWindow.closed) {
+        log("[Debug] No running game window is available.", "error");
+        return;
+      }
+      const requestId = "debug-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+      try {
+        state.playerWindow.postMessage({
+          __cbgamesDebugCommand: true,
+          requestId,
+          command
+        }, "*");
+        log("> " + command, "debug");
+        liveGameCommand.value = "";
+      } catch (error) {
+        log("[Debug] Could not send command: " + (error.message || String(error)), "error");
+      }
+    });
+  }
+  if (liveGameOverlay && liveGameDebug) {
+    liveGameOverlay.addEventListener("pointermove", function(event) {
+      const summary = liveGameDebug.querySelector("summary");
+      if (!summary || liveGameDebug.open) {
+        return;
+      }
+      const rect = summary.getBoundingClientRect();
+      const closestX = Math.max(rect.left, Math.min(event.clientX, rect.right));
+      const closestY = Math.max(rect.top, Math.min(event.clientY, rect.bottom));
+      const distance = Math.hypot(event.clientX - closestX, event.clientY - closestY);
+      liveGameOverlay.classList.toggle("is-debug-near", distance <= 90);
+    });
+    liveGameOverlay.addEventListener("pointerleave", function() {
+      liveGameOverlay.classList.remove("is-debug-near");
+    });
+  }
   window.addEventListener("beforeunload", (event) => {
     if (!state.liveGameMode) {
       return;
@@ -850,10 +958,41 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       if (state.playerWindow && event.source && event.source !== state.playerWindow) {
         return;
       }
-      persistPlayerError(payload).catch((error) => {
-        console.error(error);
-        log("Could not save game error log.", "error");
-      });
+      if (String(payload.level || "error").toLowerCase() === "error") {
+        persistPlayerError(payload).catch((error) => {
+          console.error(error);
+          log("Could not save game error log.", "error");
+        });
+      } else {
+        log(
+          "[Game " + String(payload.level || "info") + "] " + String(payload.message || ""),
+          String(payload.level || "info")
+        );
+      }
+      return;
+    }
+    if (payload.__cbgamesDebugResponse === true) {
+      if (state.playerWindow && event.source && event.source !== state.playerWindow) {
+        return;
+      }
+      const prefix = payload.ok ? "[Debug result] " : "[Debug error] ";
+      log(prefix + String(payload.result || "undefined"), payload.ok ? "debug" : "error");
+      return;
+    }
+    if (payload.__cbgamesPlayerMetrics === true) {
+      if (state.playerWindow && event.source && event.source !== state.playerWindow) {
+        return;
+      }
+      if (liveGameMetrics) {
+        renderLiveGameMetrics(payload);
+      }
+      return;
+    }
+    if (payload.__cbgamesMetricsStatus === true) {
+      log(
+        payload.enabled ? "[Debug] Performance sampling active." : "[Debug] Performance sampling stopped.",
+        "debug"
+      );
       return;
     }
     if (payload.__cbgamesPlayerLifecycle !== true) {

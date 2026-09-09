@@ -24,6 +24,33 @@
     <p id="liveGameSubtitle">Keep this tab open for best game compatibility.</p>
     <button id="closeRunningGameButton" type="button">Close game</button>
   </div>
+  <details id="liveGameDebug" class="live-game-debug">
+    <summary>Debugging</summary>
+    <div class="live-game-debug-screen">
+      <h2>Debugging</h2>
+      <div class="live-game-debug-workspace">
+        <aside class="live-game-performance" aria-label="Performance metrics">
+          <div class="live-game-fps-controls">
+            <label><input id="liveGameFpsOverlayEnabled" type="checkbox"> Show FPS in game window</label>
+            <label>Opacity <input id="liveGameFpsOverlayOpacity" type="range" min="0.2" max="1" step="0.05" value="0.85"><output id="liveGameFpsOverlayOpacityValue">85%</output></label>
+          </div>
+          <div id="liveGameMetrics" class="live-game-metrics" aria-live="polite">Waiting for game metrics...</div>
+          <div class="live-game-graph-stack">
+            <div class="live-game-graph-card"><strong>FPS</strong><canvas id="liveGameFpsChart" aria-label="Frames per second history"></canvas></div>
+          </div>
+        </aside>
+        <div id="liveGameDivider" class="live-game-divider" role="separator" aria-label="Resize performance panel" tabindex="0"></div>
+        <section class="live-game-console" aria-label="Game console">
+          <div id="liveGameStatus" aria-live="polite"></div>
+          <form id="liveGameCommandForm" class="live-game-command-form">
+            <span class="live-game-command-prompt" aria-hidden="true">&gt;</span>
+            <input id="liveGameCommand" type="text" autocomplete="off" spellcheck="false" placeholder="Enter JavaScript command">
+            <button type="submit">Run</button>
+          </form>
+        </section>
+      </div>
+    </div>
+  </details>
 </div>
 <div id="dragDropOverlay" class="drag-drop-overlay" aria-hidden="true">
   <div class="drag-drop-overlay-card">

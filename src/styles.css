@@ -77,6 +77,253 @@
     font-size: 15px;
     letter-spacing: 0.01em;
   }
+  .live-game-card button {
+    display: block;
+    margin: 18px auto 0;
+    background: rgba(26, 26, 26, 0.8);
+    border-color: #3a3a3a;
+    color: #fff;
+  }
+  .live-game-debug {
+    position: absolute;
+    right: 18px;
+    bottom: 18px;
+    z-index: 1;
+    color: #d4d4d4;
+  }
+  .live-game-debug > summary {
+    width: fit-content;
+    margin-left: auto;
+    padding: 6px 10px;
+    border: 1px solid #333;
+    border-radius: 999px;
+    background: rgba(26, 26, 26, 0.8);
+    cursor: pointer;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.2s ease, background 0.2s ease;
+    list-style: none;
+  }
+  .live-game-debug > summary::-webkit-details-marker {
+    display: none;
+  }
+  .live-game-debug > summary::marker {
+    content: "";
+  }
+  .live-game-overlay.is-debug-near .live-game-debug > summary,
+  .live-game-overlay.is-debugging .live-game-debug > summary,
+  .live-game-debug > summary:focus-visible {
+    opacity: 1;
+  }
+  .live-game-debug > summary:hover {
+    background: rgba(42, 42, 42, 0.9);
+  }
+  .live-game-debug-screen {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 0;
+    padding: 24px;
+    background: #0b0d0f;
+  }
+  .live-game-debug-screen h2 {
+    margin: 0;
+    padding: 0 0 12px;
+    border-bottom: 1px solid #24282c;
+    color: #d8dde2;
+    font: 600 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: 0.02em;
+  }
+  .live-game-debug-workspace {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(240px, var(--debug-left-width, 360px)) 7px minmax(280px, 1fr);
+    overflow: hidden;
+  }
+  .live-game-performance,
+  .live-game-console {
+    min-width: 0;
+    min-height: 0;
+  }
+  .live-game-performance {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    padding-right: 16px;
+    overflow: auto;
+  }
+  .live-game-fps-controls {
+    display: grid;
+    gap: 8px;
+    padding: 0 4px 12px;
+    border-bottom: 1px solid #24282c;
+    color: #8b949e;
+    font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .live-game-fps-controls label {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+  }
+  .live-game-fps-controls label:first-child {
+    display: flex;
+    justify-content: space-between;
+  }
+  .live-game-fps-controls input[type="range"] {
+    width: 110px;
+    accent-color: #7ee787;
+  }
+  .live-game-fps-controls input[type="checkbox"] {
+    accent-color: #7ee787;
+  }
+  .live-game-fps-controls select,
+  .live-game-fps-controls output {
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 4px 6px;
+    background: #161b22;
+    color: #c9d1d9;
+    font: inherit;
+  }
+  .live-game-fps-controls output {
+    min-width: 42px;
+    text-align: right;
+  }
+  .live-game-console {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    padding-left: 16px;
+  }
+  .live-game-divider {
+    width: 7px;
+    min-height: 100%;
+    border-left: 1px solid #30363d;
+    border-right: 1px solid #30363d;
+    background: #161b22;
+    cursor: col-resize;
+    outline: none;
+  }
+  .live-game-divider:hover,
+  .live-game-divider:focus-visible {
+    background: #2f81f7;
+  }
+  .live-game-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 12px;
+    padding: 10px 4px;
+    border-bottom: 1px solid #24282c;
+    color: #8b949e;
+    font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .live-game-metrics div {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .live-game-metrics strong {
+    color: #8b949e;
+    font-weight: 500;
+  }
+  .live-game-metrics span {
+    color: #c9d1d9;
+    text-align: right;
+  }
+  .live-game-metrics .live-game-memory-note {
+    grid-column: 1 / -1;
+    color: #d29922;
+    font-size: 10px;
+    line-height: 1.35;
+  }
+  .live-game-graph-stack {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    padding-top: 12px;
+  }
+  .live-game-graph-card {
+    display: grid;
+    grid-template-rows: auto 110px;
+    gap: 4px;
+    min-height: 138px;
+    border: 1px solid #24282c;
+    background: #0b0d0f;
+  }
+  .live-game-graph-card strong {
+    padding: 7px 8px 0;
+    color: #c9d1d9;
+    font: 600 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .live-game-graph-card canvas {
+    display: block;
+    width: 100%;
+    height: 110px;
+  }
+  .live-game-command-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 10px;
+    padding: 8px 0 0;
+    border-top: 1px solid #24282c;
+  }
+  .live-game-command-prompt {
+    color: #7ee787;
+    font: 600 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .live-game-command-form input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    padding: 8px 0;
+    background: transparent;
+    color: #fff;
+    font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .live-game-command-form input::placeholder {
+    color: #687078;
+  }
+  .live-game-command-form button {
+    margin: 0;
+    border-color: #30363d;
+    border-radius: 4px;
+    padding: 6px 10px;
+    background: #161b22;
+    color: #c9d1d9;
+    font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  #liveGameStatus {
+    min-height: 0;
+    max-height: none;
+    padding: 12px 10px;
+    overflow: auto;
+    border-bottom: 1px solid #24282c;
+    background: #0b0d0f;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .live-game-debug-screen #liveGameStatus > div {
+    padding: 3px 0 3px 4px;
+    border-bottom: 0;
+  }
+  .live-game-debug-screen #liveGameStatus > div:last-child {
+    border-bottom: 0;
+  }
+  .live-game-debug-screen #liveGameStatus .error {
+    color: var(--error-color);
+  }
+  .live-game-debug-screen #liveGameStatus .log-debug {
+    color: #79c0ff;
+  }
+  .live-game-debug-screen #liveGameStatus .log-warning {
+    color: #d29922;
+  }
+  .live-game-debug-screen #liveGameStatus .log-info {
+    color: #c9d1d9;
+  }
   .live-game-memory {
     margin-top: 12px !important;
     font-size: 12px;
@@ -301,6 +548,16 @@
     font-size: 0;
     color: transparent;
     padding: 0;
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.8);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+  }
+  .game-item:hover .game-edit-trigger,
+  .game-item:focus-within .game-edit-trigger {
+    opacity: 1;
+    pointer-events: auto;
+    transform: scale(1);
   }
   .game-edit-trigger::before {
     content: "";
@@ -857,6 +1114,16 @@
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    transform: none !important;
+    transition: none;
+  }
+  #gameEditPreviewThumb {
+    background-size: contain;
+  }
+  #gameEditPreviewThumb:hover,
+  #gameEditPreviewThumb:focus {
+    background-position: center;
+    transform: none !important;
   }
   .preview-square::after {
     content: "";
