@@ -281,8 +281,9 @@ async function inflateDeflateRaw(data) {
     const buffer = await new Response(stream).arrayBuffer();
     return new Uint8Array(buffer);
   }
-
+  
 async function inflateBrotli(data) {
+  setWorkProgress("Inflating Brotli Data", 0, 0);
     if ("DecompressionStream" in window) {
       try {
         const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("brotli"));
@@ -537,6 +538,7 @@ function applyCurrentExtractorTransformations(path, bytes, context) {
   }
 
 async function extractEntryBytes(zip, entry) {
+    setWorkProgress("Figuring out zip type");
     if (entry.flags & 0x1) {
       throw new Error("Encrypted ZIP entries are not supported: " + entry.path);
     }
@@ -547,7 +549,13 @@ async function extractEntryBytes(zip, entry) {
       return compressed.slice();
     }
     if (entry.compressionMethod === 8) {
+      setWorkProgress("Inflating Contents");
       const decompressed = await inflateDeflateRaw(compressed);
+      return decompressed;
+    }
+    if (entry.compressionMethod === 12) {
+      console.log("Inflating BZ2 entry " + entry.path);
+      const decompressed = await inflateBZ2(compressed);
       return decompressed;
     }
 
@@ -1086,7 +1094,7 @@ async function importZipFile(file, options) {
       const brotliReplacementMap = buildBrotliReplacementMap(brotliDecodedPaths);
       launcherMetadata = detectLauncherMetadata(processedEntries);
 
-      setWorkProgress("Optimizing game assets", 0, 0);
+      setWorkProgress("Patching Files", 0, 0);
       for (const entry of processedEntries) {
         const transformed = applyCurrentExtractorTransformations(entry.path, entry.bytes, {
           brotliDecodedPaths,
