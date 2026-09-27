@@ -554,8 +554,13 @@ async function extractEntryBytes(zip, entry) {
       return decompressed;
     }
     if (entry.compressionMethod === 12) {
-      console.log("Inflating BZ2 entry " + entry.path);
+      console.log("Inflating BZ2 entry");
       const decompressed = await inflateBZ2(compressed);
+      return decompressed;
+    }
+        if (entry.compressionMethod === 14) {
+      console.log("Inflating LZMA entry");
+      const decompressed = await inflateLZMA(compressed);
       return decompressed;
     }
 
