@@ -545,7 +545,11 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow, extractorVers
     }
     clearObjectUrls();
     state.objectUrlHost = host;
+    state.staticModuleImportPaths = new Set();
+    state.staticModuleImportMap = {};
+    state.staticModuleRecords = new Map();
     const recordsByPath = new Map(records.map((record) => [record.path, record]));
+    state.staticModuleRecords = recordsByPath;
     const dataUrlCache = new Map();
 
     const workerPaths = version < 8 ? await collectWorkerScriptPaths(recordsByPath) : new Set();
@@ -577,9 +581,13 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow, extractorVers
 
         if (/\.(?:js|mjs|cjs|unityweb)$/i.test(decodedPath)) {
           const originalText = new TextDecoder().decode(new Uint8Array(buffer));
-          const emsPatchedText = workerPaths.has(decodedPath)
-            ? await patchEmscriptenWasmScriptText(originalText, decodedPath, recordsByPath, dataUrlCache)
-            : originalText;
+          let staticPatchedText = rewriteStaticModuleImportsText(originalText, decodedPath, recordsByPath);
+          if (version < 8) {
+            staticPatchedText = workerPaths.has(decodedPath)
+              ? await patchEmscriptenWasmScriptText(staticPatchedText, decodedPath, recordsByPath, dataUrlCache)
+              : staticPatchedText;
+          }
+          const emsPatchedText = staticPatchedText;
           let rewrittenText = await rewriteImportScriptsText(
             emsPatchedText,
             decodedPath,
@@ -627,6 +635,21 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow, extractorVers
       state.objectUrls.set(record.path, host.URL.createObjectURL(record.blob));
     }
 
+    // Discover imports used by inline module scripts too, so their relative URLs
+    // are included in the import map before the player document starts loading.
+    for (const record of records) {
+      if (!/\.html?$/i.test(record.path)) continue;
+      try {
+        const html = await record.blob.text();
+        const parsed = new DOMParser().parseFromString(html, "text/html");
+        for (const script of parsed.querySelectorAll('script[type="module"]:not([src])')) {
+          rewriteStaticModuleImportsText(script.textContent || "", record.path, recordsByPath);
+        }
+      } catch {
+        // Ignore malformed HTML; the normal HTML loader will report its own errors.
+      }
+    }
+
     let rewrittenCssCount = 0;
     let rewrittenUnityConfigCount = 0;
     for (const record of records) {
@@ -653,10 +676,9 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow, extractorVers
           rewrittenMime = "application/json";
           rewrittenUnityConfigCount += 1;
         } else if (/\.(?:js|mjs|cjs|unityweb)$/i.test(record.path)) {
-          if (version >= 8) continue;
           let sourceBlob = record.blob;
           let gzipDecompressed = false;
-          if (/\.unityweb$/i.test(record.path) && /framework/i.test(record.path)) {
+          if (version < 8 && /\.unityweb$/i.test(record.path) && /framework/i.test(record.path)) {
             const header = new Uint8Array(await record.blob.slice(0, 2).arrayBuffer());
             if (header[0] === 0x1f && header[1] === 0x8b) {
               try {
@@ -672,16 +694,19 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow, extractorVers
             }
           }
           const originalText = await sourceBlob.text();
-          const emsPatchedText = workerPaths.has(record.path)
-            ? await patchEmscriptenWasmScriptText(originalText, record.path, recordsByPath, dataUrlCache)
-            : originalText;
-          let rewritten = await rewriteImportScriptsText(
-            emsPatchedText,
-            record.path,
-            recordsByPath,
-            dataUrlCache
-          );
-          rewritten = applyStaticJsPatches(rewritten, record.path);
+          let rewritten = rewriteStaticModuleImportsText(originalText, record.path, recordsByPath);
+          if (version < 8) {
+            const emsPatchedText = workerPaths.has(record.path)
+              ? await patchEmscriptenWasmScriptText(rewritten, record.path, recordsByPath, dataUrlCache)
+              : rewritten;
+            rewritten = await rewriteImportScriptsText(
+              emsPatchedText,
+              record.path,
+              recordsByPath,
+              dataUrlCache
+            );
+            rewritten = applyStaticJsPatches(rewritten, record.path);
+          }
 
           if (!gzipDecompressed && rewritten === originalText) {
             continue;
@@ -716,6 +741,236 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow, extractorVers
     if (rewrittenUnityConfigCount > 0) {
       log("Applied Unity GPU-safe config to " + rewrittenUnityConfigCount + " Web config file(s).");
     }
+  }
+
+async function buildStaticModuleImportMap() {
+    const imports = {};
+    const records = state.staticModuleRecords || new Map();
+    const pending = Array.from(state.staticModuleImportPaths || []);
+    for (let index = 0; index < pending.length; index += 1) {
+      const path = pending[index];
+      const record = records.get(path);
+      const url = state.objectUrls.get(path);
+      if (!record || !url) continue;
+      try {
+        const text = await record.blob.text();
+        const rewritten = rewriteStaticModuleImportsText(text, path, records);
+        for (const nestedPath of state.staticModuleImportPaths) {
+          if (!pending.includes(nestedPath)) pending.push(nestedPath);
+        }
+        imports[toVirtualUrl(path)] = "data:application/javascript;base64," + textToBase64(rewritten);
+      } catch {
+        // Leave this module unmapped so the browser can report its original load error.
+      }
+    }
+    state.staticModuleImportMap = imports;
+  }
+
+// Rewrite static module specifiers to stable VFS URLs. An import map added to the
+// player document maps those URLs to the final Blob URLs, so nested imports (and
+// cyclic module graphs) keep resolving after every module is rewritten.
+function skipModuleTrivia(text, index) {
+    let cursor = index;
+    while (cursor < text.length) {
+      if (/\s/.test(text[cursor])) {
+        cursor += 1;
+      } else if (text[cursor] === "/" && text[cursor + 1] === "/") {
+        const end = text.indexOf("\n", cursor + 2);
+        cursor = end === -1 ? text.length : end + 1;
+      } else if (text[cursor] === "/" && text[cursor + 1] === "*") {
+        const end = text.indexOf("*/", cursor + 2);
+        cursor = end === -1 ? text.length : end + 2;
+      } else {
+        break;
+      }
+    }
+    return cursor;
+  }
+
+function readModuleStringLiteral(text, index) {
+    const quote = text[index];
+    if (quote !== "'" && quote !== '"') return null;
+    let cursor = index + 1;
+    while (cursor < text.length) {
+      if (text[cursor] === "\\") {
+        cursor += 2;
+      } else if (text[cursor] === quote) {
+        const raw = text.slice(index + 1, cursor);
+        let value = raw;
+        try {
+          value = quote === '"' ? JSON.parse(text.slice(index, cursor + 1)) : raw.replace(/\\(['\\])/g, "$1");
+        } catch {
+          return null;
+        }
+        return { value, start: index, end: cursor + 1 };
+      } else {
+        cursor += 1;
+      }
+    }
+    return null;
+  }
+
+function readStaticModuleSpecifier(text, keyword, keywordEnd) {
+    let cursor = skipModuleTrivia(text, keywordEnd);
+    if (keyword === "import") {
+      if (text[cursor] === "(" || text[cursor] === ".") return null;
+      const sideEffectImport = readModuleStringLiteral(text, cursor);
+      if (sideEffectImport) return sideEffectImport;
+    } else if (text[cursor] !== "*" && text[cursor] !== "{" && !/[A-Za-z_$]/.test(text[cursor] || "")) {
+      return null;
+    }
+
+    let braceDepth = 0;
+    while (cursor < text.length) {
+      cursor = skipModuleTrivia(text, cursor);
+      const char = text[cursor];
+      if (!char || char === ";" || char === "=") return null;
+      if (char === "'" || char === '"' || char === "`") {
+        if (char !== "`") return null;
+        const templateEnd = text.indexOf("`", cursor + 1);
+        if (templateEnd === -1) return null;
+        cursor = templateEnd + 1;
+        continue;
+      }
+      if (char === "{") {
+        braceDepth += 1;
+        cursor += 1;
+        continue;
+      }
+      if (char === "}") {
+        braceDepth -= 1;
+        cursor += 1;
+        if (braceDepth === 0 && keyword === "export") {
+          const next = skipModuleTrivia(text, cursor);
+          if (!/^from\b/.test(text.slice(next))) return null;
+          cursor = next;
+        }
+        continue;
+      }
+      if (char === "/" && (text[cursor + 1] === "/" || text[cursor + 1] === "*")) {
+        cursor = skipModuleTrivia(text, cursor);
+        continue;
+      }
+      if (/[A-Za-z_$]/.test(char)) {
+        const start = cursor;
+        cursor += 1;
+        while (/[\w$]/.test(text[cursor] || "")) cursor += 1;
+        if (braceDepth === 0 && text.slice(start, cursor) === "from") {
+          const specifierStart = skipModuleTrivia(text, cursor);
+          return readModuleStringLiteral(text, specifierStart);
+        }
+        continue;
+      }
+      cursor += 1;
+    }
+    return null;
+  }
+
+function rewriteStaticModuleImportsText(text, modulePath, recordsByPath) {
+    if (typeof text !== "string" || !/\b(?:import|export)\b/.test(text)) return text;
+    if (!state.staticModuleImportPaths) state.staticModuleImportPaths = new Set();
+    const moduleDir = dirnamePath(modulePath);
+    const moduleBase = moduleDir
+      ? VFS_ORIGIN + moduleDir.split("/").map(encodeURIComponent).join("/") + "/"
+      : VFS_ORIGIN;
+    const replacements = [];
+    let cursor = 0;
+
+    while (cursor < text.length) {
+      const char = text[cursor];
+      if (char === "/" && text[cursor + 1] === "/") {
+        const end = text.indexOf("\n", cursor + 2);
+        cursor = end === -1 ? text.length : end + 1;
+        continue;
+      }
+      if (char === "/" && text[cursor + 1] === "*") {
+        const end = text.indexOf("*/", cursor + 2);
+        cursor = end === -1 ? text.length : end + 2;
+        continue;
+      }
+      if (char === "'" || char === '"' || char === "`") {
+        if (char === "`") {
+          const end = text.indexOf("`", cursor + 1);
+          cursor = end === -1 ? text.length : end + 1;
+        } else {
+          const literal = readModuleStringLiteral(text, cursor);
+          cursor = literal ? literal.end : cursor + 1;
+        }
+        continue;
+      }
+      if (/[A-Za-z_$]/.test(char)) {
+        const start = cursor;
+        cursor += 1;
+        while (/[\w$]/.test(text[cursor] || "")) cursor += 1;
+        const keyword = text.slice(start, cursor);
+        const previous = start > 0 ? text[start - 1] : "";
+        if ((keyword === "import" || keyword === "export") && !/[\w$]/.test(previous)) {
+          const specifier = readStaticModuleSpecifier(text, keyword, cursor);
+          if (specifier) {
+            const resolvedPath = resolveToPath(specifier.value, moduleBase);
+            let targetPath = resolvedPath && recordsByPath.has(resolvedPath) ? resolvedPath : "";
+            if (!targetPath && resolvedPath && recordsByPath.has(resolvedPath + ".br")) {
+              targetPath = resolvedPath;
+            }
+            if (!targetPath && resolvedPath) {
+              for (const candidate of buildAssetFallbackCandidates(resolvedPath)) {
+                if (recordsByPath.has(candidate)) {
+                  targetPath = candidate;
+                  break;
+                }
+              }
+            }
+            if (targetPath) {
+              state.staticModuleImportPaths.add(targetPath);
+              replacements.push({
+                start: specifier.start,
+                end: specifier.end,
+                value: JSON.stringify(toVirtualUrl(targetPath))
+              });
+            }
+          }
+        }
+        continue;
+      }
+      cursor += 1;
+    }
+
+    if (!replacements.length) return text;
+    let rewritten = "";
+    let position = 0;
+    for (const replacement of replacements) {
+      rewritten += text.slice(position, replacement.start) + replacement.value;
+      position = replacement.end;
+    }
+    return rewritten + text.slice(position);
+  }
+
+function createStaticModuleImportMap(documentNode) {
+    const imports = state.staticModuleImportMap || {};
+    if (!Object.keys(imports).length) return;
+
+    const existing = documentNode.querySelector('script[type="importmap"]');
+    let importMap = { imports: {} };
+    if (existing) {
+      try {
+        importMap = JSON.parse(existing.textContent || "{}");
+      } catch {
+        return;
+      }
+      if (!importMap || typeof importMap !== "object" || Array.isArray(importMap)) importMap = {};
+      importMap.imports = importMap.imports && typeof importMap.imports === "object"
+        ? importMap.imports
+        : {};
+      Object.assign(importMap.imports, imports);
+      existing.textContent = JSON.stringify(importMap);
+      documentNode.head.prepend(existing);
+      return;
+    }
+
+    const script = documentNode.createElement("script");
+    script.type = "importmap";
+    script.textContent = JSON.stringify({ imports });
+    documentNode.head.prepend(script);
   }
 
 // ---------------------------------------------------------------------------
@@ -2741,6 +2996,14 @@ function rewriteDocumentHtml(htmlText, entryPath, runtimeBridgeOptions = {}) {
       }
     }
 
+    for (const moduleScript of documentNode.querySelectorAll('script[type="module"]:not([src])')) {
+      moduleScript.textContent = rewriteStaticModuleImportsText(
+        moduleScript.textContent || "",
+        entryPath,
+        state.staticModuleRecords || new Map()
+      );
+    }
+
     const targets = [
       ["script", "src"],
       ["link", "href"],
@@ -2770,6 +3033,7 @@ function rewriteDocumentHtml(htmlText, entryPath, runtimeBridgeOptions = {}) {
       element.setAttribute("srcset", rewritten);
     }
 
+    createStaticModuleImportMap(documentNode);
     injectRuntimeBridge(documentNode, runtimeBridgeOptions);
     return "<!DOCTYPE html>\n" + documentNode.documentElement.outerHTML;
   }

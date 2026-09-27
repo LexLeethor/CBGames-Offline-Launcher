@@ -39,7 +39,7 @@ Tested Games (Working)
 
 Known issues
 
-- **Nested module imports:** Games that use static ES module imports with relative specifiers (e.g. `import './foo.js'` from modules nested in subfolders) can fail.
+None.
 
 Unsolvable Issues
 

@@ -328,6 +328,7 @@ async function launchSelectedGame() {
       }
 
       const htmlText = await entryRecord.blob.text();
+      await buildStaticModuleImportMap();
       const rewrittenHtml = rewriteDocumentHtml(htmlText, entryPath, {
         gameId: game.id,
         gameName: game.name || "",
