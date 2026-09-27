@@ -47,7 +47,9 @@ selectedBlobToggle.addEventListener("change", async function() {
 replaceZipSelectedButton.addEventListener("click", function() {
   replaceGameWithZipFlow().catch(error => {
     console.error(error);
-    log("Replace import failed: " + (error.message || String(error)), "error");
+    const message = error.message || String(error);
+    log("Replace import failed: " + message, "error");
+    openWrongZipTypeModal(message, "Import Failed");
   });
 });
 
@@ -63,6 +65,29 @@ openOpsModalButton.addEventListener("click", showOpsModal);
   closeOpsModalButton.addEventListener("click", () => {
     hideOpsModal(false);
   });
+  const opsToolTabs = Array.from(document.querySelectorAll(".ops-tool-tab[role='tab']"));
+  opsToolTabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => {
+      activateOpsToolTab(tab);
+    });
+    tab.addEventListener("keydown", (event) => {
+      let nextIndex = index;
+      if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+        nextIndex = (index + 1) % opsToolTabs.length;
+      } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+        nextIndex = (index - 1 + opsToolTabs.length) % opsToolTabs.length;
+      } else if (event.key === "Home") {
+        nextIndex = 0;
+      } else if (event.key === "End") {
+        nextIndex = opsToolTabs.length - 1;
+      } else {
+        return;
+      }
+      event.preventDefault();
+      activateOpsToolTab(opsToolTabs[nextIndex]);
+      opsToolTabs[nextIndex].focus();
+    });
+  });
   closeHowToModalButton.addEventListener("click", hideHowToModal);
   opsModal.addEventListener("click", (event) => {
     if (event.target === opsModal) {
@@ -77,9 +102,69 @@ openOpsModalButton.addEventListener("click", showOpsModal);
   importGithubButton.addEventListener("click", function() {
     importFromGithub().catch(error => {
       console.error(error);
-      log("GitHub import failed: " + (error.message || String(error)), "error");
+      const message = error.message || String(error);
+      log("GitHub import failed: " + message, "error");
+      openWrongZipTypeModal(message, "GitHub Import Failed");
     });
   });
+  if (loadMirrorCatalogButton) {
+    loadMirrorCatalogButton.addEventListener("click", () => {
+      importFromMirrorCatalog().catch((error) => {
+        console.error(error);
+        setMirrorCatalogStatus("Could not load mirror catalog: " + (error.message || String(error)), "error");
+      });
+    });
+  }
+  if (mirrorCatalogUrlInput) {
+    mirrorCatalogUrlInput.addEventListener("change", () => {
+      const value = String(mirrorCatalogUrlInput.value || "").trim();
+      if (value) putSetting(SETTING_MIRROR_CATALOG_URL, value).catch((error) => console.warn("Could not save mirror catalog URL.", error));
+    });
+  }
+  if (mirrorCatalogList) {
+    mirrorCatalogList.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+      const draft = state.mirrorCatalogDraft;
+      if (!draft) return;
+      if (target instanceof HTMLInputElement && target.type === "checkbox") {
+        const game = draft.games[Number(target.dataset.mirrorSelect)];
+        if (game) game.selected = target.checked;
+      } else if (target instanceof HTMLSelectElement) {
+        const game = draft.games[Number(target.dataset.mirrorMode)];
+        if (game) game.mode = target.value;
+      }
+      renderMirrorCatalogModal();
+    });
+  }
+  if (mirrorCatalogSelectAllButton) {
+    mirrorCatalogSelectAllButton.addEventListener("click", () => {
+      if (!state.mirrorCatalogDraft) return;
+      state.mirrorCatalogDraft.games.forEach((game) => { game.selected = true; });
+      renderMirrorCatalogModal();
+    });
+  }
+  if (mirrorCatalogSelectNoneButton) {
+    mirrorCatalogSelectNoneButton.addEventListener("click", () => {
+      if (!state.mirrorCatalogDraft) return;
+      state.mirrorCatalogDraft.games.forEach((game) => { game.selected = false; });
+      renderMirrorCatalogModal();
+    });
+  }
+  if (mirrorCatalogCancelButton) mirrorCatalogCancelButton.addEventListener("click", closeMirrorCatalogModal);
+  if (mirrorCatalogImportButton) {
+    mirrorCatalogImportButton.addEventListener("click", () => {
+      importSelectedMirrorGames().catch((error) => {
+        console.error(error);
+        log("Mirror import failed: " + (error.message || String(error)), "error");
+      });
+    });
+  }
+  if (mirrorCatalogModal) {
+    mirrorCatalogModal.addEventListener("click", (event) => {
+      if (event.target === mirrorCatalogModal) closeMirrorCatalogModal();
+    });
+  }
   checkGithubUpdateButton.addEventListener("click", function() {
     checkAllGithubUpdates().catch(error => {
       console.error(error);
@@ -420,6 +505,10 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     }
   });
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && mirrorCatalogModal && mirrorCatalogModal.classList.contains("open")) {
+      closeMirrorCatalogModal();
+      return;
+    }
     if (event.key === "Escape" && saveImportModal.classList.contains("open")) {
       closeSaveImportModal();
       return;
@@ -895,7 +984,9 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       log("Imported: " + (parts.length ? parts.join(", ") : "nothing") + ".");
     } catch (err) {
       console.error(err);
-      log("Save import failed: " + (err.message || String(err)), "error");
+      const message = err.message || String(err);
+      log("Save import failed: " + message, "error");
+      openWrongZipTypeModal(message, "Save Import Failed");
     } finally {
       setActionButtonsDisabled(false);
     }
@@ -1038,12 +1129,31 @@ openOpsModalButton.addEventListener("click", showOpsModal);
 
   setEmptyEntryState("Loading...");
 // --- helpers ---
+function activateOpsToolTab(tab) {
+  if (!tab || !tab.getAttribute("aria-controls")) {
+    return;
+  }
+  const paneId = tab.getAttribute("aria-controls");
+  for (const item of document.querySelectorAll(".ops-tool-tab[role='tab']")) {
+    const selected = item === tab;
+    item.classList.toggle("active", selected);
+    item.setAttribute("aria-selected", String(selected));
+    item.tabIndex = selected ? 0 : -1;
+  }
+  for (const pane of document.querySelectorAll(".ops-tool-pane[role='tabpanel']")) {
+    const active = pane.id === paneId;
+    pane.hidden = !active;
+    pane.classList.toggle("active", active);
+  }
+}
+
 function showOpsModal() {
     if (!opsModal) {
       return;
     }
     opsModal.classList.add("open");
     opsModal.setAttribute("aria-hidden", "false");
+    activateOpsToolTab(document.getElementById("opsTabImport"));
     if (!state.actionInProgress && importZipButton) {
       importZipButton.focus();
     }

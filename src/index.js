@@ -15,6 +15,10 @@ if (networkHostUrlInput && !networkHostUrlInput.value) {
   (async () => {
     try {
       state.db = await openDatabase();
+      const savedMirrorCatalogUrl = await getSetting(SETTING_MIRROR_CATALOG_URL);
+      if (mirrorCatalogUrlInput && savedMirrorCatalogUrl && toHttpUrl(String(savedMirrorCatalogUrl))) {
+        mirrorCatalogUrlInput.value = String(savedMirrorCatalogUrl);
+      }
       const savedGameId = await getSetting(SETTING_SELECTED_GAME);
       await loadLibrary(savedGameId || "");
       log("Ready. Import a ZIP game to begin.");

@@ -149,124 +149,118 @@
     <div class="ops-actions">
       <div class="ops-head">
         <div>
-          <h3 id="opsModalTitle">Game Imports & Downloads</h3>
-          <p>Add games, check updates, and manage backups in one place.</p>
+          <h3 id="opsModalTitle">Manage Games & Data</h3>
+          <p>Choose a category to find the action you need.</p>
         </div>
         <button id="closeOpsModal" type="button" aria-label="Close">×</button>
       </div>
-      <div class="ops-controls">
-        <section id="opsAddGamesGroup" class="ops-group ops-group-fixed">
-          <div class="ops-group-head">
-            <span class="ops-group-title">Add Games</span>
-          </div>
-          <div class="ops-group-body">
-            <p>Import a game archive (ZIP, TAR, TAR.XZ, or TAR.GZ). Games over 4 GiB uncompressed show a warning because they are very likely to fail or break.</p>
-            <div class="ops-row">
-              <button id="importZip">Import Game Archive</button>
-              <button id="importGithub" type="button">Import from GitHub</button>
+      <div class="ops-toolbox">
+        <nav class="ops-tool-nav" aria-label="Import and download categories" role="tablist" aria-orientation="vertical">
+          <button class="ops-tool-tab active" type="button" role="tab" aria-selected="true" aria-controls="opsPaneImport" id="opsTabImport">↓ <span>Import games</span></button>
+          <button class="ops-tool-tab" type="button" role="tab" aria-selected="false" aria-controls="opsPaneUpdates" id="opsTabUpdates" tabindex="-1">↻ <span>Updates</span></button>
+          <button class="ops-tool-tab" type="button" role="tab" aria-selected="false" aria-controls="opsPaneBackup" id="opsTabBackup" tabindex="-1">▣ <span>Backups & export</span></button>
+          <button class="ops-tool-tab" type="button" role="tab" aria-selected="false" aria-controls="opsPaneSaves" id="opsTabSaves" tabindex="-1">◈ <span>Save data</span></button>
+          <button class="ops-tool-tab" type="button" role="tab" aria-selected="false" aria-controls="opsPaneNetwork" id="opsTabNetwork" tabindex="-1">⇄ <span>Network</span></button>
+        </nav>
+        <div class="ops-tool-content">
+          <section class="ops-tool-pane active" id="opsPaneImport" role="tabpanel" aria-labelledby="opsTabImport">
+            <h4>Import games</h4>
+            <p>Choose an archive from your device or import from GitHub. Archives over 4 GiB uncompressed may fail due to browser memory or storage limits.</p>
+            <div class="ops-tool-row">
+              <span class="ops-tool-icon">↓</span>
+              <span class="ops-tool-copy"><strong>Game archive</strong><small>ZIP, TAR, TAR.XZ, or TAR.GZ</small></span>
+              <button id="importZip" type="button">Choose file</button>
             </div>
-            <div class="ops-row one">
-              <button id="replaceZipSelected" type="button">Replace Game with Archive</button>
+            <div class="ops-tool-row">
+              <span class="ops-tool-icon">⌘</span>
+              <span class="ops-tool-copy"><strong>GitHub repository</strong><small>Import a repository or direct ZIP URL</small></span>
+              <button id="importGithub" type="button">Connect</button>
             </div>
-          </div>
-        </section>
-        <section class="ops-group ops-group-fixed">
-          <div class="ops-group-head">
-            <span class="ops-group-title">Updates</span>
-            <span class="ops-group-hint">Check all GitHub-linked games</span>
-          </div>
-          <div class="ops-group-body">
-            <p>Scan every GitHub-linked game and choose which updates to install.</p>
-            <div class="ops-row one">
-              <button id="checkGithubUpdate" type="button">Check All GitHub Updates</button>
+            <div class="ops-tool-row ops-tool-mirror-row">
+              <span class="ops-tool-icon">⇄</span>
+              <span class="ops-tool-copy"><strong>Game mirror catalog</strong><small>Browse games hosted on a compatible mirror</small></span>
+              <div class="mirror-catalog-connect">
+                <input id="mirrorCatalogUrl" type="url" spellcheck="false" autocomplete="url" value="https://dhbsgs572kngg.cloudfront.net/Games/games.json" aria-label="Mirror games.json URL" data-setting-key="mirrorCatalogUrl">
+                <button id="loadMirrorCatalog" type="button">Browse</button>
+              </div>
             </div>
-            <p id="updateScanStatus">Update status: Not checked yet.</p>
-          </div>
-        </section>
-        <section class="ops-group ops-group-fixed">
-          <div class="ops-group-head">
-            <span class="ops-group-title">Backup & Restore</span>
-            <span class="ops-group-hint">Export/import bundles and logs</span>
-          </div>
-          <div class="ops-group-body">
-            <p>Export your whole library, import a bundle, or save error logs for troubleshooting.</p>
-            <div class="ops-row">
-              <button id="exportAllGames" type="button">Export All Games</button>
-              <button id="importBundle" type="button">Import Bundle</button>
+            <p id="mirrorCatalogStatus" class="network-transfer-status">Enter a mirror catalog URL and click Browse.</p>
+          </section>
+          <section class="ops-tool-pane" id="opsPaneUpdates" role="tabpanel" aria-labelledby="opsTabUpdates" hidden>
+            <h4>Game updates</h4>
+            <p>Check every GitHub-linked game and choose which updates to install.</p>
+            <div class="ops-tool-row">
+              <span class="ops-tool-icon">↻</span>
+              <span class="ops-tool-copy"><strong>Check linked games</strong><small id="updateScanStatus">Update status: Not checked yet.</small></span>
+              <button id="checkGithubUpdate" type="button">Check now</button>
             </div>
-            <div class="ops-row one">
-              <button id="exportErrorLogs" type="button">Export Error Logs</button>
+            <div class="ops-tool-row">
+              <span class="ops-tool-icon">⇥</span>
+              <span class="ops-tool-copy"><strong>Replace a game</strong><small>Choose an archive; keep the existing title and thumbnail</small></span>
+              <button id="replaceZipSelected" type="button">Choose game</button>
             </div>
-          </div>
-        </section>
-        <section class="ops-group ops-group-fixed">
-          <div class="ops-group-head">
-            <span class="ops-group-title">Export Individual Game</span>
-            <span class="ops-group-hint">Save a copy of a game</span>
-          </div>
-          <div class="ops-group-body">
-            <p>Export the selected game. You can choose to keep or revert automatic transformations.</p>
-            <div class="ops-row one">
-              <button id="exportSelectedGame" type="button">Export Game...</button>
+          </section>
+          <section class="ops-tool-pane" id="opsPaneBackup" role="tabpanel" aria-labelledby="opsTabBackup" hidden>
+            <h4>Backups & export</h4>
+            <p>Move your whole library, export one game, or download troubleshooting logs.</p>
+            <div class="ops-tool-row">
+              <span class="ops-tool-icon">⇧</span>
+              <span class="ops-tool-copy"><strong>Full library</strong><small>Export all games or restore a bundle</small></span>
+              <span class="ops-tool-actions"><button id="exportAllGames" type="button">Export</button><button id="importBundle" type="button">Import bundle</button></span>
             </div>
-          </div>
-        </section>
-        <section class="ops-group ops-group-fixed">
-          <div class="ops-group-head">
-            <span class="ops-group-title">Save Data</span>
-            <span class="ops-group-hint">Export / import Unity game saves</span>
-          </div>
-          <div class="ops-group-body">
-            <p>Back up Unity game saves or restore them from a save ZIP. Saves are matched by game name.</p>
-            <div class="ops-row">
-              <button id="exportSaveData" type="button">Export Saves</button>
-              <button id="importSaveData" type="button">Import Saves</button>
+            <div class="ops-tool-row">
+              <span class="ops-tool-icon">↗</span>
+              <span class="ops-tool-copy"><strong>Selected game</strong><small>Choose stored files or revert automatic changes</small></span>
+              <button id="exportSelectedGame" type="button">Export game</button>
             </div>
-          </div>
-        </section>
-        <section class="ops-group ops-group-fixed">
-          <div class="ops-group-head">
-            <span class="ops-group-title">Import from Host</span>
-            <span class="ops-group-hint">Import games from a host</span>
-          </div>
-          <div class="ops-group-body compact">
-            <p>1) Enter a network host URL, then load and import shared files.</p>
-            <div class="ops-row network-connect-row">
+            <div class="ops-tool-row">
+              <span class="ops-tool-icon">≡</span>
+              <span class="ops-tool-copy"><strong>Error logs</strong><small>Download logs for troubleshooting</small></span>
+              <button id="exportErrorLogs" type="button">Download</button>
+            </div>
+          </section>
+          <section class="ops-tool-pane" id="opsPaneSaves" role="tabpanel" aria-labelledby="opsTabSaves" hidden>
+            <h4>Save data</h4>
+            <p>Back up Unity game saves and browser storage. Saves are matched to games by name.</p>
+            <div class="ops-tool-row">
+              <span class="ops-tool-icon">◈</span>
+              <span class="ops-tool-copy"><strong>Save archive</strong><small>Export or restore Unity saves and preferences</small></span>
+              <span class="ops-tool-actions"><button id="exportSaveData" type="button">Export saves</button><button id="importSaveData" type="button">Import saves</button></span>
+            </div>
+          </section>
+          <section class="ops-tool-pane" id="opsPaneNetwork" role="tabpanel" aria-labelledby="opsTabNetwork" hidden>
+            <h4>Network transfer</h4>
+            <p>Load shared games from a host on your network.</p>
+            <div class="ops-network-connect">
               <input id="networkHostUrl" type="text" spellcheck="false" autocomplete="off" placeholder="http://192.168.1.10:8941">
-              <button id="networkLoadManifest" type="button">Load Shared</button>
+              <button id="networkLoadManifest" type="button">Load shared</button>
             </div>
             <p id="networkTransferStatus" class="network-transfer-status">Enter a host URL, then click Load Shared.</p>
             <div id="networkTransferList" class="network-transfer-list" hidden></div>
-            <div class="ops-row one">
-              <button id="networkImportSelected" type="button" disabled>Import Checked</button>
-            </div>
+            <div class="ops-network-import"><button id="networkImportSelected" type="button" disabled>Import checked</button></div>
             <details class="network-upload-details">
               <summary>Host-only upload tools</summary>
               <div class="network-upload-body">
                 <p>Paste a one-time code from the host terminal to upload all saved games.</p>
-                <div class="ops-row one">
-                  <input id="networkUploadCode" type="text" spellcheck="false" autocomplete="off" placeholder="One-time code">
-                </div>
-                <div class="ops-row one">
-                  <button id="networkUploadToHost" type="button">Upload All Games</button>
-                </div>
+                <div class="ops-row one"><input id="networkUploadCode" type="text" spellcheck="false" autocomplete="off" placeholder="One-time code"></div>
+                <div class="ops-row one"><button id="networkUploadToHost" type="button">Upload all games</button></div>
               </div>
             </details>
-          </div>
-        </section>
-      </div>
-    </div>
-    <div class="ops-progress">
-      <h4>Progress</h4>
-      <div id="workProgress" class="work-progress" aria-live="polite">
-        <div id="workProgressCircle" class="work-progress-circle">
-          <div id="workProgressValue" class="work-progress-value">0%</div>
+          </section>
         </div>
-        <div id="workProgressLabel" class="work-progress-label">Idle...</div>
       </div>
-      <div id="workProgressTree" class="work-progress-tree" hidden></div>
     </div>
-
+  </div>
+</div>
+<div id="workProgressPanel" class="work-progress-panel" aria-hidden="true" hidden>
+  <div class="work-progress-card">
+    <div id="workProgress" class="work-progress" role="status" aria-live="polite">
+      <div id="workProgressCircle" class="work-progress-circle">
+        <div id="workProgressValue" class="work-progress-value">0%</div>
+      </div>
+      <div id="workProgressLabel" class="work-progress-label">Idle...</div>
+    </div>
+    <div id="workProgressTree" class="work-progress-tree" hidden></div>
   </div>
 </div>
 <select id="gameSelect" class="sr-only" aria-hidden="true" tabindex="-1"></select>
@@ -343,6 +337,22 @@
     <div class="actions">
       <button id="saveImportCancel" type="button">Cancel</button>
       <button id="saveImportConfirm" type="button" data-variant="replace">Import Selected</button>
+    </div>
+  </div>
+</div>
+<div id="mirrorCatalogModal" class="confirm-modal" aria-hidden="true">
+  <div class="confirm-dialog mirror-catalog-dialog" role="dialog" aria-modal="true" aria-labelledby="mirrorCatalogTitle" aria-describedby="mirrorCatalogSummary">
+    <h3 id="mirrorCatalogTitle">Games on Mirror</h3>
+    <p id="mirrorCatalogSummary" class="bundle-preview-summary"></p>
+    <div class="bundle-preview-toolbar">
+      <button id="mirrorCatalogSelectAll" type="button">Select All</button>
+      <button id="mirrorCatalogSelectNone" type="button">Select None</button>
+    </div>
+    <div id="mirrorCatalogList" class="bundle-preview-list mirror-catalog-list"></div>
+    <p id="mirrorCatalogPlan" class="bundle-preview-plan"></p>
+    <div class="actions">
+      <button id="mirrorCatalogCancel" type="button">Cancel</button>
+      <button id="mirrorCatalogImport" type="button" data-variant="replace">Import Selected</button>
     </div>
   </div>
 </div>
@@ -500,6 +510,7 @@
 <script src="./src/network/transfer.js"></script>
 <script src="./src/network/host.js"></script>
 <script src="./src/network/github.js"></script>
+<script src="./src/import/mirror.js"></script>
 <script src="./src/import/zip-format.js"></script>
 <script src="./src/import/archive-formats.js"></script>
 <script src="./src/launch/extractor-transformations.js"></script>

@@ -161,7 +161,8 @@ async function parseTarArchive(input, onEntryPath) {
   return entries;
 }
 
-async function readDecompressedStream(stream, label) {
+async function readDecompressedStream(stream, label, reportProgress) {
+  const shouldReportProgress = reportProgress !== false;
   // Decompression runs in a worker; transferred chunks are owned by this thread.
   // Keep large archive assembly and TAR header scans yielding as well.
   const reader = stream.getReader();
@@ -183,7 +184,7 @@ async function readDecompressedStream(stream, label) {
       bytesSinceYield += part.value.byteLength;
       if (bytesSinceYield >= 2 * 1024 * 1024) {
         bytesSinceYield = 0;
-        setWorkProgress(label + " (" + formatBytes(total) + ")", 0, 0);
+        if (shouldReportProgress) setWorkProgress(label + " (" + formatBytes(total) + ")", 0, 0);
         await yieldToBrowser();
       }
     }
@@ -334,35 +335,36 @@ function createGzipWorkerStream(input) {
   return createWorkerReadableStream(input, createGzipWorkerSource(), "GZip");
 }
 
-async function inflateXZ(input) {
+async function inflateXZ(input, reportProgress) {
   if (!window.xzwasm || !window.xzwasm.XzReadableStream ||
       typeof window.xzwasm.XzReadableStream.createWorkerSource !== "function") {
     throw new Error("Offline XZ decompression worker is unavailable.");
   }
-  setWorkProgress("Inflating XZ archive", 0, 0);
-  return readDecompressedStream(createXZWorkerStream(input), "Inflating XZ archive");
+  if (reportProgress !== false) setWorkProgress("Inflating XZ archive", 0, 0);
+  return readDecompressedStream(createXZWorkerStream(input), "Inflating XZ archive", reportProgress);
 }
 
-async function inflateGzip(input) {
+async function inflateGzip(input, reportProgress) {
   if (typeof Worker !== "function" || typeof DecompressionStream !== "function") {
     throw new Error("This browser does not support offline GZip decompression in a worker.");
   }
-  setWorkProgress("Inflating GZip archive", 0, 0);
-  return readDecompressedStream(createGzipWorkerStream(input), "Inflating GZip archive");
+  if (reportProgress !== false) setWorkProgress("Inflating GZip archive", 0, 0);
+  return readDecompressedStream(createGzipWorkerStream(input), "Inflating GZip archive", reportProgress);
 }
 
 async function readGameArchiveEntries(file, options) {
   const opts = options && typeof options === "object" ? options : {};
   const name = String(file && file.name || "").toLowerCase();
-  let bytes = new Uint8Array(await readFileArrayBufferWithProgress(file, "Reading archive"));
+  const reportProgress = !(opts.reportProgress === false);
+  let bytes = new Uint8Array(await readFileArrayBufferWithProgress(file, "Reading archive", { reportProgress }));
   const hasXzSignature = bytes.length >= 6 &&
     bytes[0] === 0xfd && bytes[1] === 0x37 && bytes[2] === 0x7a &&
     bytes[3] === 0x58 && bytes[4] === 0x5a && bytes[5] === 0x00;
   const hasGzipSignature = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
   if (/\.(?:tar\.xz|txz|xz)$/.test(name) || hasXzSignature) {
-    bytes = await inflateXZ(bytes);
+    bytes = await inflateXZ(bytes, reportProgress);
   } else if (/\.(?:tar\.gz|tgz)$/.test(name) || hasGzipSignature) {
-    bytes = await inflateGzip(bytes);
+    bytes = await inflateGzip(bytes, reportProgress);
   }
   const entries = await parseTarArchive(bytes, opts.onEntryPath);
   bytes = null;

@@ -188,13 +188,15 @@ function inflateBZ2InWorker(data) {
   return task;
 }
 
-async function inflateBZ2(data) {
+async function inflateBZ2(data, options) {
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
   if (bytes.length < 3 || bytes[0] !== 0x42 || bytes[1] !== 0x5a || bytes[2] !== 0x68) {
     return bytes;
   }
 
-  setWorkProgress("Inflating BZ2 Data", 0, 0);
+  if (!(options && options.reportProgress === false)) {
+    setWorkProgress("Inflating BZ2 Data", 0, 0);
+  }
   return inflateBZ2InWorker(bytes);
 }
 

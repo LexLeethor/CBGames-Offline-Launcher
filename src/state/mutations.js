@@ -45,6 +45,11 @@ function setActionButtonsDisabled(disabled) {
     exportAllGamesButton.disabled = value;
     importBundleButton.disabled = value;
     importGithubButton.disabled = value;
+    if (loadMirrorCatalogButton) loadMirrorCatalogButton.disabled = value;
+    if (mirrorCatalogImportButton) mirrorCatalogImportButton.disabled = value || !state.mirrorCatalogDraft || !state.mirrorCatalogDraft.games.some((game) => game.selected);
+    if (mirrorCatalogList) {
+      for (const control of mirrorCatalogList.querySelectorAll("input, select")) control.disabled = value;
+    }
     checkGithubUpdateButton.disabled = value;
     exportErrorLogsButton.disabled = value;
     closeOpsModalButton.disabled = value;
@@ -79,6 +84,7 @@ async function loadLibrary(preferredGameId) {
     const games = storedGames.map((game) => ({
       ...game,
       githubSource: normalizeGithubSource(game.githubSource),
+      mirrorSource: game.mirrorSource && typeof game.mirrorSource === "object" ? game.mirrorSource : null,
       unityDetected: Boolean(game.unityDetected),
       flashDetected: typeof game.flashDetected === "boolean" ? game.flashDetected : false,
       blobFreeAfterLoad: typeof game.blobFreeAfterLoad === "boolean"

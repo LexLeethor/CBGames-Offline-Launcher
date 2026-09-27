@@ -31,6 +31,7 @@ async function pickZipFile() {
         }
         console.error(error);
         log("Import failed: " + (error.message || String(error)), "error");
+        openWrongZipTypeModal(error.message || String(error), "Import Failed");
       }
       return;
     }
@@ -43,6 +44,7 @@ async function pickReplaceZipForGameId(gameId) {
     const selected = gameId ? state.gamesById.get(gameId) : null;
     if (!selected) {
       log("Choose a valid game to replace.", "error");
+      openWrongZipTypeModal("Choose a valid game to replace.", "Import Failed");
       return;
     }
 
@@ -86,6 +88,7 @@ async function pickReplaceZipForGameId(gameId) {
         }
         console.error(error);
         log("Replace import failed: " + (error.message || String(error)), "error");
+        openWrongZipTypeModal(error.message || String(error), "Import Failed");
       }
       return;
     }
@@ -110,7 +113,9 @@ async function importTarGameFile(file, options) {
       : findExistingGameMatchForImport(file.name);
     let importMode = opts.importMode === "replace" && existingGame ? "replace" : "separate";
     if (opts.importMode === "replace" && !existingGame) {
-      log("Choose a valid game to replace.", "error");
+      const message = "Choose a valid game to replace.";
+      log(message, "error");
+      openWrongZipTypeModal(message, "Import Failed");
       return;
     }
     if (!opts.importMode && existingGame) {
@@ -151,7 +156,9 @@ async function importTarGameFile(file, options) {
       });
     } catch (error) {
       console.error(error);
-      log("Import failed: " + (error.message || String(error)), "error");
+      const message = "Import failed: " + (error.message || String(error));
+      log(message, "error");
+      openWrongZipTypeModal(error.message || String(error), "Import Failed");
     } finally {
       setActionButtonsDisabled(false);
       clearWorkProgress();
@@ -170,7 +177,9 @@ async function importZipFile(file, options) {
       return;
     }
     if (!isGameArchiveInput(file)) {
-      log("Choose a ZIP, TAR, TAR.XZ, or TAR.GZ game archive.", "error");
+      const message = "Choose a ZIP, TAR, TAR.XZ, or TAR.GZ game archive.";
+      log(message, "error");
+      openWrongZipTypeModal(message, "Import Failed");
       return;
     }
     if (!/\.zip$/i.test(file.name)) {
@@ -436,7 +445,7 @@ async function importZipFile(file, options) {
         log("Replaced game \"" + (existingGame.name || gameRecord.name) + "\" (" + formatBytes(totalBytes) + ")");
       } else {
         log("Saved game \"" + gameRecord.name + "\" (" + formatBytes(totalBytes) + ")");
-        openGameEditModal(gameId);
+        if (opts.suppressEdit !== true) openGameEditModal(gameId);
       }
     } catch (error) {
       console.error(error);
@@ -457,6 +466,7 @@ async function importZipFile(file, options) {
         openWrongZipTypeModal(msg, "Wrong ZIP Type");
       } else {
         log("Import failed: " + msg, "error");
+        openWrongZipTypeModal(msg, "Import Failed");
         try {
           if (importMode !== "replace") {
             await deleteFilesByGameId(gameId);
@@ -510,7 +520,9 @@ async function handleDroppedZipFiles(fileList) {
     const files = Array.from(fileList || []);
     const archiveFiles = files.filter((file) => isGameArchiveInput(file));
     if (!archiveFiles.length) {
-      log("Drop one or more game archives (.zip, .tar, .tar.xz, .tar.gz, or .tgz).", "error");
+      const message = "Drop one or more game archives (.zip, .tar, .tar.xz, .tar.gz, or .tgz).";
+      log(message, "error");
+      openWrongZipTypeModal(message, "Import Failed");
       return;
     }
 
@@ -521,7 +533,9 @@ async function handleDroppedZipFiles(fileList) {
         setDragDropOverlay(false);
 
         if (kind === "invalid-zip") {
-          log("Could not read ZIP: " + file.name, "error");
+          const message = "Could not read ZIP: " + file.name;
+          log(message, "error");
+          openWrongZipTypeModal(message, "Import Failed");
           continue;
         }
 
@@ -534,7 +548,9 @@ async function handleDroppedZipFiles(fileList) {
         }
       } catch (error) {
         console.error(error);
-        log("Drop import failed for " + file.name + ": " + (error.message || String(error)), "error");
+        const message = "Could not import " + file.name + ": " + (error.message || String(error));
+        log(message, "error");
+        openWrongZipTypeModal(message, "Import Failed");
       } finally {
         setDragDropOverlay(false);
       }
@@ -549,6 +565,7 @@ async function importEntriesDirectly(entries, options) {
     const replaceGameId = typeof opts.replaceGameId === "string" ? opts.replaceGameId : "";
     const existingGameId = typeof opts.existingGameId === "string" ? opts.existingGameId : "";
     const incomingGithubSource = normalizeGithubSource(opts.githubSource);
+    const incomingMirrorSource = opts.mirrorSource && typeof opts.mirrorSource === "object" ? opts.mirrorSource : null;
     const gameName = typeof opts.gameName === "string" ? opts.gameName : "Imported Game";
     const archiveName = typeof opts.archiveName === "string" ? opts.archiveName : (gameName + ".zip");
     const manageUi = opts.manageUi !== false;
@@ -589,6 +606,9 @@ async function importEntriesDirectly(entries, options) {
       : Number.MAX_SAFE_INTEGER;
     const resolvedGithubSource = incomingGithubSource || (
       importMode === "replace" && existingGame ? normalizeGithubSource(existingGame.githubSource) : null
+    );
+    const resolvedMirrorSource = incomingMirrorSource || (
+      importMode === "replace" && existingGame ? existingGame.mirrorSource || null : null
     );
 
     try {
@@ -733,6 +753,7 @@ async function importEntriesDirectly(entries, options) {
         entryPath: chooseBestEntryPath(htmlEntries, ""),
         thumbnailDataUrl: preservedThumbnail || launcherMetadata.thumbnailDataUrl || autoThumbnailDataUrl,
         githubSource: resolvedGithubSource,
+        mirrorSource: resolvedMirrorSource,
         unityDetected: detectUnityByPaths(processedEntries.map((entry) => entry.path)),
         flashDetected: detectFlashByPaths(processedEntries.map((entry) => entry.path))
       };
@@ -798,7 +819,7 @@ async function importEntriesDirectly(entries, options) {
         log("Replaced game \"" + (existingGame.name || gameRecord.name) + "\" (" + formatBytes(totalBytes) + ")");
       } else {
         log("Saved game \"" + gameRecord.name + "\" (" + formatBytes(totalBytes) + ")");
-        openGameEditModal(gameId);
+        if (opts.suppressEdit !== true) openGameEditModal(gameId);
       }
     } finally {
       if (manageUi) {
