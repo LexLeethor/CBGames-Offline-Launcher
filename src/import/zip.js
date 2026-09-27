@@ -882,19 +882,130 @@ function resolveLauncherMetadataImagePath(value) {
     return "";
   }
 
+const LAUNCHER_METADATA_FILE_NAMES = new Set([
+    "launcher.json",
+    "cbgames.json",
+    "game.json",
+    "metadata.json",
+    ".launcher.json",
+    ".cbgames-metadata.json"
+  ]);
+
+function isLauncherMetadataPath(path) {
+    const fileName = normalizePath(path).split("/").pop() || "";
+    const lower = fileName.toLowerCase();
+    return LAUNCHER_METADATA_FILE_NAMES.has(lower) || lower.endsWith("-launcher.json") || lower.endsWith("-cbgames.json") || lower.endsWith("-game.json");
+  }
+
+async function recoverGameThumbnailFromStoredFiles(game) {
+    if (!game || (typeof game.thumbnailDataUrl === "string" && game.thumbnailDataUrl)) {
+      return "";
+    }
+
+    let files;
+    try {
+      files = await getAllFilesForGame(game.id);
+    } catch (error) {
+      console.warn("Could not inspect saved files while restoring the thumbnail for " + game.name + ".", error);
+      return "";
+    }
+    if (!files.length) {
+      return "";
+    }
+
+    const readBytes = async (record) => {
+      if (!record || !record.blob || typeof record.blob.arrayBuffer !== "function") {
+        return new Uint8Array(0);
+      }
+      return new Uint8Array(await record.blob.arrayBuffer());
+    };
+    const metadataRecords = files.filter((record) => isLauncherMetadataPath(record.path || ""));
+    const parsedMetadata = [];
+    for (const record of metadataRecords) {
+      try {
+        const json = JSON.parse(decodeUtf8(await readBytes(record)));
+        if (json && json.launcher && typeof json.launcher === "object") {
+          parsedMetadata.push({ record, json });
+        }
+      } catch {
+        // A damaged metadata file should not prevent trying other recovery candidates.
+      }
+    }
+    parsedMetadata.sort((left, right) =>
+      Number(right.json._cbgames === GAME_EDITOR_METADATA_MARKER) -
+      Number(left.json._cbgames === GAME_EDITOR_METADATA_MARKER)
+    );
+    const managedMetadataFound = parsedMetadata.some(
+      ({ json }) => json._cbgames === GAME_EDITOR_METADATA_MARKER
+    );
+    for (const { record: metadataRecord, json } of parsedMetadata) {
+      const coverValue = json.launcher.cover;
+      const coverPath = typeof coverValue === "string"
+        ? coverValue
+        : resolveLauncherMetadataImagePath(coverValue);
+      if (!coverPath) {
+        continue;
+      }
+      const targetPath = normalizePath(coverPath);
+      if (!targetPath || targetPath.startsWith("/") || targetPath.split("/").includes("..")) {
+        continue;
+      }
+      const resolvedPath = targetPath;
+      const mime = mimeFromPath(resolvedPath);
+      const record = files.find((file) => normalizePath(file.path || "") === resolvedPath);
+      if (record && mime.startsWith("image/")) {
+        try {
+          const bytes = await readBytes(record);
+          if (bytes.length) {
+            return "data:" + mime + ";base64," + bytesToBase64(bytes);
+          }
+        } catch {
+          // Fall through to the usual filename-based candidates.
+        }
+      }
+    }
+
+    if (managedMetadataFound) {
+      return "";
+    }
+
+    const imageCandidates = files
+      .filter((record) => {
+        const path = normalizePath(record.path || "");
+        return path !== "launcher.json" &&
+          !path.split("/").some((segment) => segment.startsWith("__cbgames-launcher"));
+      })
+      .map((record) => ({
+        record,
+        path: normalizePath(record.path || ""),
+        score: getAutoThumbnailCandidateScore(record.path || "")
+      }))
+      .filter((candidate) =>
+        mimeFromPath(candidate.path).startsWith("image/") &&
+        candidate.score !== Number.MAX_SAFE_INTEGER
+      )
+      .sort((left, right) =>
+        left.score - right.score || left.path.length - right.path.length
+      );
+
+    for (const candidate of imageCandidates) {
+      try {
+        const bytes = await readBytes(candidate.record);
+        const thumbnailDataUrl = findAutoThumbnailDataUrl([{ path: candidate.path, bytes }]);
+        if (thumbnailDataUrl) {
+          return thumbnailDataUrl;
+        }
+      } catch {
+        // Skip unreadable candidates and try the next best match.
+      }
+    }
+    return "";
+  }
+
 function detectLauncherMetadata(entries) {
     if (!Array.isArray(entries) || !entries.length) {
       return { name: "", thumbnailDataUrl: "" };
     }
-
-    const metadataCandidates = new Set([
-      "launcher.json",
-      "cbgames.json",
-      "game.json",
-      "metadata.json",
-      ".launcher.json",
-      ".cbgames-metadata.json"
-    ]);
 
     const entryMap = new Map();
     for (const entry of entries) {
@@ -916,9 +1027,7 @@ function detectLauncherMetadata(entries) {
       if (!path) {
         continue;
       }
-      const fileName = path.split("/").pop() || "";
-      const lower = fileName.toLowerCase();
-      if (metadataCandidates.has(lower) || lower.endsWith("-launcher.json") || lower.endsWith("-cbgames.json") || lower.endsWith("-game.json")) {
+      if (isLauncherMetadataPath(path)) {
         metadataEntry = entry;
         metadataPath = path;
         break;
@@ -971,6 +1080,7 @@ function detectLauncherMetadata(entries) {
       return {
         name: String(name || "").trim(),
         thumbnailDataUrl,
+        thumbnailPath: imagePathValue,
         path: metadataPath
       };
     } catch {

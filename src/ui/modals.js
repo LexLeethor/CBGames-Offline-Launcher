@@ -248,11 +248,183 @@ function closeGameEditModal(options = {}) {
     }
   }
 
+function resolveEditedMetadataCoverPath(metadataPath, coverPath) {
+    const rawCoverPath = String(coverPath || "").trim();
+    if (!rawCoverPath || rawCoverPath.startsWith("/") || rawCoverPath.includes("\\") || rawCoverPath.includes(":")) {
+      return "";
+    }
+    const normalized = normalizePath(rawCoverPath);
+    if (!normalized || normalized.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+      return "";
+    }
+    return normalized;
+  }
+
+async function readManagedGameMetadataRecord(record) {
+    if (!record || !record.blob || typeof record.blob.text !== "function") {
+      return null;
+    }
+    try {
+      const data = JSON.parse(await record.blob.text());
+      if (!data || data._cbgames !== GAME_EDITOR_METADATA_MARKER || !data.launcher || typeof data.launcher !== "object") {
+        return null;
+      }
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+async function getEditedGameMetadataLocation(gameId) {
+    const files = await getAllFilesForGame(gameId);
+    const managedRecords = [];
+    const occupiedPaths = new Set();
+    for (const record of files) {
+      const path = normalizePath(record.path || "");
+      occupiedPaths.add(path);
+      if (!/launcher\.json$/i.test(path)) {
+        continue;
+      }
+      const metadata = await readManagedGameMetadataRecord(record);
+      if (metadata) {
+        managedRecords.push({ record, metadata });
+      }
+    }
+
+    if (managedRecords.length) {
+      const managed = managedRecords[0];
+      const metadataPath = normalizePath(managed.record.path);
+      const previousCoverPath = resolveEditedMetadataCoverPath(metadataPath, managed.metadata.launcher.cover);
+      return { metadataPath, previousCoverPath, occupiedPaths };
+    }
+
+    if (!occupiedPaths.has("launcher.json")) {
+      return { metadataPath: "launcher.json", previousCoverPath: "", occupiedPaths };
+    }
+
+    let suffix = 1;
+    while (suffix < 1000) {
+      const directory = suffix === 1 ? "__cbgames-launcher" : "__cbgames-launcher-" + suffix;
+      const metadataPath = directory + "/launcher.json";
+      if (!occupiedPaths.has(metadataPath)) {
+        return { metadataPath, previousCoverPath: "", occupiedPaths };
+      }
+      suffix += 1;
+    }
+    throw new Error("Could not find a safe path for launcher recovery metadata.");
+  }
+
+async function createPngThumbnailRecord(gameId, thumbnailDataUrl, path) {
+    if (!thumbnailDataUrl) {
+      return null;
+    }
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error("Could not read the current game thumbnail."));
+      image.src = thumbnailDataUrl;
+    });
+    const sourceWidth = Number(image.naturalWidth) || Number(image.width);
+    const sourceHeight = Number(image.naturalHeight) || Number(image.height);
+    if (!sourceWidth || !sourceHeight) {
+      throw new Error("The current game thumbnail has no image dimensions.");
+    }
+    const scale = Math.min(1, 1024 / Math.max(sourceWidth, sourceHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Could not prepare the thumbnail for storage.");
+    }
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const parsed = parseDataUrlToBytes(canvas.toDataURL("image/png"));
+    if (!parsed || parsed.mime !== "image/png" || !parsed.bytes.length) {
+      throw new Error("Could not encode the game thumbnail as PNG.");
+    }
+    const blob = new Blob([parsed.bytes], { type: "image/png" });
+    return {
+      gameId,
+      path,
+      size: blob.size,
+      type: blob.type,
+      blob,
+      transformations: []
+    };
+  }
+
+async function persistEditedGameRecoveryFiles(game) {
+    const location = await getEditedGameMetadataLocation(game.id);
+    const metadataDirectory = normalizePath(location.metadataPath).split("/").slice(0, -1).join("/");
+    const previousCoverName = location.previousCoverPath.split("/").pop() || "";
+    const safePreviousCoverPath = location.previousCoverPath &&
+      /^thumbnail(?:-[0-9]+)?\.png$/i.test(previousCoverName) &&
+      location.previousCoverPath.startsWith(metadataDirectory ? metadataDirectory + "/" : "")
+      ? location.previousCoverPath
+      : "";
+    const coverFileName = game.thumbnailDataUrl
+      ? (() => {
+          let suffix = 1;
+          while (suffix < 1000) {
+            const name = suffix === 1 ? "thumbnail.png" : "thumbnail-" + suffix + ".png";
+            const path = normalizePath(metadataDirectory ? metadataDirectory + "/" + name : name);
+            if (!location.occupiedPaths.has(path) || path === safePreviousCoverPath) {
+              return name;
+            }
+            suffix += 1;
+          }
+          throw new Error("Could not find a safe filename for the game thumbnail.");
+        })()
+      : "";
+    const coverPath = coverFileName
+      ? normalizePath(metadataDirectory ? metadataDirectory + "/" + coverFileName : coverFileName)
+      : "";
+    const coverRecord = coverPath
+      ? await createPngThumbnailRecord(game.id, game.thumbnailDataUrl, coverPath)
+      : null;
+
+    if (coverRecord) {
+      await putFileRecord(coverRecord);
+    }
+
+    const metadata = {
+      _cbgames: GAME_EDITOR_METADATA_MARKER,
+      launcher: {
+        name: String(game.name || "")
+      }
+    };
+    if (coverFileName) {
+      metadata.launcher.cover = coverPath;
+    }
+    const metadataBlob = new Blob([JSON.stringify(metadata, null, 2)], { type: "application/json" });
+    await putFileRecord({
+      gameId: game.id,
+      path: location.metadataPath,
+      size: metadataBlob.size,
+      type: metadataBlob.type,
+      blob: metadataBlob,
+      transformations: []
+    });
+
+    if (safePreviousCoverPath && safePreviousCoverPath !== coverPath) {
+      await deleteFileRecord(game.id, safePreviousCoverPath);
+    }
+
+    const files = await getAllFilesForGame(game.id);
+    game.fileCount = files.length;
+    game.totalBytes = files.reduce((total, file) => total + (Number(file.size) || 0), 0);
+    await putGame(game);
+  }
+
 async function saveGameEditChanges() {
-    if (!(await saveGameEditName({ silent: true }))) {
+    const gameId = state.gameEditEditor.gameId;
+    const gameBeforeSave = gameId ? state.gamesById.get(gameId) : null;
+    const previousName = gameBeforeSave ? String(gameBeforeSave.name || "") : "";
+    const nameChanged = Boolean(gameBeforeSave) &&
+      String(gameEditNameInput.value || "").trim() !== previousName;
+    if (!(await saveGameEditName({ silent: true, skipRecoveryFiles: true }))) {
       return;
     }
-    const gameId = state.gameEditEditor.gameId;
     const game = gameId ? state.gamesById.get(gameId) : null;
     if (!game) {
       log("Select a game before saving changes.", "error");
@@ -260,6 +432,8 @@ async function saveGameEditChanges() {
     }
 
     const cropper = state.gameEditEditor.cropper;
+    const previousThumbnailDataUrl = game.thumbnailDataUrl;
+    let updatedThumbnail = false;
     if (cropper) {
       const cropped = cropper.getCroppedCanvas({
         width: 1024,
@@ -274,8 +448,24 @@ async function saveGameEditChanges() {
       game.thumbnailDataUrl = cropped.toDataURL("image/jpeg", 0.9);
       state.gamesById.set(game.id, game);
       await putGame(game);
+      updatedThumbnail = true;
     }
 
+    if (updatedThumbnail || nameChanged) {
+      try {
+        await persistEditedGameRecoveryFiles(game);
+      } catch (error) {
+        console.error(error);
+        game.name = previousName;
+        game.thumbnailDataUrl = previousThumbnailDataUrl;
+        state.gamesById.set(game.id, game);
+        await putGame(game).catch(() => {});
+        renderGameOptions(game.id);
+        updateSelectedGameInfo(game);
+        log("Could not save the game's recovery metadata.", "error");
+        return;
+      }
+    }
     renderGameCards();
     closeGameEditModal({ skipTutorial: true });
     if (typeof onTutorialEditSaved === "function") {
@@ -285,7 +475,7 @@ async function saveGameEditChanges() {
   }
 
 async function removeGameEditImage() {
-    if (!(await saveGameEditName({ silent: true }))) {
+    if (!(await saveGameEditName({ silent: true, skipRecoveryFiles: true }))) {
       return;
     }
     const gameId = state.gameEditEditor.gameId;
@@ -293,9 +483,20 @@ async function removeGameEditImage() {
     if (!game) {
       return;
     }
+    const previousThumbnailDataUrl = game.thumbnailDataUrl;
     game.thumbnailDataUrl = "";
     state.gamesById.set(game.id, game);
     await putGame(game);
+    try {
+      await persistEditedGameRecoveryFiles(game);
+    } catch (error) {
+      console.error(error);
+      game.thumbnailDataUrl = previousThumbnailDataUrl;
+      state.gamesById.set(game.id, game);
+      await putGame(game).catch(() => {});
+      log("Could not save the game's recovery metadata.", "error");
+      return;
+    }
     renderGameCards();
     closeGameEditModal();
     log("Removed game image for " + game.name + ".");
@@ -355,11 +556,16 @@ async function saveGameEditName(options = {}) {
       return true;
     }
 
+    const previousName = String(game.name || "");
+    const previousThumbnailDataUrl = game.thumbnailDataUrl;
     game.name = nextName;
     state.gamesById.set(game.id, game);
 
     try {
       await putGame(game);
+      if (!options.skipRecoveryFiles) {
+        await persistEditedGameRecoveryFiles(game);
+      }
       renderGameOptions(game.id);
       updateSelectedGameInfo(game);
       if (!silent) {
@@ -368,6 +574,10 @@ async function saveGameEditName(options = {}) {
       return true;
     } catch (error) {
       console.error(error);
+      game.name = previousName;
+      game.thumbnailDataUrl = previousThumbnailDataUrl;
+      state.gamesById.set(game.id, game);
+      await putGame(game).catch(() => {});
       log("Could not save game name.", "error");
       return false;
     }

@@ -92,6 +92,33 @@ async function loadLibrary(preferredGameId) {
       }
     }
 
+    for (let i = 0; i < games.length; i += 1) {
+      const raw = storedGames[i];
+      const restored = state.metadataRestoredGameIds.has(raw.id);
+      if (!restored) {
+        continue;
+      }
+      const previousThumbnailDataUrl = raw.thumbnailDataUrl;
+      try {
+        const thumbnailDataUrl = await recoverGameThumbnailFromStoredFiles(raw);
+        if (!thumbnailDataUrl) {
+          continue;
+        }
+        raw.thumbnailDataUrl = thumbnailDataUrl;
+        games[i].thumbnailDataUrl = thumbnailDataUrl;
+        await putGame(raw);
+        log("Restored cover image for " + (raw.name || raw.id) + ".");
+      } catch (error) {
+        console.warn("Could not restore cover image for " + (raw.name || raw.id) + ".", error);
+      } finally {
+        if (typeof previousThumbnailDataUrl === "string" && previousThumbnailDataUrl) {
+          raw.thumbnailDataUrl = previousThumbnailDataUrl;
+          games[i].thumbnailDataUrl = previousThumbnailDataUrl;
+        }
+        state.metadataRestoredGameIds.delete(raw.id);
+      }
+    }
+
     // One-time backfill for older saves that predate flashDetected.
     for (let i = 0; i < games.length; i += 1) {
       const raw = storedGames[i];

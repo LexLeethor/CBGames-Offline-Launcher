@@ -9,6 +9,7 @@ const STORE_ERROR_LOGS = "errorLogs";
 const SETTING_SELECTED_GAME = "selectedGameId";
 const SETTING_AUTO_MIGRATE_EXTRACTOR = "autoMigrateExtractor";
 const SETTING_TUTORIAL_COMPLETED = "tutorialCompleted";
+const GAME_EDITOR_METADATA_MARKER = "cbgames-game-editor-v1";
 
 const VFS_ORIGIN = "https://loader.invalid/";
 const VFS_ORIGIN_URL = new URL(VFS_ORIGIN).origin;
@@ -24,6 +25,7 @@ const reorderAnimations = new WeakMap();
 
 const state = {
   db: null,
+  metadataRestoredGameIds: new Set(),
   gamesById: new Map(),
   selectedGameId: null,
   liveGameMode: false,
