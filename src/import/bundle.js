@@ -354,21 +354,27 @@ async function parseBundlePreviewData(file) {
       const fileList = Array.isArray(rawGame && rawGame.files) ? rawGame.files : [];
       let missingPayloadCount = 0;
       let computedBytes = 0;
+      let payloadBytes = 0;
       for (const fileInfo of fileList) {
         if (!fileInfo || typeof fileInfo !== "object") {
           continue;
         }
         const zipPath = normalizePath(fileInfo.zipPath || "");
-        if (!zipPath || !entryByPath.has(zipPath)) {
+        const zipEntry = zipPath ? entryByPath.get(zipPath) : null;
+        if (!zipEntry) {
           missingPayloadCount += 1;
+        } else {
+          payloadBytes = addGameImportBytes(payloadBytes, zipEntry.uncompressedSize);
         }
         const rawSize = Number(fileInfo.size);
         if (Number.isFinite(rawSize) && rawSize > 0) {
-          computedBytes += rawSize;
+          computedBytes = addGameImportBytes(computedBytes, rawSize);
         }
       }
       const fileCount = fileList.length;
-      const totalGameBytes = computedBytes || Number(normalizedGame.totalBytes) || 0;
+      const declaredBytes = Number(normalizedGame.totalBytes) || 0;
+      const totalGameBytes = Math.max(payloadBytes, computedBytes, declaredBytes);
+      const limitExceeded = isGameImportOversized(totalGameBytes);
       totalFiles += fileCount;
       totalBytes += totalGameBytes;
 
@@ -407,6 +413,7 @@ async function parseBundlePreviewData(file) {
         normalizedGame,
         fileCount,
         totalBytes: totalGameBytes,
+        limitExceeded,
         missingPayloadCount,
         conflictGame,
         canReplace: Boolean(conflictGame),
@@ -447,8 +454,7 @@ async function executeBundleImportPlanProgressive(previewData, planGames) {
 
     let importedGames = 0;
     let importedFiles = 0;
-    let firstGameId = "";
-    const filesStart = performance.now();
+    let firstGameId = "";      const filesStart = performance.now();
     setWorkProgress("Importing games", 0, totalFiles || 1);
 
     for (const item of selected) {
@@ -492,10 +498,11 @@ async function executeBundleImportPlanProgressive(previewData, planGames) {
         incoming.thumbnailDataUrl = replaceTarget.thumbnailDataUrl;
       }
 
+      const fileList = Array.isArray(rawGame && rawGame.files) ? rawGame.files : [];
+      let importedGameBytes = 0;
+
       await putGame(incoming);
       state.gamesById.set(incoming.id, incoming);
-
-      const fileList = Array.isArray(rawGame && rawGame.files) ? rawGame.files : [];
       for (const fileInfo of fileList) {
         if (!fileInfo || typeof fileInfo !== "object") {
           continue;
@@ -512,6 +519,7 @@ async function executeBundleImportPlanProgressive(previewData, planGames) {
         let fileBytes = await extractEntryBytes(previewData.parsedZip, zipEntry);
         const type = typeof fileInfo.type === "string" && fileInfo.type ? fileInfo.type : mimeFromPath(sourcePath);
         const blob = new Blob([fileBytes], { type });
+        importedGameBytes = addGameImportBytes(importedGameBytes, blob.size);
         await putFileRecord({
           gameId: incoming.id,
           path: sourcePath,
@@ -565,16 +573,31 @@ async function executeBundleImportPlanProgressive(previewData, planGames) {
 
 async function executeBundleImportPlan(previewData, planGames) {
 
-    const selected = planGames.filter((item) =>
+    const candidates = planGames.filter((item) =>
       item &&
       item.selected &&
       item.mode !== "skip" &&
       item.preview &&
       !item.preview.missingPayloadCount
     );
-    if (!selected.length) {
+    if (!candidates.length) {
       throw new Error("No games were selected to import.");
     }
+
+    const selected = [];
+    for (const item of candidates) {
+      if (item.preview.limitExceeded) {
+        const name = item.preview.normalizedGame.name || "Imported Game";
+        const proceed = await askLargeGameImportDecision(name, item.preview.totalBytes);
+        if (!proceed) continue;
+      }
+      selected.push(item);
+    }
+    if (!selected.length) {
+      log("Bundle import canceled; no games were imported.", "info");
+      return;
+    }
+
 
     const usedNameKeys = new Set(
       Array.from(state.gamesById.values())
@@ -633,13 +656,9 @@ async function executeBundleImportPlan(previewData, planGames) {
         incoming.thumbnailDataUrl = replaceTarget.thumbnailDataUrl;
       }
 
+      metadataOut.push({ preview, gameId: incoming.id, incoming });
       await putGame(incoming);
       state.gamesById.set(incoming.id, incoming);
-
-      metadataOut.push({
-        preview,
-        gameId: incoming.id
-      });
 
       metadataImported += 1;
       if (metadataImported % 5 === 0 || metadataImported === selected.length) {
@@ -659,6 +678,7 @@ async function executeBundleImportPlan(previewData, planGames) {
     for (const item of metadataOut) {
       const rawGame = item.preview.rawGame;
       const fileList = Array.isArray(rawGame && rawGame.files) ? rawGame.files : [];
+      let importedGameBytes = 0;
       for (const fileInfo of fileList) {
         if (!fileInfo || typeof fileInfo !== "object") {
           continue;
@@ -675,6 +695,7 @@ async function executeBundleImportPlan(previewData, planGames) {
         let fileBytes = await extractEntryBytes(previewData.parsedZip, zipEntry);
         const type = typeof fileInfo.type === "string" && fileInfo.type ? fileInfo.type : mimeFromPath(sourcePath);
         const blob = new Blob([fileBytes], { type });
+        importedGameBytes = addGameImportBytes(importedGameBytes, blob.size);
         await putFileRecord({
           gameId: item.gameId,
           path: sourcePath,

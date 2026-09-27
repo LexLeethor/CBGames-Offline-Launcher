@@ -107,6 +107,23 @@ function askExportDecision(game) {
     });
   }
 
+function askLargeGameImportDecision(gameName, totalBytes) {
+    return new Promise((resolve) => {
+      const name = String(gameName || "This game");
+      genericChoiceTitle.textContent = "Very Large Game Import";
+      genericChoiceMessage.textContent =
+        "\"" + name + "\" is over 4 GiB uncompressed (" + formatBytes(totalBytes) + "). " +
+        "At this size, the game is very likely to break or fail to import, and browser memory or storage limits may stop it. " +
+        "This is only a warning; you can still try importing it.";
+      genericChoiceOptionAButton.textContent = "Cancel Import";
+      genericChoiceOptionBButton.textContent = "Continue Anyway";
+      state.genericChoiceResolver = (choice) => resolve(choice === "optionB");
+      genericChoiceModal.classList.add("open");
+      genericChoiceModal.setAttribute("aria-hidden", "false");
+      genericChoiceOptionAButton.focus();
+    });
+  }
+
 function askSharedArrayBufferDecision() {
     return new Promise((resolve) => {
       genericChoiceTitle.textContent = "SharedArrayBuffer Detected";

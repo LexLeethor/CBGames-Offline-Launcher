@@ -911,7 +911,7 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     }
     event.preventDefault();
     state.dragDepth += 1;
-    setDragDropOverlay(true, "Drop ZIP files to import");
+    setDragDropOverlay(true, "Drop game archives to import");
   });
 
   window.addEventListener("dragover", (event) => {
@@ -922,7 +922,7 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = "copy";
     }
-    setDragDropOverlay(true, "Drop ZIP files to import");
+    setDragDropOverlay(true, "Drop game archives to import");
   });
 
   window.addEventListener("dragleave", (event) => {
@@ -1319,6 +1319,6 @@ function setDragDropOverlay(visible, label) {
     if (dragDropOverlayText && typeof label === "string" && label.trim()) {
       dragDropOverlayText.textContent = label;
     } else if (dragDropOverlayText) {
-      dragDropOverlayText.textContent = "Drop ZIP files to import";
+      dragDropOverlayText.textContent = "Drop game archives to import";
     }
   }

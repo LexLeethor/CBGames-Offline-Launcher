@@ -381,6 +381,13 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
 
       if (opts.streamDuringDownload) {
         // Persist binary assets immediately to cap peak memory; keep text buffered for rewriting.
+        const expectedGameBytes = (Array.isArray(snapshot && snapshot.fileEntries) ? snapshot.fileEntries : [])
+          .reduce((sum, entry) => addGameImportBytes(sum, Number(entry && entry.size) || 0), 0);
+        let oversizedImportConfirmed = isGameImportOversized(expectedGameBytes);
+        if (oversizedImportConfirmed) {
+          oversizedImportConfirmed = await askLargeGameImportDecision(gameName, expectedGameBytes);
+          if (!oversizedImportConfirmed) return;
+        }
         let gameId = makeId();
         let preservedName = gameName || (String(snapshot.repo || "github-repo") + " (" + String(snapshot.branch || "main") + ")");
         // If caller wants to replace an existing game, prefer that id and remove old files first
@@ -414,35 +421,58 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
         await putGame(gameRecord);
         state.gamesById.set(gameId, gameRecord);
         const pending = [];
+        let downloadedGameBytes = 0;
+        let largeImportCanceled = false;
         try {
-        const onFile = async (fileMeta, bytes, i) => {
+        const onFile = async (fileMeta, bytes) => {
+          if (largeImportCanceled) return;
+          downloadedGameBytes = addGameImportBytes(downloadedGameBytes, bytes.byteLength);
+          if (isGameImportOversized(downloadedGameBytes) && !oversizedImportConfirmed) {
+            oversizedImportConfirmed = await askLargeGameImportDecision(gameName, downloadedGameBytes);
+            if (!oversizedImportConfirmed) {
+              largeImportCanceled = true;
+              return;
+            }
+          }
           try {
             if (isStreamablePath(fileMeta.path)) {
               const blob = new Blob([bytes], { type: mimeFromPath(fileMeta.path) });
+              const nextTotalBytes = addGameImportBytes(gameRecord.totalBytes || 0, blob.size);
               await putFileRecord({ gameId, path: fileMeta.path, size: blob.size, type: blob.type, blob, transformations: [] });
               gameRecord.fileCount = (gameRecord.fileCount || 0) + 1;
-              gameRecord.totalBytes = (gameRecord.totalBytes || 0) + blob.size;
+              gameRecord.totalBytes = nextTotalBytes;
               await putGame(gameRecord);
             } else {
               pending.push({ path: fileMeta.path, bytes });
             }
-          } catch (e) {
-            console.error('stream onFile failed for', fileMeta.path, e);
-            // fallback: treat as pending
+          } catch (error) {
+            console.error("Stream import failed for " + fileMeta.path, error);
             pending.push({ path: fileMeta.path, bytes });
           }
         };
 
           await downloadGithubTreeEntries(snapshot, "Downloading " + (gameName || "repo"), { onFile, prioritizeSmallest: true, skipPatterns: opts.skipPatterns || [] });
+          if (largeImportCanceled) {
+            await cleanupInterruptedGithubImport(gameRecord);
+            return;
+          }
 
           if (pending.length) {
-            await importEntriesDirectly(pending, {
-              existingGameId: gameId,
-              gameName: preservedName,
-              githubSource: githubSource,
-              importMode: opts.importMode || "separate",
-              manageUi: true
-            });
+            try {
+              await importEntriesDirectly(pending, {
+                existingGameId: gameId,
+                gameName: preservedName,
+                githubSource: githubSource,
+                importMode: "separate",
+                baseGameBytes: gameRecord.totalBytes || 0,
+                baseGameFileCount: gameRecord.fileCount || 0,
+                skipLargeWarning: oversizedImportConfirmed,
+                skipExistingFilePaths: (await getAllFilesForGame(gameId)).map((record) => normalizePath(record.path || "")),
+                manageUi: true
+              });
+            } catch (error) {
+              throw error;
+            }
           }
           // finalize: recompute stored-file stats and mark complete
           try {
@@ -462,6 +492,10 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
             const metadata = detectLauncherMetadata(metadataEntries);
             gameRecord.fileCount = Array.isArray(stored) ? stored.length : gameRecord.fileCount;
             gameRecord.totalBytes = Array.isArray(stored) ? stored.reduce((s, f) => s + (Number(f.size) || 0), 0) : gameRecord.totalBytes;
+            if (gameRecord.totalBytes > 0) {
+              await putGame(gameRecord);
+              state.gamesById.set(gameId, gameRecord);
+            }
             // compute html entries and best entryPath
             const paths = Array.isArray(stored) ? stored.map((f) => normalizePath(f.path || "")) : [];
             const htmlEntries = paths.filter((p) => /\.html?$/i.test(p)).sort((a, b) => a.localeCompare(b));

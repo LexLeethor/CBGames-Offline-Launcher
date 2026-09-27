@@ -149,9 +149,11 @@ function renderBundlePreviewModal() {
       const conflictText = game.conflictName
         ? ("Conflicts with \"" + game.conflictName + "\".")
         : "No conflicts detected.";
-      const statusText = game.isInvalid
-        ? ("Missing payload files: " + game.missingPayloadCount + ".")
-        : conflictText;
+      const statusText = game.isOversized
+        ? "Over 4 GiB; very likely to fail or break."
+        : (game.missingPayloadCount
+            ? ("Missing payload files: " + game.missingPayloadCount + ".")
+            : conflictText);
       const thumbClass = game.thumbnailDataUrl ? "bundle-preview-thumb" : "bundle-preview-thumb no-thumb";
       const thumbStyle = game.thumbnailDataUrl
         ? " style=\"background-image:url('" + escapeHtml(game.thumbnailDataUrl) + "');\""
@@ -224,6 +226,7 @@ function openBundlePreviewModal(preview) {
           canReplace: Boolean(game.conflictGame),
           hasConflict: Boolean(game.conflictGame),
           isInvalid: Boolean(game.missingPayloadCount),
+          isOversized: Boolean(game.limitExceeded),
           missingPayloadCount: game.missingPayloadCount,
           mode: game.defaultMode,
           selected: !game.missingPayloadCount && game.defaultMode !== "skip"

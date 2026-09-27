@@ -38,9 +38,24 @@ function makeId() {
     return "game-" + Date.now() + "-" + Math.random().toString(16).slice(2);
   }
 
+const MAX_GAME_IMPORT_BYTES = 4 * 1024 * 1024 * 1024;
+
+function addGameImportBytes(total, additional) {
+  const current = Number.isSafeInteger(total) && total > 0 ? total : 0;
+  const size = Number(additional);
+  if (!Number.isSafeInteger(size) || size < 0 || current + size > Number.MAX_SAFE_INTEGER) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return current + size;
+}
+
+function isGameImportOversized(total) {
+  return Number(total) > MAX_GAME_IMPORT_BYTES;
+}
+
 function deriveGameName(fileName) {
     const cleaned = String(fileName || "")
-      .replace(/\.zip$/i, "")
+      .replace(/\.(?:tar\.xz|tar\.gz|tar|txz|tgz|zip)$/i, "")
       .replace(/[_-]+/g, " ")
       .trim();
     return cleaned || "Imported Game";
@@ -48,7 +63,7 @@ function deriveGameName(fileName) {
 
 function normalizeGameIdentity(value) {
     return String(value || "")
-      .replace(/\.zip$/i, "")
+      .replace(/\.(?:tar\.xz|tar\.gz|tar|txz|tgz|zip)$/i, "")
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "");
   }
@@ -514,6 +529,15 @@ function isZipLikeFile(file) {
       type === "application/zip" ||
       type === "application/x-zip-compressed"
     );
+  }
+
+function isGameArchiveInput(file) {
+    if (!file) return false;
+    const name = String(file.name || "");
+    const type = String(file.type || "").toLowerCase();
+    return isZipLikeFile(file) ||
+      /\.(?:tar\.xz|tar\.gz|tar|txz|tgz)$/i.test(name) ||
+      type === "application/x-tar";
   }
 
 function hasDragFiles(event) {

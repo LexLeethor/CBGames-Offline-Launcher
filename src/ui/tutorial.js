@@ -436,9 +436,9 @@ function showAddGamesTutorialNote() {
   ];
   setTutorialNote(
     "Add your first game",
-    "<p><strong>Import ZIP</strong> — load a local <code>.zip</code> of an HTML5, Unity WebGL, or Flash game.</p>" +
+    "<p><strong>Import Game Archive</strong> — load a local <code>.zip</code>, <code>.tar</code>, <code>.tar.xz</code>, or <code>.tar.gz</code> (including <code>.tgz</code>) containing an HTML5, Unity WebGL, or Flash game. Games over 4 GiB uncompressed show a warning; they are very likely to fail or break, but you can still try.</p>" +
       "<p><strong>Import from GitHub</strong> — paste <code>owner/repo</code> or a repo / zip URL. For instance <a class=\"tutorial-link\" href=\"https://github.com/landgreen/n-gon\" target=\"_blank\" rel=\"noopener noreferrer\">https://github.com/landgreen/n-gon</a></p>" +
-      "<p><strong>Replace Game with ZIP</strong> — swap files for a game you already saved (useful for updating).</p>" +
+      "<p><strong>Replace Game with Archive</strong> — swap files for a game you already saved (useful for updating).</p>" +
       "<div class=\"tutorial-callout\">" +
       "<strong>What games work?</strong>" +
       "<ul>" +

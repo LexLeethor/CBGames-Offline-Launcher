@@ -8,10 +8,13 @@ async function pickZipFile() {
           excludeAcceptAllOption: false,
           types: [
             {
-              description: "ZIP archives",
+              description: "Game archives",
               accept: {
                 "application/zip": [".zip"],
-                "application/x-zip-compressed": [".zip"]
+                "application/x-zip-compressed": [".zip"],
+                "application/x-tar": [".tar"],
+                "application/x-xz": [".tar.xz", ".txz"],
+                "application/gzip": [".tar.gz", ".tgz"]
               }
             }
           ]
@@ -60,10 +63,13 @@ async function pickReplaceZipForGameId(gameId) {
           excludeAcceptAllOption: false,
           types: [
             {
-              description: "ZIP archives",
+              description: "Game archives",
               accept: {
                 "application/zip": [".zip"],
-                "application/x-zip-compressed": [".zip"]
+                "application/x-zip-compressed": [".zip"],
+                "application/x-tar": [".tar"],
+                "application/x-xz": [".tar.xz", ".txz"],
+                "application/gzip": [".tar.gz", ".tgz"]
               }
             }
           ]
@@ -97,6 +103,61 @@ function replaceGameWithZipFlow() {
     openReplaceTargetGameModal();
   }
 
+async function importTarGameFile(file, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const existingGame = opts.replaceGameId && state.gamesById.has(opts.replaceGameId)
+      ? state.gamesById.get(opts.replaceGameId)
+      : findExistingGameMatchForImport(file.name);
+    let importMode = opts.importMode === "replace" && existingGame ? "replace" : "separate";
+    if (opts.importMode === "replace" && !existingGame) {
+      log("Choose a valid game to replace.", "error");
+      return;
+    }
+    if (!opts.importMode && existingGame) {
+      const decision = await askImportConflictDecision(existingGame, file.name);
+      if (!decision || decision === "cancel") {
+        log("Import canceled.");
+        return;
+      }
+      importMode = decision === "optionB" ? "replace" : "separate";
+    }
+
+    if (typeof onTutorialZipImportStarted === "function") onTutorialZipImportStarted();
+    setActionButtonsDisabled(true);
+    try {
+      setWorkProgress("Reading game archive", 0, 0);
+      log("Reading game archive: " + file.name);
+      const entries = await readGameArchiveEntries(file, {
+        onEntryPath: (currentPath, discoveredPaths) => {
+          const discoveredCount = discoveredPaths.length;
+          setWorkProgressTree(
+            Math.max(0, discoveredCount - 1),
+            discoveredCount,
+            currentPath,
+            discoveredPaths
+          );
+        }
+      });
+      await importEntriesDirectly(entries, {
+        trackProgressTree: true,
+        gameName: importMode === "replace" && existingGame
+          ? String(existingGame.name || deriveGameName(file.name))
+          : deriveGameName(file.name),
+        archiveName: file.name,
+        existingGameId: importMode === "replace" && existingGame ? existingGame.id : "",
+        replaceGameId: importMode === "replace" && existingGame ? existingGame.id : "",
+        importMode,
+        manageUi: false
+      });
+    } catch (error) {
+      console.error(error);
+      log("Import failed: " + (error.message || String(error)), "error");
+    } finally {
+      setActionButtonsDisabled(false);
+      clearWorkProgress();
+    }
+  }
+
 async function importZipFile(file, options) {
     const opts = options && typeof options === "object" ? options : {};
     const requestedMode = opts.importMode === "replace" || opts.importMode === "separate"
@@ -108,8 +169,12 @@ async function importZipFile(file, options) {
     if (!file) {
       return;
     }
+    if (!isGameArchiveInput(file)) {
+      log("Choose a ZIP, TAR, TAR.XZ, or TAR.GZ game archive.", "error");
+      return;
+    }
     if (!/\.zip$/i.test(file.name)) {
-      log("Please choose a .zip file.", "error");
+      await importTarGameFile(file, opts);
       return;
     }
     if (typeof onTutorialZipImportStarted === "function") {
@@ -150,13 +215,12 @@ async function importZipFile(file, options) {
     try {
       setWorkProgress("Reading ZIP", 0, 0);
       log("Reading ZIP: " + file.name);
-      const zipBuffer = await file.arrayBuffer();
+      let zipBuffer = await readFileArrayBufferWithProgress(file, "Reading ZIP");
       const zip = parseZipArchive(zipBuffer);
 
       if (!zip.entries.length) {
         throw new Error("ZIP contains no importable files.");
       }
-
       const entryPaths = new Set(zip.entries.map((e) => normalizePath(e.path)));
       if (entryPaths.has("bundle.json")) {
         throw new Error("This looks like a Bundle ZIP. Use 'Import Bundle' to import it.");
@@ -175,13 +239,30 @@ async function importZipFile(file, options) {
           }
         }
       }
+      // ZIP central-directory paths are available before payload extraction begins.
+      setWorkProgressTree(0, zip.entries.length, "", zip.entries.map((entry) => entry.path));
+      const trackProgressTree = true;
+      let advertisedGameBytes = 0;
+      for (const entry of zip.entries) {
+        advertisedGameBytes = addGameImportBytes(advertisedGameBytes, entry.uncompressedSize);
+      }
+      if (isGameImportOversized(advertisedGameBytes)) {
+        const proceed = await askLargeGameImportDecision(deriveGameName(file.name), advertisedGameBytes);
+        if (!proceed) {
+          log("Import canceled after the large-game warning.", "info");
+          return;
+        }
+      }
 
       const processedEntries = [];
       const brotliDecodedPaths = new Set();
       const seenPaths = new Map();
       let launcherMetadata = { name: "", thumbnailDataUrl: "" };
-      for (const entry of zip.entries) {
-        const entryBytes = await extractEntryBytes(zip, entry);
+      let oversizedImportConfirmed = isGameImportOversized(advertisedGameBytes);
+      for (let idx = 0; idx < zip.entries.length; idx += 1) {
+        const entry = zip.entries[idx];
+        setWorkProgressTree(idx, zip.entries.length, entry.path);
+        let entryBytes = await extractEntryBytes(zip, entry);
         let path = entry.path;
         let bytes = entryBytes;
         let brotliDecoded = false;
@@ -199,12 +280,16 @@ async function importZipFile(file, options) {
         if (seenPaths.has(path)) {
           const existingIndex = seenPaths.get(path);
           if (brotliDecoded && typeof existingIndex === "number") {
+            processedEntries[existingIndex].bytes = null;
             processedEntries[existingIndex] = {
               path,
               bytes,
               originalPath: entry.path
             };
           }
+          entryBytes = null;
+          bytes = null;
+          setWorkProgressTree(idx + 1, zip.entries.length, entry.path);
           continue;
         }
         seenPaths.set(path, processedEntries.length);
@@ -213,22 +298,48 @@ async function importZipFile(file, options) {
           bytes,
           originalPath: entry.path
         });
+        entryBytes = null;
+        bytes = null;
+        setWorkProgressTree(idx + 1, zip.entries.length, entry.path);
       }
+
+      // Extracted payloads are now independent of the ZIP buffer; drop the archive before transformations.
+      zip.bytes = null;
+      zip.view = null;
+      zip.entries.length = 0;
+      zipBuffer = null;
 
       const brotliReplacementMap = buildBrotliReplacementMap(brotliDecodedPaths);
       launcherMetadata = detectLauncherMetadata(processedEntries);
 
       setWorkProgress("Patching Files", 0, 0);
-      for (const entry of processedEntries) {
+      setWorkProgressTree(0, processedEntries.length, "", processedEntries.map((entry) => entry.path));
+      for (let idx = 0; idx < processedEntries.length; idx += 1) {
+        const entry = processedEntries[idx];
+        setWorkProgressTree(idx, processedEntries.length, entry.path);
         const transformed = applyCurrentExtractorTransformations(entry.path, entry.bytes, {
           brotliDecodedPaths,
           brotliReplacementMap
         });
         entry.bytes = transformed.bytes;
         entry.transformations = transformed.transformations;
+        setWorkProgressTree(idx + 1, processedEntries.length, entry.path);
       }
 
       await applyPreLaunchTransformations(processedEntries);
+      setWorkProgressTree(processedEntries.length, processedEntries.length, "");
+      let processedGameBytes = 0;
+      for (const entry of processedEntries) {
+        processedGameBytes = addGameImportBytes(processedGameBytes, entry.bytes.byteLength);
+      }
+      if (isGameImportOversized(processedGameBytes) && !oversizedImportConfirmed) {
+        const proceed = await askLargeGameImportDecision(deriveGameName(file.name), processedGameBytes);
+        if (!proceed) {
+          log("Import canceled after the large-game warning.", "info");
+          return;
+        }
+        oversizedImportConfirmed = true;
+      }
 
       const htmlEntries = processedEntries
         .map((entry) => entry.path)
@@ -271,13 +382,17 @@ async function importZipFile(file, options) {
       let processed = 0;
       let totalBytes = 0;
       setWorkProgress("Importing game files", 0, processedEntries.length);
+      if (trackProgressTree) {
+        setWorkProgressTree(0, processedEntries.length, "", processedEntries.map((entry) => entry.path));
+      }
 
       for (const entry of processedEntries) {
+        if (trackProgressTree) setWorkProgressTree(processed, processedEntries.length, entry.path);
         const entryBytes = entry.bytes;
         const transformations = entry.transformations;
 
         const blob = new Blob([entryBytes], { type: mimeFromPath(entry.path) });
-        totalBytes += blob.size;
+        totalBytes = addGameImportBytes(totalBytes, blob.size);
 
         await putFileRecord({
           gameId,
@@ -300,6 +415,9 @@ async function importZipFile(file, options) {
         }
 
         processed += 1;
+        if (trackProgressTree) setWorkProgressTree(processed, processedEntries.length, entry.path);
+        // IndexedDB has its Blob now; avoid retaining every source buffer until the import ends.
+        entry.bytes = null;
         if (processed % 20 === 0 || processed === processedEntries.length) {
           setWorkProgress("Importing game files", processed, processedEntries.length);
         }
@@ -390,22 +508,18 @@ async function detectDroppedZipKind(file) {
 
 async function handleDroppedZipFiles(fileList) {
     const files = Array.from(fileList || []);
-    const zipFiles = files.filter((file) => isZipLikeFile(file));
-    if (!zipFiles.length) {
-      log("Drop one or more .zip files.", "error");
+    const archiveFiles = files.filter((file) => isGameArchiveInput(file));
+    if (!archiveFiles.length) {
+      log("Drop one or more game archives (.zip, .tar, .tar.xz, .tar.gz, or .tgz).", "error");
       return;
     }
 
-    for (const file of zipFiles) {
+    for (const file of archiveFiles) {
       try {
         setDragDropOverlay(true, "Inspecting " + file.name + "...");
-        const kind = await detectDroppedZipKind(file);
+        const kind = isZipLikeFile(file) ? await detectDroppedZipKind(file) : "game";
         setDragDropOverlay(false);
 
-        if (kind === "not-zip") {
-          log("Skipped non-zip file: " + file.name, "error");
-          continue;
-        }
         if (kind === "invalid-zip") {
           log("Could not read ZIP: " + file.name, "error");
           continue;
@@ -415,7 +529,7 @@ async function handleDroppedZipFiles(fileList) {
           log("Detected bundle ZIP: " + file.name);
           await importBundleFile(file);
         } else {
-          log("Detected game ZIP: " + file.name);
+          log("Detected game archive: " + file.name);
           await importZipFile(file);
         }
       } catch (error) {
@@ -436,9 +550,14 @@ async function importEntriesDirectly(entries, options) {
     const existingGameId = typeof opts.existingGameId === "string" ? opts.existingGameId : "";
     const incomingGithubSource = normalizeGithubSource(opts.githubSource);
     const gameName = typeof opts.gameName === "string" ? opts.gameName : "Imported Game";
+    const archiveName = typeof opts.archiveName === "string" ? opts.archiveName : (gameName + ".zip");
     const manageUi = opts.manageUi !== false;
-
-    const fileEntries = Array.isArray(entries) ? entries : [];
+    const baseGameBytes = Number.isSafeInteger(opts.baseGameBytes) && opts.baseGameBytes > 0 ? opts.baseGameBytes : 0;
+    const baseGameFileCount = Number.isSafeInteger(opts.baseGameFileCount) && opts.baseGameFileCount > 0 ? opts.baseGameFileCount : 0;
+    const skipExistingFilePaths = new Set(Array.isArray(opts.skipExistingFilePaths)
+      ? opts.skipExistingFilePaths.map((path) => normalizePath(path))
+      : []);
+    let fileEntries = Array.isArray(entries) ? entries : [];
     if (!fileEntries.length) {
       throw new Error("No files to import.");
     }
@@ -479,11 +598,16 @@ async function importEntriesDirectly(entries, options) {
       let launcherMetadata = { name: "", thumbnailDataUrl: "" };
 
       setWorkProgress("Processing entries", 0, fileEntries.length);
+      const trackProgressTree = opts.trackProgressTree === true;
+      if (trackProgressTree) {
+        setWorkProgressTree(0, fileEntries.length, "", fileEntries.map((entry) => entry.path));
+      }
 
       for (let idx = 0; idx < fileEntries.length; idx++) {
         const entry = fileEntries[idx];
-        const entryBytes = entry.bytes instanceof Uint8Array ? entry.bytes : new Uint8Array(entry.bytes);
+        let entryBytes = entry.bytes instanceof Uint8Array ? entry.bytes : new Uint8Array(entry.bytes);
         let path = normalizePath(entry.path || "");
+        if (trackProgressTree) setWorkProgressTree(idx, fileEntries.length, entry.path);
         let bytes = entryBytes;
         let brotliDecoded = false;
 
@@ -499,16 +623,28 @@ async function importEntriesDirectly(entries, options) {
           }
         }
 
+        if (skipExistingFilePaths.has(path) && !brotliDecoded) {
+          entry.bytes = null;
+          entryBytes = null;
+          bytes = null;
+          if (trackProgressTree) setWorkProgressTree(idx + 1, fileEntries.length, path);
+          continue;
+        }
         if (seenPaths.has(path)) {
           const existingIndex = seenPaths.get(path);
           // Prefer decoded bytes when the archive also contains the original .br asset.
           if (brotliDecoded && typeof existingIndex === "number") {
+            processedEntries[existingIndex].bytes = null;
             processedEntries[existingIndex] = {
               path,
               bytes,
               originalPath: entry.path
             };
           }
+          entry.bytes = null;
+          entryBytes = null;
+          bytes = null;
+          if (trackProgressTree) setWorkProgressTree(idx + 1, fileEntries.length, path);
           continue;
         }
 
@@ -518,27 +654,54 @@ async function importEntriesDirectly(entries, options) {
           bytes,
           originalPath: entry.path
         });
+        entry.bytes = null;
+        entryBytes = null;
+        bytes = null;
+        if (trackProgressTree) setWorkProgressTree(idx + 1, fileEntries.length, path);
 
         if ((idx + 1) % 50 === 0) {
           setWorkProgress("Processing entries", idx + 1, fileEntries.length);
         }
       }
 
+      // Parser entries hold another reference to each payload, so discard them before optimizing.
+      fileEntries.length = 0;
+      fileEntries = null;
       const brotliReplacementMap = buildBrotliReplacementMap(brotliDecodedPaths);
       // Resolve filenames after the compressed names have been normalized.
       launcherMetadata = detectLauncherMetadata(processedEntries);
 
       setWorkProgress("Optimizing game assets", 0, 0);
-      for (const entry of processedEntries) {
+      if (trackProgressTree) {
+        setWorkProgressTree(0, processedEntries.length, "", processedEntries.map((entry) => entry.path));
+      }
+      for (let idx = 0; idx < processedEntries.length; idx += 1) {
+        const entry = processedEntries[idx];
+        if (trackProgressTree) setWorkProgressTree(idx, processedEntries.length, entry.path);
         const transformed = applyCurrentExtractorTransformations(entry.path, entry.bytes, {
           brotliDecodedPaths,
           brotliReplacementMap
         });
         entry.bytes = transformed.bytes;
         entry.transformations = transformed.transformations;
+        if (trackProgressTree) setWorkProgressTree(idx + 1, processedEntries.length, entry.path);
       }
 
       await applyPreLaunchTransformations(processedEntries);
+      if (trackProgressTree) setWorkProgressTree(processedEntries.length, processedEntries.length, "");
+      let processedGameBytes = baseGameBytes;
+      for (const entry of processedEntries) {
+        processedGameBytes = addGameImportBytes(processedGameBytes, entry.bytes.byteLength);
+      }
+      let oversizedImportConfirmed = opts.skipLargeWarning === true;
+      if (isGameImportOversized(processedGameBytes) && !oversizedImportConfirmed) {
+        const proceed = await askLargeGameImportDecision(gameName, processedGameBytes);
+        if (!proceed) {
+          log("Import canceled after the large-game warning.", "info");
+          return;
+        }
+        oversizedImportConfirmed = true;
+      }
 
       const htmlEntries = processedEntries
         .map((entry) => entry.path)
@@ -560,11 +723,11 @@ async function importEntriesDirectly(entries, options) {
       const gameRecord = {
         id: gameId,
         name: effectiveName,
-        zipName: gameName + ".zip",
+        zipName: archiveName,
         importedAt: Date.now(),
         extractorVersion: CURRENT_EXTRACTOR_VERSION,
         sortOrder: Number.isFinite(preservedSortOrder) ? preservedSortOrder : getNextSortOrder(),
-        fileCount: processedEntries.length,
+        fileCount: existingGameId ? baseGameFileCount : baseGameFileCount + processedEntries.length,
         totalBytes: 0,
         htmlEntries,
         entryPath: chooseBestEntryPath(htmlEntries, ""),
@@ -582,13 +745,17 @@ async function importEntriesDirectly(entries, options) {
       let processed = 0;
       let totalBytes = 0;
       setWorkProgress("Importing game files", 0, processedEntries.length);
+      if (trackProgressTree) {
+        setWorkProgressTree(0, processedEntries.length, "", processedEntries.map((entry) => entry.path));
+      }
 
       for (const entry of processedEntries) {
+        if (trackProgressTree) setWorkProgressTree(processed, processedEntries.length, entry.path);
         const entryBytes = entry.bytes;
         const transformations = entry.transformations;
 
         const blob = new Blob([entryBytes], { type: mimeFromPath(entry.path) });
-        totalBytes += blob.size;
+        totalBytes = addGameImportBytes(totalBytes, blob.size);
 
         await putFileRecord({
           gameId,
@@ -611,6 +778,9 @@ async function importEntriesDirectly(entries, options) {
         }
 
         processed += 1;
+        if (trackProgressTree) setWorkProgressTree(processed, processedEntries.length, entry.path);
+        // IndexedDB has its Blob now; avoid retaining every source buffer until the import ends.
+        entry.bytes = null;
         if (processed % 20 === 0 || processed === processedEntries.length) {
           setWorkProgress("Importing game files", processed, processedEntries.length);
         }

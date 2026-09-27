@@ -23,7 +23,9 @@ async function readFileArrayBufferWithProgress(file, label) {
       return file.arrayBuffer();
     }
     const reader = file.stream().getReader();
-    const chunks = [];
+    // File.size is exact for immutable File/Blob inputs, so fill one buffer rather than retaining chunks and copying them again.
+    const output = Number.isSafeInteger(total) && total > 0 ? new Uint8Array(total) : null;
+    const chunks = output ? null : [];
     let loaded = 0;
     let lastReported = 0;
     const start = performance.now();
@@ -48,7 +50,14 @@ async function readFileArrayBufferWithProgress(file, label) {
       if (!chunk) {
         continue;
       }
-      chunks.push(chunk);
+      if (output) {
+        if (loaded + chunk.byteLength > output.byteLength) {
+          throw new Error("File size changed while reading " + displayLabel + ".");
+        }
+        output.set(chunk, loaded);
+      } else {
+        chunks.push(chunk);
+      }
       loaded += chunk.byteLength;
       if (loaded - lastReported >= 262144 || (total > 0 && loaded >= total)) {
         if (total > 0) {
@@ -85,6 +94,9 @@ async function readFileArrayBufferWithProgress(file, label) {
       setWorkProgress(displayLabel, 1, 1);
     }
 
+    if (output) {
+      return output.buffer;
+    }
     const blob = new Blob(chunks, { type: file.type || "application/octet-stream" });
     return blob.arrayBuffer();
   }

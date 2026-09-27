@@ -54,7 +54,7 @@
 </div>
 <div id="dragDropOverlay" class="drag-drop-overlay" aria-hidden="true">
   <div class="drag-drop-overlay-card">
-    <p id="dragDropOverlayText">Drop ZIP files to import</p>
+    <p id="dragDropOverlayText">Drop game archives to import</p>
   </div>
 </div>
 
@@ -158,16 +158,15 @@
         <section id="opsAddGamesGroup" class="ops-group ops-group-fixed">
           <div class="ops-group-head">
             <span class="ops-group-title">Add Games</span>
-            <span class="ops-group-hint">Import from ZIP or GitHub</span>
           </div>
           <div class="ops-group-body">
-            <p>Bring in individual games from local ZIP files or directly from GitHub.</p>
+            <p>Import a game archive (ZIP, TAR, TAR.XZ, or TAR.GZ). Games over 4 GiB uncompressed show a warning because they are very likely to fail or break.</p>
             <div class="ops-row">
-              <button id="importZip">Import ZIP</button>
+              <button id="importZip">Import Game Archive</button>
               <button id="importGithub" type="button">Import from GitHub</button>
             </div>
             <div class="ops-row one">
-              <button id="replaceZipSelected" type="button">Replace Game with ZIP</button>
+              <button id="replaceZipSelected" type="button">Replace Game with Archive</button>
             </div>
           </div>
         </section>
@@ -272,8 +271,8 @@
 </div>
 <select id="gameSelect" class="sr-only" aria-hidden="true" tabindex="-1"></select>
 
-<input id="zipInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
-<input id="replaceZipInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
+<input id="zipInput" type="file" accept=".zip,.tar,.tar.xz,.txz,.tar.gz,.tgz,application/zip,application/x-zip-compressed,application/x-tar,application/gzip,application/x-gzip" hidden>
+<input id="replaceZipInput" type="file" accept=".zip,.tar,.tar.xz,.txz,.tar.gz,.tgz,application/zip,application/x-zip-compressed,application/x-tar,application/gzip,application/x-gzip" hidden>
 <input id="bundleInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 <input id="saveImportInput" type="file" accept=".zip,.data,application/zip,application/x-zip-compressed" hidden>
 <input id="gameEditImageInput" type="file" accept="image/*" hidden>
@@ -301,7 +300,7 @@
 </div>
 <div id="replaceTargetModal" class="confirm-modal" aria-hidden="true">
   <div class="confirm-dialog replace-target-dialog" role="dialog" aria-modal="true" aria-labelledby="replaceTargetTitle" aria-describedby="replaceTargetHint">
-    <h3 id="replaceTargetTitle">Replace Game with ZIP</h3>
+    <h3 id="replaceTargetTitle">Replace Game with Archive</h3>
     <p id="replaceTargetHint">Choose which game should be replaced. Existing thumbnail and custom title are kept.</p>
     <div id="replaceTargetList" class="replace-target-list"></div>
     <div class="actions">
@@ -487,6 +486,7 @@
 
 <script src="./lib/cropper.min.js"></script>
 <script src="./lib/brotli.js"></script>
+<script src="./lib/xzwasm.js"></script>
 <script src="./src/state/state.js"></script>
 <script src="./src/ui/dom.js"></script>
 <script src="./src/utils/format.js"></script>
@@ -501,6 +501,7 @@
 <script src="./src/network/host.js"></script>
 <script src="./src/network/github.js"></script>
 <script src="./src/import/zip-format.js"></script>
+<script src="./src/import/archive-formats.js"></script>
 <script src="./src/launch/extractor-transformations.js"></script>
 <script src="./src/import/game-metadata.js"></script>
 <script src="./src/import/github.js"></script>
