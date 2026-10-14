@@ -9,7 +9,6 @@ const STORE_ERROR_LOGS = "errorLogs";
 const SETTING_SELECTED_GAME = "selectedGameId";
 const SETTING_AUTO_MIGRATE_EXTRACTOR = "autoMigrateExtractor";
 const SETTING_TUTORIAL_COMPLETED = "tutorialCompleted";
-const SETTING_MIRROR_CATALOG_URL = "mirrorCatalogUrl";
 const GAME_EDITOR_METADATA_MARKER = "cbgames-game-editor-v1";
 
 const VFS_ORIGIN = "https://loader.invalid/";
@@ -72,7 +71,6 @@ const state = {
   actionInProgress: false,
   genericChoiceResolver: null,
   githubImportResolver: null,
-  mirrorCatalogDraft: null,
   replaceTargetSelectedId: "",
   updatePromptResolver: null,
   extractorMigrationResolver: null,

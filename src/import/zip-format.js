@@ -12,15 +12,14 @@ const CRC32_TABLE = (() => {
     return table;
   })();
 
-async function readFileArrayBufferWithProgress(file, label, options) {
-    const reportProgress = !(options && options.reportProgress === false);
+async function readFileArrayBufferWithProgress(file, label) {
     if (!file || typeof file.arrayBuffer !== "function") {
       return new ArrayBuffer(0);
     }
     const total = Number(file.size) || 0;
     const displayLabel = String(label || "Reading file");
     if (!file.stream || typeof file.stream !== "function") {
-      if (reportProgress) setWorkProgress(displayLabel, 0, 0);
+      setWorkProgress(displayLabel, 0, 0);
       return file.arrayBuffer();
     }
     const reader = file.stream().getReader();
@@ -31,17 +30,15 @@ async function readFileArrayBufferWithProgress(file, label, options) {
     let lastReported = 0;
     const start = performance.now();
 
-    if (reportProgress) {
-      if (total > 0) {
-        setWorkProgress(
-          displayLabel,
-          0,
-          total,
-          { currentText: formatBytes(0), totalText: formatBytes(total) }
-        );
-      } else {
-        setWorkProgress(displayLabel, 0, 0);
-      }
+    if (total > 0) {
+      setWorkProgress(
+        displayLabel,
+        0,
+        total,
+        { currentText: formatBytes(0), totalText: formatBytes(total) }
+      );
+    } else {
+      setWorkProgress(displayLabel, 0, 0);
     }
 
     while (true) {
@@ -62,7 +59,7 @@ async function readFileArrayBufferWithProgress(file, label, options) {
         chunks.push(chunk);
       }
       loaded += chunk.byteLength;
-      if (reportProgress && (loaded - lastReported >= 262144 || (total > 0 && loaded >= total))) {
+      if (loaded - lastReported >= 262144 || (total > 0 && loaded >= total)) {
         if (total > 0) {
           const etaText = formatEtaSeconds(estimateEtaSeconds(start, loaded, total));
           setWorkProgress(
@@ -78,7 +75,7 @@ async function readFileArrayBufferWithProgress(file, label, options) {
       }
     }
 
-    if (reportProgress && total > 0) {
+    if (total > 0) {
       const etaText = formatEtaSeconds(estimateEtaSeconds(start, loaded, total));
       setWorkProgress(
         displayLabel,
@@ -86,14 +83,14 @@ async function readFileArrayBufferWithProgress(file, label, options) {
         total,
         { currentText: formatBytes(loaded), totalText: formatBytes(total), etaText }
       );
-    } else if (reportProgress && loaded > 0) {
+    } else if (loaded > 0) {
       setWorkProgress(
         displayLabel,
         loaded,
         loaded,
         { currentText: formatBytes(loaded), totalText: formatBytes(loaded) }
       );
-    } else if (reportProgress) {
+    } else {
       setWorkProgress(displayLabel, 1, 1);
     }
 
@@ -295,10 +292,8 @@ async function inflateDeflateRaw(data) {
     return new Uint8Array(buffer);
   }
 
-async function inflateBrotli(data, options) {
-  if (!(options && options.reportProgress === false)) {
-    setWorkProgress("Inflating Brotli Data", 0, 0);
-  }
+async function inflateBrotli(data) {
+  setWorkProgress("Inflating Brotli Data", 0, 0);
     if ("DecompressionStream" in window) {
       try {
         const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("brotli"));
@@ -315,9 +310,8 @@ async function inflateBrotli(data, options) {
     throw new Error("Brotli decode not available (missing DecompressionStream and BrotliDecode).");
   }
 
-async function extractEntryBytes(zip, entry, options) {
-    const reportProgress = !(options && options.reportProgress === false);
-    if (reportProgress) setWorkProgress("Figuring out zip type");
+async function extractEntryBytes(zip, entry) {
+    setWorkProgress("Figuring out zip type");
     if (entry.flags & 0x1) {
       throw new Error("Encrypted ZIP entries are not supported: " + entry.path);
     }
@@ -328,18 +322,18 @@ async function extractEntryBytes(zip, entry, options) {
       return compressed.slice();
     }
     if (entry.compressionMethod === 8) {
-      if (reportProgress) setWorkProgress("Inflating Contents");
+      setWorkProgress("Inflating Contents");
       const decompressed = await inflateDeflateRaw(compressed);
       return decompressed;
     }
     if (entry.compressionMethod === 12) {
       console.log("Inflating BZ2 entry");
-      const decompressed = await inflateBZ2(compressed, options);
+      const decompressed = await inflateBZ2(compressed);
       return decompressed;
     }
-    if (entry.compressionMethod === 14) {
+        if (entry.compressionMethod === 14) {
       console.log("Inflating LZMA entry");
-      const decompressed = await inflateLZMA(compressed, options);
+      const decompressed = await inflateLZMA(compressed);
       return decompressed;
     }
 

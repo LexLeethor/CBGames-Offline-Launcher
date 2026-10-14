@@ -468,8 +468,8 @@ function showAddGamesTutorialStep() {
   tutorialState.step = "addGames";
   resumeTutorialOverlay();
   showAddGamesTutorialNote();
-  // Keep the spotlight on the primary action after the imports layout changed.
-  focusTutorialTarget(document.getElementById("importZip"), { trackMs: 320 });
+  // Track the sheet while it slides up so the highlight stays aligned.
+  focusTutorialTarget(document.getElementById("opsAddGamesGroup"), { trackMs: 320 });
 }
 
 function showEditNameTutorialStep() {

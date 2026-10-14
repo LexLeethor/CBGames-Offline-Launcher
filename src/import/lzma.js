@@ -1,6 +1,5 @@
-async function inflateLZMA(data, options) {
-  const reportProgress = !(options && options.reportProgress === false);
-  if (reportProgress) setWorkProgress("Inflating LZMA Data", 0, 0);
+async function inflateLZMA(data) {
+  setWorkProgress("Inflating LZMA Data", 0, 0);
   console.log("[LZMA] Starting decompression. Input size:", data.length);
 
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
@@ -199,7 +198,7 @@ async function inflateLZMA(data, options) {
       const now = Date.now();
       if (now - start > 200) {
         console.log(`[LZMA] Progress: ${outPos} bytes decoded, inPos ${inPos}/${bytes.length}`);
-        if (reportProgress) setWorkProgress("Inflating LZMA Data VS JS", inPos, bytes.length);
+        setWorkProgress("Inflating LZMA Data VS JS", inPos, bytes.length);
         await new Promise((resolve) => setTimeout(resolve, 0));
         start = Date.now();
       }

@@ -320,8 +320,7 @@ async function exportSaveData() {
 // Parse a save ZIP (supports v1 and v2)
 // ---------------------------------------------------------------------------
 async function parseSaveZip(file) {
-  const quietProgress = { reportProgress: false };
-  const arrayBuffer = await readFileArrayBufferWithProgress(file, "Reading save ZIP", quietProgress);
+  const arrayBuffer = await readFileArrayBufferWithProgress(file, "Reading save ZIP");
   const zip = await parseZipArchive(arrayBuffer);
   if (!zip) throw new Error("Could not parse save ZIP.");
 
@@ -339,7 +338,7 @@ async function parseSaveZip(file) {
     throw new Error("No manifest.json found — is this a save data ZIP?");
   }
 
-  const manifestBytes = await extractEntryBytes(zip, manifestEntry, quietProgress);
+  const manifestBytes = await extractEntryBytes(zip, manifestEntry);
   const manifest = JSON.parse(new TextDecoder().decode(manifestBytes));
 
   if (manifest.version !== "cbgames-save-v1" && manifest.version !== "cbgames-save-v2") {
@@ -352,7 +351,7 @@ async function parseSaveZip(file) {
     const slug = String(gameMeta.zipSlug || "");
     const jsonEntry = entryByPath.get("idbfs/" + slug + ".json");
     if (!jsonEntry) continue;
-    const jsonBytes = await extractEntryBytes(zip, jsonEntry, quietProgress);
+    const jsonBytes = await extractEntryBytes(zip, jsonEntry);
     const records = JSON.parse(new TextDecoder().decode(jsonBytes));
     gameEntries.set(slug, { ...gameMeta, records });
   }
@@ -362,7 +361,7 @@ async function parseSaveZip(file) {
   if (manifest.hasLocalStorage) {
     const lsEntry = entryByPath.get("localstorage.json");
     if (lsEntry) {
-      const lsBytes = await extractEntryBytes(zip, lsEntry, quietProgress);
+      const lsBytes = await extractEntryBytes(zip, lsEntry);
       localStorageData = JSON.parse(new TextDecoder().decode(lsBytes));
     }
   }
@@ -376,7 +375,7 @@ async function parseSaveZip(file) {
         "idb/" + encodeURIComponent(dbMeta.dbName) + "/" + encodeURIComponent(storeMeta.storeName) + ".json"
       );
       if (!jsonEntry) continue;
-      const jsonBytes = await extractEntryBytes(zip, jsonEntry, quietProgress);
+      const jsonBytes = await extractEntryBytes(zip, jsonEntry);
       const records = JSON.parse(new TextDecoder().decode(jsonBytes));
       dbEntry.stores.push({ storeName: storeMeta.storeName, records });
     }
@@ -531,9 +530,7 @@ async function handleSaveImportFile(file) {
       || parsed.localStorageData !== null
       || parsed.otherDbs.length > 0;
     if (!hasContent) {
-      const message = "No save data found in this ZIP.";
-      log(message, "error");
-      openWrongZipTypeModal(message, "Save Import Failed");
+      log("No save data found in this ZIP.", "error");
       return;
     }
     openSaveImportModal(parsed);
@@ -548,9 +545,9 @@ async function handleSaveImportFile(file) {
       openWrongZipTypeModal(msg);
     } else {
       log("Could not read save ZIP: " + msg, "error");
-      openWrongZipTypeModal(msg, "Save Import Failed");
     }
   } finally {
     setActionButtonsDisabled(false);
+    clearWorkProgress();
   }
 }

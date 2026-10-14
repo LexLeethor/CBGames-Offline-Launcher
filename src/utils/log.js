@@ -256,10 +256,6 @@ function setWorkProgress(label, current, total, displayValues) {
     if (!workProgress || !workProgressLabel || !workProgressCircle || !workProgressValue) {
       return;
     }
-    if (workProgressPanel) {
-      workProgressPanel.hidden = false;
-      workProgressPanel.setAttribute("aria-hidden", "false");
-    }
     const text = String(label || "Working...");
     const hasTotal = Number.isFinite(total) && total > 0;
     const safeCurrent = Number.isFinite(current) ? Math.max(0, current) : 0;
@@ -292,10 +288,6 @@ function setWorkProgress(label, current, total, displayValues) {
 function clearWorkProgress() {
     if (!workProgress || !workProgressLabel || !workProgressCircle || !workProgressValue) {
       return;
-    }
-    if (workProgressPanel) {
-      workProgressPanel.hidden = true;
-      workProgressPanel.setAttribute("aria-hidden", "true");
     }
     workProgress.classList.remove("indeterminate");
     workProgressLabel.textContent = "Idle...";
@@ -397,10 +389,6 @@ function setWorkProgressTree(completedCount, totalCount, currentPath, allPaths) 
       return;
     }
 
-    if (workProgressPanel) {
-      workProgressPanel.hidden = false;
-      workProgressPanel.setAttribute("aria-hidden", "false");
-    }
     el.hidden = false;
 
     var MAX_ROWS = 8;
