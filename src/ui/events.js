@@ -47,7 +47,9 @@ selectedBlobToggle.addEventListener("change", async function() {
 replaceZipSelectedButton.addEventListener("click", function() {
   replaceGameWithZipFlow().catch(error => {
     console.error(error);
-    log("Replace import failed: " + (error.message || String(error)), "error");
+    const message = error.message || String(error);
+    log("Replace import failed: " + message, "error");
+    openWrongZipTypeModal(message, "Import Failed");
   });
 });
 
@@ -77,7 +79,9 @@ openOpsModalButton.addEventListener("click", showOpsModal);
   importGithubButton.addEventListener("click", function() {
     importFromGithub().catch(error => {
       console.error(error);
-      log("GitHub import failed: " + (error.message || String(error)), "error");
+      const message = error.message || String(error);
+      log("GitHub import failed: " + message, "error");
+      openWrongZipTypeModal(message, "GitHub Import Failed");
     });
   });
   checkGithubUpdateButton.addEventListener("click", function() {
@@ -895,7 +899,9 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       log("Imported: " + (parts.length ? parts.join(", ") : "nothing") + ".");
     } catch (err) {
       console.error(err);
-      log("Save import failed: " + (err.message || String(err)), "error");
+      const message = err.message || String(err);
+      log("Save import failed: " + message, "error");
+      openWrongZipTypeModal(message, "Save Import Failed");
     } finally {
       setActionButtonsDisabled(false);
     }

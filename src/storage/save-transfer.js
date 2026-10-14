@@ -530,7 +530,9 @@ async function handleSaveImportFile(file) {
       || parsed.localStorageData !== null
       || parsed.otherDbs.length > 0;
     if (!hasContent) {
-      log("No save data found in this ZIP.", "error");
+      const message = "No save data found in this ZIP.";
+      log(message, "error");
+      openWrongZipTypeModal(message, "Save Import Failed");
       return;
     }
     openSaveImportModal(parsed);
@@ -545,9 +547,9 @@ async function handleSaveImportFile(file) {
       openWrongZipTypeModal(msg);
     } else {
       log("Could not read save ZIP: " + msg, "error");
+      openWrongZipTypeModal(msg, "Save Import Failed");
     }
   } finally {
     setActionButtonsDisabled(false);
-    clearWorkProgress();
   }
 }

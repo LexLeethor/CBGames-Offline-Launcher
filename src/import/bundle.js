@@ -293,6 +293,7 @@ async function pickBundleFile() {
         }
         console.error(error);
         log("Bundle import failed: " + (error.message || String(error)), "error");
+        openWrongZipTypeModal(error.message || String(error), "Import Failed");
       }
       return;
     }
@@ -768,6 +769,7 @@ async function importBundleFile(file) {
         openWrongZipTypeModal(msg);
       } else {
         log("Bundle import failed: " + msg, "error");
+        openWrongZipTypeModal(msg, "Import Failed");
       }
       return;
     } finally {
@@ -801,7 +803,9 @@ async function importBundleFile(file) {
         log("Bundle import failed: Storage quota exceeded.", "error");
         openWrongZipTypeModal(quotaMsg, "Storage Quota Exceeded");
       } else {
-        log("Bundle import failed: " + (error.message || String(error)), "error");
+        const message = error.message || String(error);
+        log("Bundle import failed: " + message, "error");
+        openWrongZipTypeModal(message, "Import Failed");
       }
     } finally {
       setActionButtonsDisabled(false);

@@ -31,6 +31,7 @@ async function pickZipFile() {
         }
         console.error(error);
         log("Import failed: " + (error.message || String(error)), "error");
+        openWrongZipTypeModal(error.message || String(error), "Import Failed");
       }
       return;
     }
@@ -43,6 +44,7 @@ async function pickReplaceZipForGameId(gameId) {
     const selected = gameId ? state.gamesById.get(gameId) : null;
     if (!selected) {
       log("Choose a valid game to replace.", "error");
+      openWrongZipTypeModal("Choose a valid game to replace.", "Import Failed");
       return;
     }
 
@@ -86,6 +88,7 @@ async function pickReplaceZipForGameId(gameId) {
         }
         console.error(error);
         log("Replace import failed: " + (error.message || String(error)), "error");
+        openWrongZipTypeModal(error.message || String(error), "Import Failed");
       }
       return;
     }
@@ -170,7 +173,9 @@ async function importZipFile(file, options) {
       return;
     }
     if (!isGameArchiveInput(file)) {
-      log("Choose a ZIP, TAR, TAR.XZ, or TAR.GZ game archive.", "error");
+      const message = "Choose a ZIP, TAR, TAR.XZ, or TAR.GZ game archive.";
+      log(message, "error");
+      openWrongZipTypeModal(message, "Import Failed");
       return;
     }
     if (!/\.zip$/i.test(file.name)) {
@@ -457,6 +462,7 @@ async function importZipFile(file, options) {
         openWrongZipTypeModal(msg, "Wrong ZIP Type");
       } else {
         log("Import failed: " + msg, "error");
+        openWrongZipTypeModal(msg, "Import Failed");
         try {
           if (importMode !== "replace") {
             await deleteFilesByGameId(gameId);
@@ -510,7 +516,9 @@ async function handleDroppedZipFiles(fileList) {
     const files = Array.from(fileList || []);
     const archiveFiles = files.filter((file) => isGameArchiveInput(file));
     if (!archiveFiles.length) {
-      log("Drop one or more game archives (.zip, .tar, .tar.xz, .tar.gz, or .tgz).", "error");
+      const message = "Drop one or more game archives (.zip, .tar, .tar.xz, .tar.gz, or .tgz).";
+      log(message, "error");
+      openWrongZipTypeModal(message, "Import Failed");
       return;
     }
 
@@ -521,7 +529,9 @@ async function handleDroppedZipFiles(fileList) {
         setDragDropOverlay(false);
 
         if (kind === "invalid-zip") {
-          log("Could not read ZIP: " + file.name, "error");
+          const message = "Could not read ZIP: " + file.name;
+          log(message, "error");
+          openWrongZipTypeModal(message, "Import Failed");
           continue;
         }
 
@@ -534,7 +544,9 @@ async function handleDroppedZipFiles(fileList) {
         }
       } catch (error) {
         console.error(error);
-        log("Drop import failed for " + file.name + ": " + (error.message || String(error)), "error");
+        const message = "Could not import " + file.name + ": " + (error.message || String(error));
+        log(message, "error");
+        openWrongZipTypeModal(message, "Import Failed");
       } finally {
         setDragDropOverlay(false);
       }
