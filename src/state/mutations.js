@@ -203,6 +203,14 @@ async function loadLibrary(preferredGameId) {
       }
     }
 
+    if (typeof syncAllGameSaveAliases === "function") {
+      try {
+        await syncAllGameSaveAliases({ migrateIdbfs: true, persistGames: true });
+      } catch (error) {
+        console.warn("Could not sync Unity IDBFS save aliases:", error);
+      }
+    }
+
     state.libraryChecked = true;
     const selectedId = renderGameOptions(preferredGameId || state.selectedGameId);
     state.selectedGameId = selectedId || null;

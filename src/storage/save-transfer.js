@@ -49,7 +49,7 @@ function md5(str) {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers matching player.js zipSlug formula exactly
+// Helpers matching player.js zipSlug formula and saveAlias disambiguation
 // ---------------------------------------------------------------------------
 function zipSlugFromZipName(zipName) {
   return String(zipName || "")
@@ -58,8 +58,228 @@ function zipSlugFromZipName(zipName) {
     .slice(0, 128) || "game";
 }
 
+function sanitizeSaveAliasBase(name, fallback) {
+  const cleaned = String(name || "")
+    .replace(/[\/\\]+/g, "-")
+    .replace(/[\u0000-\u001f\u007f]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  if (cleaned) return cleaned;
+  const fb = String(fallback || "")
+    .replace(/[\/\\]+/g, "-")
+    .replace(/[\u0000-\u001f\u007f]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  return fb || "game";
+}
+
+function computeGameSaveAliasesMap(gamesIterable) {
+  const list = Array.from(gamesIterable || (state && state.gamesById ? state.gamesById.values() : [])).filter(Boolean);
+  list.sort((a, b) => {
+    const aImp = Number(a.importedAt);
+    const bImp = Number(b.importedAt);
+    const aValid = Number.isFinite(aImp) && aImp > 0 ? aImp : Number.MAX_SAFE_INTEGER;
+    const bValid = Number.isFinite(bImp) && bImp > 0 ? bImp : Number.MAX_SAFE_INTEGER;
+    if (aValid !== bValid) return aValid - bValid;
+    const aOrd = Number.isFinite(Number(a.sortOrder)) ? Number(a.sortOrder) : Number.MAX_SAFE_INTEGER;
+    const bOrd = Number.isFinite(Number(b.sortOrder)) ? Number(b.sortOrder) : Number.MAX_SAFE_INTEGER;
+    if (aOrd !== bOrd) return aOrd - bOrd;
+    return String(a.id || "").localeCompare(String(b.id || ""));
+  });
+
+  const usedLower = new Set();
+  const nextSuffixByBase = new Map();
+  const aliasById = new Map();
+
+  for (const game of list) {
+    const fallback = game.zipName ? zipSlugFromZipName(game.zipName) : (game.id || "game");
+    const base = sanitizeSaveAliasBase(game.name, fallback);
+    const baseKey = base.toLowerCase();
+    let candidate = base;
+    if (usedLower.has(baseKey)) {
+      let num = nextSuffixByBase.get(baseKey) || 2;
+      while (usedLower.has((base + " #" + num).toLowerCase())) {
+        num += 1;
+      }
+      candidate = base + " #" + num;
+      nextSuffixByBase.set(baseKey, num + 1);
+    } else {
+      nextSuffixByBase.set(baseKey, 2);
+    }
+    usedLower.add(candidate.toLowerCase());
+    aliasById.set(game.id, candidate);
+  }
+
+  return aliasById;
+}
+
+function getGameSaveAlias(game, gamesIterable) {
+  if (!game) return "game";
+  const map = computeGameSaveAliasesMap(gamesIterable);
+  if (game.id && map.has(game.id)) {
+    return map.get(game.id);
+  }
+  const fallback = game.zipName ? zipSlugFromZipName(game.zipName) : (game.id || "game");
+  return sanitizeSaveAliasBase(game.name, fallback);
+}
+
+function computeUnityEntryDirHash(entryPath, zipSlug) {
+  const effectiveEntry = normalizePath(entryPath || "") || ((zipSlug || "game") + "/index.html");
+  const docUrl = VFS_ORIGIN + effectiveEntry;
+  try {
+    const directoryURL = new URL(docUrl);
+    directoryURL.search = "";
+    directoryURL.hash = "";
+    directoryURL.pathname = directoryURL.pathname.substring(0, directoryURL.pathname.lastIndexOf("/") + 1);
+    return md5(directoryURL.href.replace(/\/$/, ""));
+  } catch (_) {
+    const lastSlash = docUrl.lastIndexOf("/");
+    const dirHref = lastSlash >= 0 ? docUrl.slice(0, lastSlash) : docUrl.replace(/\/$/, "");
+    return md5(dirHref);
+  }
+}
+
 function computeUnityHash(zipSlug) {
   return md5(VFS_ORIGIN.replace(/\/$/, "") + "/" + zipSlug);
+}
+
+function getKnownUnityPrefixesForGame(game, gamesIterable) {
+  if (!game) return [];
+  const prefixes = new Set();
+  const alias = getGameSaveAlias(game, gamesIterable);
+  if (alias) prefixes.add(alias);
+  if (typeof game.saveAlias === "string" && game.saveAlias.trim()) {
+    prefixes.add(game.saveAlias.trim());
+  }
+  const slug = zipSlugFromZipName(game.zipName || game.name || game.id);
+  if (slug) {
+    prefixes.add(computeUnityHash(slug));
+    prefixes.add(slug);
+  }
+  if (game.entryPath) {
+    prefixes.add(computeUnityEntryDirHash(game.entryPath, slug));
+  }
+  if (Array.isArray(game.htmlEntries)) {
+    for (const entry of game.htmlEntries) {
+      if (entry) prefixes.add(computeUnityEntryDirHash(entry, slug));
+    }
+  }
+  return Array.from(prefixes);
+}
+
+async function renameIdbfsKeyPrefix(oldPrefixes, newPrefix) {
+  const target = String(newPrefix || "").trim();
+  if (!target) return 0;
+  const sources = (Array.isArray(oldPrefixes) ? oldPrefixes : [oldPrefixes])
+    .map((p) => String(p || "").trim())
+    .filter((p) => p && p !== target);
+  if (!sources.length) return 0;
+
+  let db;
+  try {
+    db = await openIdbfsDb();
+  } catch (e) {
+    console.warn("Could not open /idbfs to rename save keys:", e);
+    return 0;
+  }
+
+  try {
+    if (!db.objectStoreNames.contains(IDBFS_STORE)) {
+      return 0;
+    }
+    const allRecords = await readAllRecordsFromStore(db, IDBFS_STORE);
+    if (!allRecords.length) {
+      return 0;
+    }
+
+    const existingKeys = new Set(allRecords.map((r) => String(r.key)));
+    const toWrite = [];
+    const toDelete = [];
+
+    for (const source of sources) {
+      const srcRoot = "/idbfs/" + source;
+      const srcSlash = srcRoot + "/";
+      const dstRoot = "/idbfs/" + target;
+      for (const rec of allRecords) {
+        const key = String(rec.key);
+        if (key === srcRoot || key.startsWith(srcSlash)) {
+          const mappedKey = dstRoot + key.slice(srcRoot.length);
+          toWrite.push({ key: mappedKey, value: rec.value });
+          if (mappedKey !== key) {
+            toDelete.push(key);
+          }
+        }
+      }
+    }
+
+    if (!toWrite.length) {
+      return 0;
+    }
+
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDBFS_STORE, "readwrite");
+      const store = tx.objectStore(IDBFS_STORE);
+      for (const item of toWrite) {
+        store.put(item.value, item.key);
+        existingKeys.add(item.key);
+      }
+      for (const oldKey of toDelete) {
+        if (!toWrite.some((w) => w.key === oldKey)) {
+          store.delete(oldKey);
+        }
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("renameIdbfsKeyPrefix aborted"));
+    });
+
+    return toWrite.length;
+  } catch (e) {
+    console.warn("Failed to rename /idbfs keys:", e);
+    return 0;
+  } finally {
+    db.close();
+  }
+}
+
+async function syncAllGameSaveAliases(options = {}) {
+  if (!state || !state.gamesById || !state.gamesById.size) return;
+  const migrateIdbfs = options.migrateIdbfs !== false;
+  const persistGames = options.persistGames !== false;
+  const aliasMap = computeGameSaveAliasesMap(state.gamesById.values());
+
+  for (const [gameId, nextAlias] of aliasMap.entries()) {
+    const game = state.gamesById.get(gameId);
+    if (!game) continue;
+    const prevAlias = typeof game.saveAlias === "string" ? game.saveAlias.trim() : "";
+    if (migrateIdbfs) {
+      const candidateSources = [];
+      if (prevAlias && prevAlias !== nextAlias) {
+        candidateSources.push(prevAlias);
+      }
+      const slug = zipSlugFromZipName(game.zipName || game.name || game.id);
+      const legacySlugHash = computeUnityHash(slug);
+      const entryDirHash = computeUnityEntryDirHash(game.entryPath, slug);
+      if (legacySlugHash && legacySlugHash !== nextAlias) candidateSources.push(legacySlugHash);
+      if (entryDirHash && entryDirHash !== nextAlias) candidateSources.push(entryDirHash);
+      if (candidateSources.length) {
+        await renameIdbfsKeyPrefix(candidateSources, nextAlias);
+      }
+    }
+    if (game.saveAlias !== nextAlias) {
+      game.saveAlias = nextAlias;
+      state.gamesById.set(gameId, game);
+      if (persistGames && state.db && typeof putGame === "function") {
+        try {
+          await putGame(game);
+        } catch (e) {
+          console.warn("Could not persist updated saveAlias for game", game.name || gameId, e);
+        }
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -227,7 +447,7 @@ async function exportSaveData() {
       }
 
       if (dbName === IDBFS_DB_NAME) {
-        // Unity IDBFS — group records by hash prefix and map to zip slugs
+        // Unity IDBFS — group records by /idbfs/<prefix> (either saveAlias or 32-char MD5 hash)
         if (!db.objectStoreNames.contains(IDBFS_STORE)) {
           db.close();
           continue;
@@ -235,27 +455,54 @@ async function exportSaveData() {
         const allRecords = await readAllRecordsFromStore(db, IDBFS_STORE);
         db.close();
 
-        const byHash = new Map();
+        const byPrefix = new Map();
         for (const rec of allRecords) {
-          const m = String(rec.key).match(/^\/idbfs\/([a-f0-9]{32})\//);
+          const m = String(rec.key).match(/^\/idbfs\/([^/]+)(?:\/|$)/);
           if (!m) continue;
-          if (!byHash.has(m[1])) byHash.set(m[1], []);
-          byHash.get(m[1]).push(rec);
+          const prefix = m[1];
+          if (!byPrefix.has(prefix)) byPrefix.set(prefix, []);
+          byPrefix.get(prefix).push(rec);
         }
 
-        const hashToSlug = new Map();
+        const prefixToGame = new Map();
         for (const game of state.gamesById.values()) {
-          if (!game.zipName) continue;
-          const slug = zipSlugFromZipName(game.zipName);
-          hashToSlug.set(computeUnityHash(slug), slug);
+          const knownPrefixes = getKnownUnityPrefixesForGame(game, state.gamesById.values());
+          for (const p of knownPrefixes) {
+            if (p && !prefixToGame.has(p)) {
+              prefixToGame.set(p, game);
+            }
+            if (p && !prefixToGame.has(p.toLowerCase())) {
+              prefixToGame.set(p.toLowerCase(), game);
+            }
+          }
         }
 
-        for (const [hash, records] of byHash) {
-          const slug = hashToSlug.get(hash) || ("unknown-" + hash.slice(0, 8));
+        const usedFileSlugs = new Set();
+        for (const [prefix, records] of byPrefix) {
+          const matchedGame = prefixToGame.get(prefix) || prefixToGame.get(prefix.toLowerCase()) || null;
+          const saveAlias = matchedGame ? getGameSaveAlias(matchedGame) : prefix;
+          const gameName = matchedGame ? String(matchedGame.name || "") : "";
+          const rawSlug = matchedGame && matchedGame.zipName
+            ? zipSlugFromZipName(matchedGame.zipName)
+            : (matchedGame ? zipSlugFromZipName(saveAlias) : (/^[a-f0-9]{32}$/i.test(prefix) ? ("unknown-" + prefix.slice(0, 8)) : prefix));
+          let fileSlug = zipSlugFromZipName(saveAlias || rawSlug);
+          if (usedFileSlugs.has(fileSlug.toLowerCase())) {
+            let n = 2;
+            while (usedFileSlugs.has((fileSlug + "_" + n).toLowerCase())) n += 1;
+            fileSlug = fileSlug + "_" + n;
+          }
+          usedFileSlugs.add(fileSlug.toLowerCase());
+
           const serialized = records.map((r) => ({ key: serializeValue(r.key), value: serializeValue(r.value) }));
-          manifest.games.push({ zipSlug: slug, hash, fileCount: records.length });
+          manifest.games.push({
+            zipSlug: fileSlug,
+            saveAlias,
+            gameName: gameName || saveAlias,
+            hash: prefix,
+            fileCount: records.length
+          });
           zipEntries.push({
-            path: "idbfs/" + slug + ".json",
+            path: "idbfs/" + fileSlug + ".json",
             bytes: new TextEncoder().encode(JSON.stringify(serialized))
           });
         }
@@ -313,6 +560,7 @@ async function exportSaveData() {
     log("Export failed: " + (err.message || String(err)), "error");
   } finally {
     setActionButtonsDisabled(false);
+    clearWorkProgress();
   }
 }
 
@@ -402,16 +650,21 @@ async function applySaveImport(plan) {
     const db = await openIdbfsDb();
     for (const entry of plan.unityGames) {
       if (entry.action === "ignore") continue;
-      let targetHash = entry.sourceHash;
+      let targetPrefixSegment = String(entry.sourceHash || "").trim();
+      let legacyFallbackSegment = "";
       if (entry.action.startsWith("auto:") || entry.action.startsWith("map:")) {
         const gameId = entry.action.split(":")[1];
         const game = state.gamesById.get(gameId);
-        if (game && game.zipName) {
-          targetHash = computeUnityHash(zipSlugFromZipName(game.zipName));
+        if (game) {
+          targetPrefixSegment = getGameSaveAlias(game);
+          const slug = zipSlugFromZipName(game.zipName || game.name || game.id);
+          legacyFallbackSegment = computeUnityEntryDirHash(game.entryPath, slug);
         }
       }
-      const sourcePrefix = "/idbfs/" + entry.sourceHash + "/";
-      const targetPrefix = "/idbfs/" + targetHash + "/";
+      const sourceRoot = "/idbfs/" + entry.sourceHash;
+      const sourcePrefix = sourceRoot + "/";
+      const targetRoot = "/idbfs/" + targetPrefixSegment;
+      const targetPrefix = targetRoot + "/";
       // Write imported records. Do NOT clear existing keys. When a
       // `/PlayerPrefs` file is imported, also ensure a sibling parent entry
       // exists (same timestamp/mode but no contents) so Unity won't recreate
@@ -420,54 +673,62 @@ async function applySaveImport(plan) {
       const existing = await readAllRecordsFromStore(db, IDBFS_STORE);
       const existingKeys = new Set(existing.map((r) => String(r.key)));
 
+      const mapKeyToSegment = (rawKey, segment) => {
+        const key = String(rawKey);
+        if (key === sourceRoot) return "/idbfs/" + segment;
+        if (key.startsWith(sourcePrefix)) return "/idbfs/" + segment + "/" + key.slice(sourcePrefix.length);
+        const genericMatch = key.match(/^\/idbfs\/[^/]+(\/.*)?$/);
+        if (genericMatch) return "/idbfs/" + segment + (genericMatch[1] || "");
+        return key;
+      };
+
       await new Promise((resolve, reject) => {
         const tx = db.transaction(IDBFS_STORE, "readwrite");
         const store = tx.objectStore(IDBFS_STORE);
         const recs = Array.from(entry.records || []);
         // write parents before children by sorting by key length
         recs.sort((a, b) => {
-          const ka = String(a.key).startsWith(sourcePrefix)
-            ? (targetPrefix + String(a.key).slice(sourcePrefix.length))
-            : String(a.key);
-          const kb = String(b.key).startsWith(sourcePrefix)
-            ? (targetPrefix + String(b.key).slice(sourcePrefix.length))
-            : String(b.key);
+          const ka = mapKeyToSegment(a.key, targetPrefixSegment);
+          const kb = mapKeyToSegment(b.key, targetPrefixSegment);
           return ka.length - kb.length;
         });
-        for (const rec of recs) {
-          const key = String(rec.key);
-          const targetKey = key.startsWith(sourcePrefix)
-            ? targetPrefix + key.slice(sourcePrefix.length)
-            : key;
-          const val = deserializeValue(rec.value);
-          store.put(val, targetKey);
+        const targetSegments = [targetPrefixSegment];
+        if (legacyFallbackSegment && legacyFallbackSegment !== targetPrefixSegment) {
+          targetSegments.push(legacyFallbackSegment);
+        }
+        for (const segment of targetSegments) {
+          for (const rec of recs) {
+            const targetKey = mapKeyToSegment(rec.key, segment);
+            const val = deserializeValue(rec.value);
+            store.put(val, targetKey);
 
-          // If this is a PlayerPrefs file, also ensure a parent metadata
-          // entry exists at the containing path (without contents).
-          if (targetKey.endsWith("/PlayerPrefs")) {
-            const parentKey = targetKey.slice(0, targetKey.lastIndexOf("/PlayerPrefs"));
-            if (!existingKeys.has(parentKey)) {
-              const parentVal = {};
-              if (val && typeof val === "object") {
-                if (val.timestamp) {
-                  // Ensure timestamp is a Date instance (not a string/number)
-                  try {
-                    parentVal.timestamp = (val.timestamp instanceof Date)
-                      ? new Date(val.timestamp.getTime())
-                      : new Date(val.timestamp);
-                  } catch (e) {
+            // If this is a PlayerPrefs file, also ensure a parent metadata
+            // entry exists at the containing path (without contents).
+            if (targetKey.endsWith("/PlayerPrefs")) {
+              const parentKey = targetKey.slice(0, targetKey.lastIndexOf("/PlayerPrefs"));
+              if (!existingKeys.has(parentKey)) {
+                const parentVal = {};
+                if (val && typeof val === "object") {
+                  if (val.timestamp) {
+                    // Ensure timestamp is a Date instance (not a string/number)
+                    try {
+                      parentVal.timestamp = (val.timestamp instanceof Date)
+                        ? new Date(val.timestamp.getTime())
+                        : new Date(val.timestamp);
+                    } catch (e) {
+                      parentVal.timestamp = new Date();
+                    }
+                  } else {
                     parentVal.timestamp = new Date();
                   }
                 } else {
                   parentVal.timestamp = new Date();
                 }
-              } else {
-                parentVal.timestamp = new Date();
+                // Parent should be a directory-like entry — use directory mode 16877
+                parentVal.mode = 16877;
+                try { store.put(parentVal, parentKey); } catch (e) { /* ignore */ }
+                existingKeys.add(parentKey);
               }
-              // Parent should be a directory-like entry — use directory mode 16877
-              parentVal.mode = 16877;
-              try { store.put(parentVal, parentKey); } catch (e) { /* ignore */ }
-              existingKeys.add(parentKey);
             }
           }
         }
@@ -551,5 +812,6 @@ async function handleSaveImportFile(file) {
     }
   } finally {
     setActionButtonsDisabled(false);
+    clearWorkProgress();
   }
 }

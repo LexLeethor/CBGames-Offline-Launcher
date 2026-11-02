@@ -70,7 +70,7 @@ async function importFromGithub() {
           treeSha: snapshot.treeSha,
           lastCheckedAt: Date.now()
         };
-        await importGithubTreeDirect(snapshot, (String(snapshot.repo || "github-repo") + " (" + String(snapshot.branch || "main") + ")"), {
+        await importGithubTreeDirect(snapshot, String(snapshot.repo || "github-repo"), {
           streamDuringDownload: true,
           prioritizeSmallest: true,
           skipPatterns: [],
@@ -135,6 +135,7 @@ async function checkAllGithubUpdates() {
         let updateAvailable = false;
         let nextSource = source;
         let sourceLabel = "";
+        let latestTreeSnapshot = null;
 
         if (source.provider === "github-release") {
           const latest = await fetchLatestGithubReleaseInfo(source.owner, source.repo, source.assetName);
@@ -162,17 +163,18 @@ async function checkAllGithubUpdates() {
           }
           sourceLabel = source.url;
         } else if (source.provider === "github-tree") {
-          const latestTree = await fetchGithubRepoTreeSnapshot(source.owner, source.repo, source.branch);
-          updateAvailable = latestTree.treeSha !== source.treeSha;
+          latestTreeSnapshot = await fetchGithubRepoTreeSnapshot(source.owner, source.repo, source.branch);
+          updateAvailable = latestTreeSnapshot.treeSha !== source.treeSha;
           nextSource = normalizeGithubSource({
             provider: "github-tree",
-            owner: latestTree.owner,
-            repo: latestTree.repo,
-            branch: latestTree.branch,
-            treeSha: latestTree.treeSha,
+            owner: latestTreeSnapshot.owner,
+            repo: latestTreeSnapshot.repo,
+            branch: latestTreeSnapshot.branch,
+            treeSha: latestTreeSnapshot.treeSha,
+            fileShas: source.fileShas,
             lastCheckedAt: Date.now()
           }) || source;
-          sourceLabel = source.owner + "/" + source.repo + "@" + latestTree.branch;
+          sourceLabel = source.owner + "/" + source.repo + "@" + latestTreeSnapshot.branch;
         }
 
         if (!updateAvailable) {
@@ -200,7 +202,8 @@ async function checkAllGithubUpdates() {
         }
 
         if (source.provider === "github-tree") {
-          const latestTree = await fetchGithubRepoTreeSnapshot(source.owner, source.repo, source.branch);
+          // Reuse the tree fetched during the check instead of requesting it again.
+          const latestTree = latestTreeSnapshot || await fetchGithubRepoTreeSnapshot(source.owner, source.repo, source.branch);
           const mergedSource = normalizeGithubSource({
             provider: "github-tree",
             owner: latestTree.owner,
@@ -209,11 +212,12 @@ async function checkAllGithubUpdates() {
             treeSha: latestTree.treeSha,
             lastCheckedAt: Date.now()
           });
-          await importGithubTreeDirect(latestTree, selected.name || (String(latestTree.repo || "github-repo") + " (" + String(latestTree.branch || "main") + ")"), {
+          await importGithubTreeDirect(latestTree, selected.name || String(latestTree.repo || "github-repo"), {
             streamDuringDownload: true,
             prioritizeSmallest: true,
             replaceGameId: selected.id,
             importMode: "replace",
+            previousFileShas: source.fileShas,
             githubSource: mergedSource,
             manageUi: false
           });
@@ -240,7 +244,7 @@ async function checkAllGithubUpdates() {
                 treeSha: latestTree.treeSha,
                 lastCheckedAt: Date.now()
               });
-              await importGithubTreeDirect(latestTree, selected.name || (String(latestTree.repo || "github-repo") + " (" + String(latestTree.branch || "main") + ")"), {
+              await importGithubTreeDirect(latestTree, selected.name || String(latestTree.repo || "github-repo"), {
                 streamDuringDownload: true,
                 prioritizeSmallest: true,
                 replaceGameId: selected.id,
@@ -362,6 +366,85 @@ async function recoverInterruptedGithubImports() {
     }
   }
 
+async function computeGitBlobSha1(bytes) {
+    try {
+      if (!(globalThis.crypto && crypto.subtle && typeof crypto.subtle.digest === "function")) {
+        return "";
+      }
+      const header = new TextEncoder().encode("blob " + bytes.byteLength + "\0");
+      const data = new Uint8Array(header.byteLength + bytes.byteLength);
+      data.set(header, 0);
+      data.set(bytes, header.byteLength);
+      const digest = await crypto.subtle.digest("SHA-1", data);
+      return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch {
+      return "";
+    }
+  }
+
+// Legacy imports recorded no file shas; hash the stored blobs (git blob sha1) so even the
+// first incremental update can skip unchanged files. Files stored after extractor
+// transformations do not hash-match their git blob and are simply refetched once.
+async function computeStoredFileShaMap(gameId) {
+    const map = {};
+    let stored = [];
+    try {
+      stored = await getAllFilesForGame(gameId);
+    } catch (error) {
+      console.warn("Could not list stored files for incremental update", error);
+      return map;
+    }
+    for (const record of Array.isArray(stored) ? stored : []) {
+      const path = normalizePath(record && record.path || "");
+      if (!path || (Array.isArray(record.transformations) && record.transformations.length)) {
+        continue;
+      }
+      try {
+        const bytes = new Uint8Array(await record.blob.arrayBuffer());
+        const sha = await computeGitBlobSha1(bytes);
+        if (sha) {
+          map[path] = sha;
+        }
+      } catch {
+        // ignore unreadable records
+      }
+    }
+    return map;
+  }
+
+// Compare a GitHub tree snapshot against the game's stored files and report which paths
+// need fetching and which stored paths were removed upstream.
+async function computeGithubTreeFileDiff(gameId, snapshot, previousFileShas) {
+    const allEntries = Array.isArray(snapshot && snapshot.fileEntries) ? snapshot.fileEntries : [];
+    const nextPathSet = new Set(allEntries.map((entry) => entry.path));
+    const existingGame = state.gamesById.get(gameId) || null;
+    let storedShaByPath = normalizeFileShaMap(
+      previousFileShas || (existingGame && existingGame.githubSource ? existingGame.githubSource.fileShas : null)
+    );
+    if (!Object.keys(storedShaByPath).length) {
+      storedShaByPath = await computeStoredFileShaMap(gameId);
+    }
+    if (!Object.keys(storedShaByPath).length) {
+      // Unknown stored content — caller falls back to a full replace.
+      return { fetchPathSet: null, removedPaths: [] };
+    }
+    const fetchPathSet = new Set();
+    for (const entry of allEntries) {
+      const storedSha = storedShaByPath[entry.path];
+      if (!entry.sha || !storedSha || storedSha !== entry.sha) {
+        fetchPathSet.add(entry.path);
+      }
+    }
+    let storedPaths = [];
+    try {
+      storedPaths = (await getAllFilesForGame(gameId)).map((record) => normalizePath(record.path || ""));
+    } catch (error) {
+      console.warn("Could not list stored files for incremental update", error);
+    }
+    const removedPaths = storedPaths.filter((path) => path && !nextPathSet.has(path));
+    return { fetchPathSet, removedPaths };
+  }
+
 async function importGithubTreeDirect(snapshot, gameName, options) {
     const opts = options && typeof options === "object" ? options : {};
     const replaceGameIdOpt = typeof opts.replaceGameId === "string" ? opts.replaceGameId : "";
@@ -378,28 +461,75 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
       if (!githubSource) {
         throw new Error("GitHub repo metadata is incomplete.");
       }
+      // Record per-file git shas so future updates only redownload changed files.
+      githubSource.fileShas = buildFileShaMap(snapshot && snapshot.fileEntries);
 
       if (opts.streamDuringDownload) {
         // Persist binary assets immediately to cap peak memory; keep text buffered for rewriting.
-        const expectedGameBytes = (Array.isArray(snapshot && snapshot.fileEntries) ? snapshot.fileEntries : [])
-          .reduce((sum, entry) => addGameImportBytes(sum, Number(entry && entry.size) || 0), 0);
+        let gameId = makeId();
+        let preservedName = gameName || String(snapshot.repo || "github-repo");
+        // Incremental update: when replacing a game whose stored file shas we know,
+        // only fetch files that actually changed upstream and drop deleted ones.
+        let fetchPathSet = null;
+        let removedStoredPaths = [];
+        if (replaceGameIdOpt && state.gamesById.has(replaceGameIdOpt)) {
+          gameId = replaceGameIdOpt;
+          const existing = state.gamesById.get(gameId);
+          if (existing && existing.name) preservedName = existing.name;
+          const diff = await computeGithubTreeFileDiff(gameId, snapshot, opts.previousFileShas);
+          fetchPathSet = diff.fetchPathSet;
+          removedStoredPaths = diff.removedPaths;
+        }
+        const allEntries = Array.isArray(snapshot && snapshot.fileEntries) ? snapshot.fileEntries : [];
+        const downloadEntries = fetchPathSet
+          ? allEntries.filter((entry) => fetchPathSet.has(entry.path))
+          : allEntries;
+        // LFS-tracked files appear in the tree as ~130 byte pointer files, so averaging their
+        // declared size would badly understate the import. Resolve the real object sizes once
+        // and reuse them for both the size warning and the download progress total.
+        let lfsSizeMap = null;
+        try {
+          lfsSizeMap = await resolveGithubLfsObjectSizes(snapshot, downloadEntries, allEntries);
+        } catch (error) {
+          console.warn("LFS: size pre-check failed; size estimate may be low", error);
+          lfsSizeMap = null;
+        }
+        const estimateEntrySize = (entry) => {
+          const lfs = lfsSizeMap && entry ? lfsSizeMap.get(entry.path) : null;
+          if (lfs && lfs.size > 0) {
+            return Number(lfs.size);
+          }
+          return Number(entry && entry.size) || 0;
+        };
+        const expectedGameBytes = downloadEntries
+          .reduce((sum, entry) => addGameImportBytes(sum, estimateEntrySize(entry)), 0);
         let oversizedImportConfirmed = isGameImportOversized(expectedGameBytes);
         if (oversizedImportConfirmed) {
           oversizedImportConfirmed = await askLargeGameImportDecision(gameName, expectedGameBytes);
           if (!oversizedImportConfirmed) return;
         }
-        let gameId = makeId();
-        let preservedName = gameName || (String(snapshot.repo || "github-repo") + " (" + String(snapshot.branch || "main") + ")");
-        // If caller wants to replace an existing game, prefer that id and remove old files first
-        if (replaceGameIdOpt && state.gamesById.has(replaceGameIdOpt)) {
-          gameId = replaceGameIdOpt;
+        if (fetchPathSet) {
+          const unchangedCount = allEntries.length - downloadEntries.length;
+          if (unchangedCount > 0) {
+            log(
+              "Incremental update: reusing " + unchangedCount + " unchanged file(s), fetching " +
+              downloadEntries.length + ", removing " + removedStoredPaths.length + "."
+            );
+          }
+          for (const removedPath of removedStoredPaths) {
+            try {
+              await deleteFileRecord(gameId, removedPath);
+            } catch (e) {
+              console.warn('Failed to delete removed file', removedPath, e);
+            }
+          }
+        } else if (replaceGameIdOpt && state.gamesById.has(replaceGameIdOpt)) {
+          // Stored content is unknown — fall back to a full replace.
           try {
             await deleteFilesByGameId(gameId);
           } catch (e) {
             console.warn('Failed to delete existing files for replaceGameId', gameId, e);
           }
-          const existing = state.gamesById.get(gameId);
-          if (existing && existing.name) preservedName = existing.name;
         }
         const gameRecord = {
           id: gameId,
@@ -451,7 +581,7 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
           }
         };
 
-          await downloadGithubTreeEntries(snapshot, "Downloading " + (gameName || "repo"), { onFile, prioritizeSmallest: true, skipPatterns: opts.skipPatterns || [] });
+          await downloadGithubTreeEntries(Object.assign({}, snapshot, { fileEntries: downloadEntries }), "Downloading " + (gameName || "repo"), { onFile, prioritizeSmallest: true, skipPatterns: opts.skipPatterns || [], lfsEntries: allEntries, lfsSizes: lfsSizeMap });
           if (largeImportCanceled) {
             await cleanupInterruptedGithubImport(gameRecord);
             return;
@@ -467,7 +597,9 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
                 baseGameBytes: gameRecord.totalBytes || 0,
                 baseGameFileCount: gameRecord.fileCount || 0,
                 skipLargeWarning: oversizedImportConfirmed,
-                skipExistingFilePaths: (await getAllFilesForGame(gameId)).map((record) => normalizePath(record.path || "")),
+                skipExistingFilePaths: (await getAllFilesForGame(gameId))
+                  .map((record) => normalizePath(record.path || ""))
+                  .filter((path) => !fetchPathSet || !fetchPathSet.has(path)),
                 manageUi: true
               });
             } catch (error) {
@@ -542,7 +674,7 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
 
       const entries = await downloadGithubTreeEntries(snapshot, "Downloading " + (gameName || "repo"));
       await importEntriesDirectly(entries, {
-        gameName: gameName || (String(snapshot.repo || "github-repo") + " (" + String(snapshot.branch || "main") + ")"),
+        gameName: gameName || String(snapshot.repo || "github-repo"),
         githubSource: githubSource,
         importMode: opts.importMode || "separate",
         replaceGameId: opts.replaceGameId || "",

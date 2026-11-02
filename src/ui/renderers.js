@@ -49,10 +49,11 @@ function renderSaveImportList() {
       }
       options += "</optgroup>";
     }
+    const labelText = row.displayLabel || row.saveAlias || row.zipSlug;
     rows.push(
       "<div class=\"save-import-row\">" +
         "<div class=\"save-import-row-info\">" +
-          "<p class=\"save-import-row-slug\"><span class=\"save-import-badge\">Unity</span> " + escapeHtml(row.zipSlug) + "</p>" +
+          "<p class=\"save-import-row-slug\"><span class=\"save-import-badge\">Unity</span> " + escapeHtml(labelText) + "</p>" +
           "<p class=\"save-import-row-meta\">" + String(row.fileCount || 0) + " file(s)</p>" +
         "</div>" +
         "<div class=\"save-import-row-action\">" +

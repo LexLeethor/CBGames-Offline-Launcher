@@ -38,9 +38,13 @@ jobs:
 
       - name: Build debug bundle
         run: node scripts/build_bundle.mjs --out dist/index.debug.html
+        env:
+          GITHUB_API_TOKEN: ${{ secrets.GH_API_TOKEN }}
 
       - name: Build release bundle
         run: node scripts/build_bundle.mjs --minify --out dist/index.html
+        env:
+          GITHUB_API_TOKEN: ${{ secrets.GH_API_TOKEN }}
 
       - name: Upload Bundles (artifact)
         uses: actions/upload-artifact@v3

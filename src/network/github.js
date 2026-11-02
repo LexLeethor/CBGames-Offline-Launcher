@@ -1,5 +1,301 @@
 "use strict";
 
+// ---- GitHub API authentication ----
+// Build-time token. scripts/build_bundle.mjs replaces the quoted placeholder below when
+// the bundle is built with --github-token <token> or with GITHUB_API_TOKEN set in the
+// environment. You can also hard-code a token by editing this line directly.
+// Unreplaced placeholder = unauthenticated api.github.com requests (60 req/hr per IP).
+// With a token the limit rises (5,000 req/hr for a user token).
+// NOTE: the token is embedded in the built HTML and is readable by anyone who gets that
+// file. Use a dedicated token with minimal (ideally no) scopes.
+const BUILD_GITHUB_TOKEN = "";
+
+function getGithubApiToken() {
+    const token = typeof BUILD_GITHUB_TOKEN === "string" ? BUILD_GITHUB_TOKEN.trim() : "";
+    // Treat the unreplaced build placeholder (or anything malformed) as "no token".
+    if (!token || token.indexOf("__") === 0 || !/^[A-Za-z0-9_-]+$/.test(token)) {
+      return "";
+    }
+    return token;
+  }
+
+function githubApiHeaders(extraHeaders) {
+    const headers = { Accept: "application/vnd.github+json" };
+    if (extraHeaders && typeof extraHeaders === "object") {
+      const keys = Object.keys(extraHeaders);
+      for (let i = 0; i < keys.length; i += 1) {
+        headers[keys[i]] = extraHeaders[keys[i]];
+      }
+    }
+    const token = getGithubApiToken();
+    if (token) {
+      headers.Authorization = "Bearer " + token;
+    }
+    return headers;
+  }
+
+// ---- Git LFS sizing ----
+// The git tree API reports a blob's own size, which for an LFS-tracked file is only the
+// tiny pointer file (~130 bytes), not the object it stands for. Downloading such a repo
+// with a byte-based progress bar therefore has a total far smaller than the real payload
+// and kept growing mid-download. To keep the total stable we resolve the real object
+// sizes up front: read .gitattributes to learn which paths are LFS-tracked, then fetch
+// each pointer to read its "size" field.
+const GITHUB_LFS_POINTER_SIGNATURE = "version https://git-lfs.github.com/spec/v1";
+const GITHUB_LFS_MAX_TEXT_BYTES = 4096;
+const GITHUB_LFS_LOOKUP_CONCURRENCY = 5;
+
+function parseGithubLfsPointerText(text) {
+    const source = String(text || "");
+    if (source.indexOf(GITHUB_LFS_POINTER_SIGNATURE) !== 0) {
+      return null;
+    }
+    const oidMatch = source.match(/oid sha256:([a-f0-9]{64})/i);
+    const sizeMatch = source.match(/(?:^|\n)size (\d+)/);
+    const oid = oidMatch ? oidMatch[1] : "";
+    const size = sizeMatch ? Number(sizeMatch[1]) : 0;
+    if (!oid || !(size > 0)) {
+      return null;
+    }
+    return { oid, size };
+  }
+
+function gitAttributesGlobSource(pattern) {
+    let out = "";
+    for (let i = 0; i < pattern.length; i += 1) {
+      const ch = pattern.charAt(i);
+      if (ch === "*") {
+        if (pattern.charAt(i + 1) === "*") {
+          if (pattern.charAt(i + 2) === "/") {
+            out += "(?:.*/)?";
+            i += 2;
+          } else {
+            out += ".*";
+            i += 1;
+          }
+        } else {
+          out += "[^/]*";
+        }
+      } else if (ch === "?") {
+        out += "[^/]";
+      } else if ("\\^$.|+()[]{}".indexOf(ch) >= 0) {
+        out += "\\" + ch;
+      } else {
+        out += ch;
+      }
+    }
+    return out;
+  }
+
+function compileGitAttributesPattern(pattern) {
+    let pat = String(pattern || "").trim();
+    if (!pat) {
+      return null;
+    }
+    let anchored = false;
+    if (pat.charAt(0) === "/") {
+      anchored = true;
+      pat = pat.slice(1);
+    }
+    // Trailing-slash directory patterns do not match recursively in attributes files.
+    if (pat.slice(-1) === "/") {
+      pat = pat.slice(0, -1);
+    }
+    if (!pat) {
+      return null;
+    }
+    // A separator in the middle anchors the pattern to the .gitattributes directory.
+    if (pat.indexOf("/") >= 0) {
+      anchored = true;
+    }
+    try {
+      return { re: new RegExp("^" + gitAttributesGlobSource(pat) + "$"), anchored };
+    } catch (error) {
+      return null;
+    }
+  }
+
+function parseGitAttributesLfsRules(text, dirPrefix) {
+    const dir = String(dirPrefix || "");
+    const rules = [];
+    const lines = String(text || "").split(/\r?\n/);
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || line.charAt(0) === "#") {
+        continue;
+      }
+      const tokens = line.split(/\s+/);
+      if (tokens.length < 2) {
+        continue;
+      }
+      const pattern = tokens[0];
+      // Negative patterns are not allowed in gitattributes files.
+      if (!pattern || pattern.charAt(0) === "!") {
+        continue;
+      }
+      let isLfs = null;
+      for (let i = 1; i < tokens.length; i += 1) {
+        const token = tokens[i];
+        if (token === "filter=lfs" || token === "diff=lfs" || token === "merge=lfs") {
+          isLfs = true;
+        } else if (token === "-filter" || token === "!filter" || token === "-diff" || token === "-merge") {
+          if (isLfs === null) {
+            isLfs = false;
+          }
+        }
+      }
+      const compiled = compileGitAttributesPattern(pattern);
+      if (!compiled) {
+        continue;
+      }
+      rules.push({ dir, anchored: compiled.anchored, re: compiled.re, isLfs });
+    }
+    return rules;
+  }
+
+function pathIsGithubLfsTracked(path, rules) {
+    const target = String(path || "");
+    let decision = null;
+    for (const rule of rules) {
+      if (rule.dir && target.indexOf(rule.dir) !== 0) {
+        continue;
+      }
+      const relPath = target.slice(rule.dir.length);
+      const candidate = rule.anchored ? relPath : (relPath.split("/").pop() || "");
+      if (rule.re.test(candidate) && rule.isLfs !== null) {
+        decision = rule.isLfs;
+      }
+    }
+    return decision === true;
+  }
+
+async function fetchGithubRepoFileText(owner, repo, branch, fileMeta) {
+    const path = String(fileMeta && fileMeta.path || "");
+    const sha = String(fileMeta && fileMeta.sha || "");
+    const readTruncated = async (response) => {
+      if (!response || !response.ok) {
+        return "";
+      }
+      const text = await response.text();
+      return text.length <= GITHUB_LFS_MAX_TEXT_BYTES ? text : "";
+    };
+    if (owner && repo && branch && path) {
+      const rawUrl =
+        "https://raw.githubusercontent.com/" +
+        encodeURIComponent(owner) + "/" +
+        encodeURIComponent(repo) + "/" +
+        encodeURIComponent(branch) + "/" +
+        path.split("/").map(encodeURIComponent).join("/");
+      try {
+        const rawText = await readTruncated(await fetch(rawUrl, { cache: "no-store" }));
+        if (rawText) {
+          return rawText;
+        }
+      } catch (error) {
+        // fall through to the blob API
+      }
+    }
+    if (owner && repo && sha) {
+      const blobApi =
+        "https://api.github.com/repos/" +
+        encodeURIComponent(owner) + "/" +
+        encodeURIComponent(repo) +
+        "/git/blobs/" + encodeURIComponent(sha);
+      try {
+        const blobText = await readTruncated(await fetch(blobApi, {
+          cache: "no-store",
+          headers: githubApiHeaders({ Accept: "application/vnd.github.raw+json" })
+        }));
+        if (blobText) {
+          return blobText;
+        }
+      } catch (error) {
+        // ignore: sizing is best-effort
+      }
+    }
+    return "";
+  }
+
+async function resolveGithubLfsObjectSizes(snapshot, files, discoveryEntries) {
+    const resolved = new Map();
+    const owner = String(snapshot && snapshot.owner || "").trim();
+    const repo = String(snapshot && snapshot.repo || "").trim();
+    const branch = String(snapshot && snapshot.branch || "").trim();
+    // Partial (incremental update) downloads only carry the changed files, so allow the
+    // caller to hand over the full tree purely so .gitattributes can still be found.
+    const allEntries = Array.isArray(discoveryEntries) && discoveryEntries.length
+      ? discoveryEntries
+      : (Array.isArray(snapshot && snapshot.fileEntries) ? snapshot.fileEntries : []);
+    if (!owner || !repo || !branch || !allEntries.length || !Array.isArray(files) || !files.length) {
+      return resolved;
+    }
+    const attributeEntries = allEntries
+      .filter((entry) => entry && typeof entry.path === "string" && /(^|\/)\.gitattributes$/i.test(entry.path))
+      .slice()
+      .sort((a, b) => {
+        const aDepth = (a.path.match(/\//g) || []).length;
+        const bDepth = (b.path.match(/\//g) || []).length;
+        if (aDepth !== bDepth) return aDepth - bDepth;
+        return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+      });
+    if (!attributeEntries.length) {
+      return resolved;
+    }
+
+    const rules = [];
+    for (const entry of attributeEntries) {
+      const text = await fetchGithubRepoFileText(owner, repo, branch, entry);
+      if (!text) {
+        continue;
+      }
+      const dir = entry.path.replace(/[^/]*$/, "");
+      for (const rule of parseGitAttributesLfsRules(text, dir)) {
+        rules.push(rule);
+      }
+    }
+    if (!rules.length) {
+      return resolved;
+    }
+
+    const candidates = files.filter((file) => file && pathIsGithubLfsTracked(file.path, rules));
+    if (!candidates.length) {
+      return resolved;
+    }
+
+    let completed = 0;
+    let next = 0;
+    setWorkProgress("Checking LFS files", 0, candidates.length, {
+      currentText: "0",
+      totalText: String(candidates.length)
+    });
+    const worker = async () => {
+      while (next < candidates.length) {
+        const file = candidates[next];
+        next += 1;
+        const text = await fetchGithubRepoFileText(owner, repo, branch, file);
+        const pointer = parseGithubLfsPointerText(text);
+        if (pointer) {
+          resolved.set(file.path, pointer);
+        }
+        completed += 1;
+        setWorkProgress("Checking LFS files", completed, candidates.length, {
+          currentText: String(completed),
+          totalText: String(candidates.length)
+        });
+      }
+    };
+    const workers = [];
+    const workerCount = Math.min(GITHUB_LFS_LOOKUP_CONCURRENCY, candidates.length);
+    for (let i = 0; i < workerCount; i += 1) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
+    if (resolved.size) {
+      console.info("LFS: resolved object sizes for " + resolved.size + " file(s) before download");
+    }
+    return resolved;
+  }
+
 // Binary media can be persisted as soon as it downloads; text stays pending for patching.
 function isStreamablePath(path) {
     return /\.(?:mp4|webm|ogg|ogv|mov|mkv|png|jpe?g|gif|webp|avif|mp3|wav|flac|m4a)$/i.test(String(path || ""));
@@ -9,10 +305,12 @@ async function fetchLatestGithubReleaseInfo(owner, repo, preferredAssetName) {
     const apiUrl = "https://api.github.com/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + "/releases/latest";
     const response = await fetch(apiUrl, {
       cache: "no-store",
-      headers: {
-        Accept: "application/vnd.github+json"
-      }
+      headers: githubApiHeaders()
     });
+    const releaseRateLimitErr = checkGithubResponseRateLimit(response);
+    if (releaseRateLimitErr) {
+      throw releaseRateLimitErr;
+    }
     if (!response.ok) {
       const extra = response.status === 404 ? " No latest release found for this repo." : "";
       throw new Error("GitHub release lookup failed (" + response.status + ")." + extra);
@@ -57,9 +355,7 @@ async function fetchGithubRepoTreeSnapshot(owner, repo, branchHint) {
       const repoApiUrl = "https://api.github.com/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo);
       const repoResponse = await fetch(repoApiUrl, {
         cache: "no-store",
-        headers: {
-          Accept: "application/vnd.github+json"
-        }
+        headers: githubApiHeaders()
       });
       const repoRateLimitErr = checkGithubResponseRateLimit(repoResponse);
       if (repoRateLimitErr) {
@@ -81,9 +377,7 @@ async function fetchGithubRepoTreeSnapshot(owner, repo, branchHint) {
       "/git/trees/" + encodeURIComponent(branch) + "?recursive=1";
     const treeResponse = await fetch(treeApiUrl, {
       cache: "no-store",
-      headers: {
-        Accept: "application/vnd.github+json"
-      }
+      headers: githubApiHeaders()
     });
     const treeRateLimitErr = checkGithubResponseRateLimit(treeResponse);
     if (treeRateLimitErr) {
@@ -134,7 +428,7 @@ async function fetchGithubRepoTreeSnapshot(owner, repo, branchHint) {
 async function buildZipFileFromGithubTree(snapshot, labelPrefix) {
     const entries = await downloadGithubTreeEntries(snapshot, labelPrefix);
     const zipBlob = createZipStoreArchive(entries);
-    const fileName = String(snapshot.repo || "github-repo") + "-" + String(snapshot.branch || "branch") + ".zip";
+    const fileName = String(snapshot.repo || "github-repo") + ".zip";
     return new File([zipBlob], fileName, { type: "application/zip" });
   }
 
@@ -146,12 +440,17 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
   let onFile = null;
   let prioritizeSmallest = false;
   let skipPatterns = [];
+  let lfsDiscoveryEntries = null;
+  let presetLfsSizes = null;
   if (typeof third === 'function') {
     onFile = third;
   } else if (third && typeof third === 'object') {
     onFile = typeof third.onFile === 'function' ? third.onFile : null;
     prioritizeSmallest = !!third.prioritizeSmallest;
     skipPatterns = Array.isArray(third.skipPatterns) ? third.skipPatterns.slice() : [];
+    lfsDiscoveryEntries = Array.isArray(third.lfsEntries) ? third.lfsEntries : null;
+    // A caller may have resolved LFS sizes already (e.g. to size the large-import warning).
+    presetLfsSizes = third.lfsSizes instanceof Map ? third.lfsSizes : null;
   }
 
   const entries = [];
@@ -176,36 +475,69 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
   };
 
   let files = filesOrig.filter(f => !shouldSkip(f.path));
+
+  // LFS files ship a ~130 byte pointer in the tree, so the sizes above are far smaller than
+  // the payload. Resolve the real object sizes first so the progress total is correct and
+  // stable from the first byte instead of growing as pointers are discovered.
+  let lfsObjects = new Map();
+  if (presetLfsSizes) {
+    // Reuse the caller's resolution instead of probing every pointer file a second time.
+    lfsObjects = presetLfsSizes;
+  } else {
+    try {
+      lfsObjects = await resolveGithubLfsObjectSizes(snapshot, files, lfsDiscoveryEntries);
+    } catch (error) {
+      console.warn("LFS: size pre-check failed; progress sizes may adjust during download", error);
+      lfsObjects = new Map();
+    }
+  }
+  const sizeFor = (file) => {
+    const lfs = lfsObjects.get(file && file.path);
+    if (lfs && lfs.size > 0) {
+      return lfs.size;
+    }
+    const declared = Number(file && file.size);
+    return Number.isFinite(declared) && declared >= 0 ? declared : null;
+  };
+
   if (prioritizeSmallest) {
     const INF = Number.MAX_SAFE_INTEGER;
     files.sort((a, b) => {
-      const as = Number.isFinite(Number(a && a.size)) ? Number(a.size) : INF;
-      const bs = Number.isFinite(Number(b && b.size)) ? Number(b.size) : INF;
-      return as - bs;
+      const as = sizeFor(a);
+      const bs = sizeFor(b);
+      return (as === null ? INF : as) - (bs === null ? INF : bs);
     });
   }
 
-  const hasKnownSizes = files.every((file) => Number.isFinite(file && file.size) && Number(file.size) >= 0);
-  let totalBytes = hasKnownSizes
-    ? files.reduce((sum, file) => sum + (Number(file.size) || 0), 0)
-    : 0;
+  const hasKnownSizes = files.every((file) => sizeFor(file) !== null);
+  // Bytes the progress total accounts for, per file. Corrections rewrite a file's budget
+  // rather than adding to the total, so the same file can never be counted twice.
+  const budgetedSizes = new Map();
+  let totalBytes = 0;
+  if (hasKnownSizes) {
+    for (const file of files) {
+      const size = sizeFor(file);
+      budgetedSizes.set(file.path, size);
+      totalBytes += size;
+    }
+  }
   let downloadedBytes = 0;
-  const ensureTotalAtLeast = (value) => {
-    const actual = Number(value || 0);
-    if (actual > 0 && actual > totalBytes) {
-      totalBytes = actual;
+  const setFileBudget = (path, size) => {
+    const actual = Number(size || 0);
+    if (!(actual > 0)) {
+      return;
     }
-  };
-  const adjustTotalForActualSize = (actualLength, pointerLength) => {
-    const actual = Number(actualLength || 0);
-    const pointer = Number(pointerLength || 0);
-    const delta = actual - pointer;
-    if (delta > 0 && totalBytes > 0) {
-      totalBytes += delta;
+    const previous = budgetedSizes.get(path) || 0;
+    if (previous === actual) {
+      return;
     }
-    ensureTotalAtLeast(downloadedBytes + actual);
+    budgetedSizes.set(path, actual);
+    totalBytes += actual - previous;
   };
   const updateProgress = (fileIndex) => {
+    if (downloadedBytes > totalBytes) {
+      totalBytes = downloadedBytes;
+    }
     const fileSuffix = files.length > 0
       ? " (" + (fileIndex + 1) + "/" + files.length + ")"
       : "";
@@ -282,7 +614,7 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
                 "/git/blobs/" + encodeURIComponent(fileMeta.sha);
               const blobResp = await fetch(blobApi, {
                 cache: "no-store",
-                headers: { Accept: "application/vnd.github.raw+json" }
+                headers: githubApiHeaders({ Accept: "application/vnd.github.raw+json" })
               });
               if (blobResp && blobResp.ok) {
                 const blobBytes = await streamResponseToUint8Array(blobResp, fileIndex);
@@ -295,6 +627,8 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
                 })();
 
                 if (probeText.startsWith("version https://git-lfs.github.com/spec/v1")) {
+                  // The pointer file is not part of the payload; the object budget covers this file.
+                  downloadedBytes = Math.max(0, downloadedBytes - blobBytes.length);
                   const oidMatch = probeText.match(/oid sha256:([a-f0-9]{64})/i);
                   const sizeMatch = probeText.match(/size (\d+)/i);
                   const oid = oidMatch ? oidMatch[1] : "";
@@ -311,13 +645,12 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
                       if (mediaResp && mediaResp.ok) {
                         const mediaLength = Number(mediaResp.headers.get("content-length")) || size || 0;
                         if (mediaLength > 0) {
-                          adjustTotalForActualSize(mediaLength, fileMeta.size);
-                          ensureTotalAtLeast(downloadedBytes + mediaLength);
+                          setFileBudget(fileMeta.path, mediaLength);
                           updateProgress(fileIndex);
                         }
                         const mediaBytes = await streamResponseToUint8Array(mediaResp, fileIndex);
                         console.info("LFS: media.githubusercontent.com returned object for", fileMeta.path);
-                        ensureTotalAtLeast(downloadedBytes);
+                        setFileBudget(fileMeta.path, mediaBytes.length);
                         updateProgress(fileIndex);
                         return mediaBytes;
                       }
@@ -373,8 +706,7 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
                       const size = sizeMatch ? Number(sizeMatch[1]) : 0;
                       console.info("LFS: detected pointer in repo file", fileMeta.path, { oid, size });
                       if (size > 0) {
-                        adjustTotalForActualSize(size, fileMeta.size);
-                        ensureTotalAtLeast(downloadedBytes + size);
+                        setFileBudget(fileMeta.path, size);
                         updateProgress(fileIndex);
                       }
 
@@ -391,13 +723,12 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
                           if (mediaResp && mediaResp.ok) {
                             const mediaLength = Number(mediaResp.headers.get("content-length")) || size || 0;
                             if (mediaLength > 0) {
-                              adjustTotalForActualSize(mediaLength, fileMeta.size);
-                              ensureTotalAtLeast(downloadedBytes + mediaLength);
+                              setFileBudget(fileMeta.path, mediaLength);
                               updateProgress(fileIndex);
                             }
                             const mediaBytes = await streamResponseToUint8Array(mediaResp, fileIndex);
                             console.info("LFS: media.githubusercontent.com returned object for repo file", fileMeta.path);
-                            ensureTotalAtLeast(downloadedBytes);
+                            setFileBudget(fileMeta.path, mediaBytes.length);
                             updateProgress(fileIndex);
                             return mediaBytes;
                           }
@@ -423,8 +754,7 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
                               const objResp = await fetch(downloadAction.href, { cache: "no-store", redirect: "follow" });
                               if (objResp && objResp.ok) {
                                 const objBytes = await streamResponseToUint8Array(objResp, fileIndex);
-                                adjustTotalForActualSize(objBytes.length, fileMeta.size);
-                                ensureTotalAtLeast(downloadedBytes);
+                                setFileBudget(fileMeta.path, objBytes.length);
                                 updateProgress(fileIndex);
                                 return objBytes;
                               }
@@ -542,10 +872,10 @@ async function downloadGithubReleaseZip(sourceMeta, label) {
       "/releases/assets/" +
       encodeURIComponent(String(assetId));
     return downloadZipFromUrl(apiUrl, label, {
-      headers: {
+      headers: githubApiHeaders({
         Accept: "application/octet-stream",
         "X-GitHub-Api-Version": "2022-11-28"
-      },
+      }),
       skipHead: true,
       fileNameHint: String(source.assetName || "") || (repo + "-release.zip")
     });

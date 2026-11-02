@@ -888,6 +888,7 @@ openOpsModalButton.addEventListener("click", showOpsModal);
     };
     closeSaveImportModal();
     setActionButtonsDisabled(true);
+    setWorkProgress("Importing save data", 0, 0);
     try {
       await applySaveImport(plan);
       const parts = [];
@@ -904,6 +905,7 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       openWrongZipTypeModal(message, "Save Import Failed");
     } finally {
       setActionButtonsDisabled(false);
+      clearWorkProgress();
     }
   });
 

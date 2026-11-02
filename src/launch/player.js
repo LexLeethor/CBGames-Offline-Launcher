@@ -678,7 +678,7 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow, extractorVers
         } else if (/\.(?:js|mjs|cjs|unityweb)$/i.test(record.path)) {
           let sourceBlob = record.blob;
           let gzipDecompressed = false;
-          if (version < 8 && /\.unityweb$/i.test(record.path) && /framework/i.test(record.path)) {
+          if (/\.unityweb$/i.test(record.path) && /framework/i.test(record.path)) {
             const header = new Uint8Array(await record.blob.slice(0, 2).arrayBuffer());
             if (header[0] === 0x1f && header[1] === 0x8b) {
               try {
@@ -686,7 +686,8 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow, extractorVers
                 const gzBuf = await new Response(gzStream).arrayBuffer();
                 const decoded = new TextDecoder().decode(new Uint8Array(gzBuf));
                 if (decoded.indexOf("_JS_SystemInfo_GetDocumentURL") !== -1 ||
-                    decoded.indexOf("document.baseURI||self.location.href") !== -1) {
+                    decoded.indexOf("document.baseURI||self.location.href") !== -1 ||
+                    decoded.indexOf("var IDBFS={") !== -1) {
                   sourceBlob = new Blob([decoded], { type: "application/javascript" });
                   gzipDecompressed = true;
                 }
@@ -706,6 +707,8 @@ async function buildObjectUrlCacheFromRecords(records, hostWindow, extractorVers
               dataUrlCache
             );
             rewritten = applyStaticJsPatches(rewritten, record.path);
+          } else {
+            rewritten = patchUnityIdbfsSource(rewritten);
           }
 
           if (!gzipDecompressed && rewritten === originalText) {
@@ -1049,6 +1052,102 @@ async function patchDynamicImportsInText(text, modulePath, recordsByPath, dataUr
     return result;
   }
 
+function patchUnityIdbfsSource(source) {
+    if (typeof source !== "string" || source.indexOf("var IDBFS={") === -1) {
+      return source;
+    }
+    if (
+      source.indexOf("__unityIDBFSKeyToDatabase(path)") !== -1 &&
+      source.indexOf("__unityIDBFSKeyFromDatabase(cursor.primaryKey)") !== -1
+    ) {
+      return source;
+    }
+
+    const toDbExpr = "(typeof window!=='undefined'&&typeof window.__unityIDBFSKeyToDatabase==='function'?window.__unityIDBFSKeyToDatabase(path):path)";
+    const fromDbExpr = "(typeof window!=='undefined'&&typeof window.__unityIDBFSKeyFromDatabase==='function'?window.__unityIDBFSKeyFromDatabase(cursor.primaryKey):cursor.primaryKey)";
+
+    const modernUnityStyle =
+      source.indexOf('entries[cursor.primaryKey]={"timestamp":cursor.key};cursor.continue()') !== -1 &&
+      source.indexOf("loadRemoteEntry:(store,path,callback)=>{var req=store.get(path);") !== -1 &&
+      source.indexOf("storeRemoteEntry:(store,path,entry,callback)=>{try{var req=store.put(entry,path)}") !== -1 &&
+      source.indexOf("removeRemoteEntry:(store,path,callback)=>{var req=store.delete(path);") !== -1;
+
+    if (modernUnityStyle) {
+      let out = source.replace(
+        'entries[cursor.primaryKey]={"timestamp":cursor.key};cursor.continue()',
+        'entries[' + fromDbExpr + ']={"timestamp":cursor.key};cursor.continue()'
+      );
+      out = out.replace(
+        'loadRemoteEntry:(store,path,callback)=>{var req=store.get(path);req.onsuccess=event=>{callback(null,event.target.result)};req.onerror=e=>{callback(this.error);e.preventDefault()}},',
+        'loadRemoteEntry:(store,path,callback)=>{var key=' + toDbExpr + ';var req=store.get(key);req.onsuccess=event=>{if(event.target.result!==undefined||key===path){callback(null,event.target.result);return}var legacy=store.get(path);legacy.onsuccess=fallback=>{callback(null,fallback.target.result)};legacy.onerror=e=>{callback(this.error);e.preventDefault()}};req.onerror=e=>{callback(this.error);e.preventDefault()}},'
+      );
+      out = out.replace(
+        'storeRemoteEntry:(store,path,entry,callback)=>{try{var req=store.put(entry,path)}catch(e){callback(e);return}req.onsuccess=()=>{callback(null)};req.onerror=e=>{callback(this.error);e.preventDefault()}},',
+        'storeRemoteEntry:(store,path,entry,callback)=>{try{var req=store.put(entry,' + toDbExpr + ')}catch(e){callback(e);return}req.onsuccess=()=>{callback(null)};req.onerror=e=>{callback(this.error);e.preventDefault()}},'
+      );
+      out = out.replace(
+        'removeRemoteEntry:(store,path,callback)=>{var req=store.delete(path);req.onsuccess=()=>{callback(null)};req.onerror=e=>{callback(this.error);e.preventDefault()}},',
+        'removeRemoteEntry:(store,path,callback)=>{var key=' + toDbExpr + ';var req=store.delete(key);req.onsuccess=()=>{if(key===path){callback(null);return}var legacy=store.delete(path);legacy.onsuccess=()=>{callback(null)};legacy.onerror=e=>{callback(this.error);e.preventDefault()}};req.onerror=e=>{callback(this.error);e.preventDefault()}},'
+      );
+      if (
+        out.indexOf('loadRemoteEntry:(store,path,callback)=>{var req=store.get(path);') === -1 &&
+        out.indexOf('storeRemoteEntry:(store,path,entry,callback)=>{try{var req=store.put(entry,path)}') === -1 &&
+        out.indexOf('removeRemoteEntry:(store,path,callback)=>{var req=store.delete(path);') === -1
+      ) {
+        return out;
+      }
+    }
+
+    const roundsExpected = [
+      'entries[cursor.primaryKey]={"timestamp":cursor.key};cursor.continue()',
+      'loadRemoteEntry:(store,path,callback)=>{var req=store.get(path);req.onsuccess=(event=>{callback(null,event.target.result)});req.onerror=(e=>{callback(this.error);e.preventDefault()})},',
+      'storeRemoteEntry:(store,path,entry,callback)=>{try{var req=store.put(entry,path)}catch(e){callback(e);return}req.onsuccess=(()=>{callback(null)});req.onerror=(e=>{callback(this.error);e.preventDefault()})},',
+      'removeRemoteEntry:(store,path,callback)=>{var req=store.delete(path);req.onsuccess=(()=>{callback(null)});req.onerror=(e=>{callback(this.error);e.preventDefault()})},'
+    ];
+    if (roundsExpected.every((frag) => source.indexOf(frag) !== -1)) {
+      let out = source.replace(roundsExpected[0], 'entries[' + fromDbExpr + ']={"timestamp":cursor.key};cursor.continue()');
+      out = out.replace(roundsExpected[1], 'loadRemoteEntry:(store,path,callback)=>{var key=' + toDbExpr + ';var req=store.get(key);req.onsuccess=(event=>{if(event.target.result!==undefined||key===path){callback(null,event.target.result);return}var legacy=store.get(path);legacy.onsuccess=(fallback=>{callback(null,fallback.target.result)});legacy.onerror=(e=>{callback(this.error);e.preventDefault()})});req.onerror=(e=>{callback(this.error);e.preventDefault()})},');
+      out = out.replace(roundsExpected[2], 'storeRemoteEntry:(store,path,entry,callback)=>{try{var req=store.put(entry,' + toDbExpr + ')}catch(e){callback(e);return}req.onsuccess=(()=>{callback(null)});req.onerror=(e=>{callback(this.error);e.preventDefault()})},');
+      out = out.replace(roundsExpected[3], 'removeRemoteEntry:(store,path,callback)=>{var key=' + toDbExpr + ';var req=store.delete(key);req.onsuccess=(()=>{if(key===path){callback(null);return}var legacy=store.delete(path);legacy.onsuccess=(()=>{callback(null)});legacy.onerror=(e=>{callback(this.error);e.preventDefault()})});req.onerror=(e=>{callback(this.error);e.preventDefault()})},');
+      return out;
+    }
+
+    const spiderheckExpected = [
+      'entries[cursor.primaryKey]={timestamp:cursor.key};cursor.continue()',
+      'loadRemoteEntry:(function(store,path,callback){var req=store.get(path);req.onsuccess=(function(event){callback(null,event.target.result)});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),',
+      'storeRemoteEntry:(function(store,path,entry,callback){var req=store.put(entry,path);req.onsuccess=(function(){callback(null)});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),',
+      'removeRemoteEntry:(function(store,path,callback){var req=store.delete(path);req.onsuccess=(function(){callback(null)});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),'
+    ];
+    const quotedTimestamp = 'entries[cursor.primaryKey]={"timestamp":cursor.key};cursor.continue()';
+    if (
+      spiderheckExpected.slice(1).every((frag) => source.indexOf(frag) !== -1) &&
+      (source.indexOf(spiderheckExpected[0]) !== -1 || source.indexOf(quotedTimestamp) !== -1)
+    ) {
+      const tsTarget = source.indexOf(quotedTimestamp) !== -1 ? quotedTimestamp : spiderheckExpected[0];
+      let out = source.replace(tsTarget, 'entries[' + fromDbExpr + ']={timestamp:cursor.key};cursor.continue()');
+      out = out.replace(spiderheckExpected[1], 'loadRemoteEntry:(function(store,path,callback){var key=' + toDbExpr + ';var req=store.get(key);req.onsuccess=(function(event){if(event.target.result!==undefined||key===path){callback(null,event.target.result);return}var legacy=store.get(path);legacy.onsuccess=(function(fallback){callback(null,fallback.target.result)});legacy.onerror=(function(e){callback(this.error);e.preventDefault()})});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),');
+      out = out.replace(spiderheckExpected[2], 'storeRemoteEntry:(function(store,path,entry,callback){var req=store.put(entry,' + toDbExpr + ');req.onsuccess=(function(){callback(null)});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),');
+      out = out.replace(spiderheckExpected[3], 'removeRemoteEntry:(function(store,path,callback){var key=' + toDbExpr + ';var req=store.delete(key);req.onsuccess=(function(){if(key===path){callback(null);return}var legacy=store.delete(path);legacy.onsuccess=(function(){callback(null)});legacy.onerror=(function(e){callback(this.error);e.preventDefault()})});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),');
+      return out;
+    }
+
+    const functionStyleExpected = [
+      'entries[cursor.primaryKey]={"timestamp":cursor.key};cursor.continue()',
+      'loadRemoteEntry:function(store,path,callback){var req=store.get(path);req.onsuccess=function(event){callback(null,event.target.result)};req.onerror=function(e){callback(this.error);e.preventDefault()}}',
+      'storeRemoteEntry:function(store,path,entry,callback){var req=store.put(entry,path);req.onsuccess=function(){callback(null)};req.onerror=function(e){callback(this.error);e.preventDefault()}}',
+      'removeRemoteEntry:function(store,path,callback){var req=store.delete(path);req.onsuccess=function(){callback(null)};req.onerror=function(e){callback(this.error);e.preventDefault()}}'
+    ];
+    if (functionStyleExpected.every((frag) => source.indexOf(frag) !== -1)) {
+      let out = source.replace(functionStyleExpected[0], 'entries[' + fromDbExpr + ']={"timestamp":cursor.key};cursor.continue()');
+      out = out.replace(functionStyleExpected[1], 'loadRemoteEntry:function(store,path,callback){var key=' + toDbExpr + ';var req=store.get(key);req.onsuccess=function(event){if(event.target.result!==undefined||key===path){callback(null,event.target.result);return}var legacy=store.get(path);legacy.onsuccess=function(fallback){callback(null,fallback.target.result)};legacy.onerror=function(e){callback(this.error);e.preventDefault()}};req.onerror=function(e){callback(this.error);e.preventDefault()}}');
+      out = out.replace(functionStyleExpected[2], 'storeRemoteEntry:function(store,path,entry,callback){var req=store.put(entry,' + toDbExpr + ');req.onsuccess=function(){callback(null)};req.onerror=function(e){callback(this.error);e.preventDefault()}}');
+      out = out.replace(functionStyleExpected[3], 'removeRemoteEntry:function(store,path,callback){var key=' + toDbExpr + ';var req=store.delete(key);req.onsuccess=function(){if(key===path){callback(null);return}var legacy=store.delete(path);legacy.onsuccess=function(){callback(null)};legacy.onerror=function(e){callback(this.error);e.preventDefault()}};req.onerror=function(e){callback(this.error);e.preventDefault()}}');
+      return out;
+    }
+
+    return source;
+  }
+
 function applyStaticJsPatches(text, path) {
     let rewrittenText = text;
     if (rewrittenText.indexOf("document.baseURI||self.location.href") !== -1) {
@@ -1075,6 +1174,7 @@ function applyStaticJsPatches(text, path) {
         "GetDocumentURL(buffer,bufferSize){var _u=self.__unityDocUrl||document.URL;if(buffer)stringToUTF8(_u,buffer,bufferSize);return lengthBytesUTF8(_u)"
       );
     }
+    rewrittenText = patchUnityIdbfsSource(rewrittenText);
     return rewrittenText;
   }
 
@@ -1211,14 +1311,19 @@ function injectRuntimeBridge(documentNode, options = {}) {
       .replace(/\.zip$/i, "")
       .replace(/[^A-Za-z0-9._-]/g, "_")
       .slice(0, 128) || (typeof options.gameId === "string" ? options.gameId : "game");
+    const saveAlias = typeof options.saveAlias === "string" && options.saveAlias.trim()
+      ? options.saveAlias.trim()
+      : (typeof options.gameName === "string" && options.gameName.trim() ? options.gameName.trim() : zipSlug);
     const bridgeMeta = {
       gameId: typeof options.gameId === "string" ? options.gameId : "",
       gameName: typeof options.gameName === "string" ? options.gameName : "",
       entryPath: typeof options.entryPath === "string" ? normalizePath(options.entryPath) : "",
       zipSlug,
+      saveAlias,
       freeBlobAfterLoad: Boolean(options.freeBlobAfterLoad)
     };
     const script = documentNode.createElement("script");
+    script.setAttribute("data-save-alias", saveAlias);
     script.textContent = `
 (function () {
   var __launcherBridgeMeta = ${JSON.stringify(bridgeMeta)};
@@ -1230,6 +1335,434 @@ function injectRuntimeBridge(documentNode, options = {}) {
   // a game stored as "bad-piggies/..." would get a URL with "bad_piggies/..." causing
   // every StreamingAssets XHR to miss the objectUrl cache and hit the network.
   self.__unityDocUrl = __launcherVfsOrigin + (__launcherBridgeMeta.entryPath || __launcherBridgeMeta.zipSlug + "/index.html");
+
+  (function installUnityIDBFSDirectoryAlias() {
+    var currentScript = document.currentScript;
+    var saveAlias = (currentScript && currentScript.getAttribute("data-save-alias")) || __launcherBridgeMeta.saveAlias || __launcherBridgeMeta.gameName || __launcherBridgeMeta.zipSlug;
+    if (!saveAlias) {
+      console.warn("IDBFS alias hook: no saveAlias configured; leaving saves unchanged.");
+      return;
+    }
+
+    function md5Hex(text) {
+      var input = new TextEncoder().encode(text);
+      var bitLength = input.length * 8;
+      var paddedLength = (((input.length + 8) >> 6) + 1) << 6;
+      var bytes = new Uint8Array(paddedLength);
+      bytes.set(input);
+      bytes[input.length] = 128;
+      for (var n = 0; n < 8; n++) bytes[paddedLength - 8 + n] = Math.floor(bitLength / Math.pow(256, n)) & 255;
+
+      var shifts = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+      var constants = [];
+      for (var n = 0; n < 64; n++) constants[n] = Math.floor(Math.abs(Math.sin(n + 1)) * 4294967296) >>> 0;
+
+      var a0 = 1732584193, b0 = 4023233417, c0 = 2562383102, d0 = 271733878;
+      for (var offset = 0; offset < bytes.length; offset += 64) {
+        var words = [];
+        for (var n = 0; n < 16; n++) {
+          var p = offset + n * 4;
+          words[n] = (bytes[p] | bytes[p + 1] << 8 | bytes[p + 2] << 16 | bytes[p + 3] << 24) >>> 0;
+        }
+
+        var a = a0, b = b0, c = c0, d = d0;
+        for (var i = 0; i < 64; i++) {
+          var round = i >> 4, f, g;
+          if (round === 0) { f = (b & c) | (~b & d); g = i; }
+          else if (round === 1) { f = (d & b) | (~d & c); g = (5 * i + 1) % 16; }
+          else if (round === 2) { f = b ^ c ^ d; g = (3 * i + 5) % 16; }
+          else { f = c ^ (b | ~d); g = (7 * i) % 16; }
+          var shift = shifts[round * 4 + i % 4];
+          var sum = (a + f + constants[i] + words[g]) >>> 0;
+          var rotated = (sum << shift | sum >>> (32 - shift)) >>> 0;
+          a = d; d = c; c = b; b = (b + rotated) >>> 0;
+        }
+        a0 = (a0 + a) >>> 0;
+        b0 = (b0 + b) >>> 0;
+        c0 = (c0 + c) >>> 0;
+        d0 = (d0 + d) >>> 0;
+      }
+
+      return [a0, b0, c0, d0].map(function(word) {
+        return [0, 8, 16, 24].map(function(n) {
+          return ("0" + ((word >>> n) & 255).toString(16)).slice(-2);
+        }).join("");
+      }).join("");
+    }
+
+    function computeSaveHashForUrl(rawUrl) {
+      try {
+        var directoryURL = new URL(rawUrl);
+        directoryURL.search = "";
+        directoryURL.hash = "";
+        directoryURL.pathname = directoryURL.pathname.substring(0, directoryURL.pathname.lastIndexOf("/") + 1);
+        return md5Hex(directoryURL.href.replace(/\\/$/, ""));
+      } catch (_err) {
+        var text = String(rawUrl || "");
+        var qIdx = text.indexOf("?");
+        if (qIdx !== -1) text = text.slice(0, qIdx);
+        var hIdx = text.indexOf("#");
+        if (hIdx !== -1) text = text.slice(0, hIdx);
+        var sIdx = text.lastIndexOf("/");
+        if (sIdx !== -1) text = text.slice(0, sIdx);
+        return md5Hex(text.replace(/\\/$/, ""));
+      }
+    }
+
+    var saveHash = computeSaveHashForUrl(self.__unityDocUrl || document.URL);
+    var legacySlugHash = md5Hex(__launcherVfsOrigin.replace(/\\/$/, "") + "/" + (__launcherBridgeMeta.zipSlug || "game"));
+    var docUrlHash = computeSaveHashForUrl(document.URL);
+    var knownHashes = [saveHash];
+    if (legacySlugHash && knownHashes.indexOf(legacySlugHash) === -1) knownHashes.push(legacySlugHash);
+    if (docUrlHash && knownHashes.indexOf(docUrlHash) === -1) knownHashes.push(docUrlHash);
+
+    function mapPath(path, from, to) {
+      var prefix = "/idbfs/" + from;
+      return typeof path === "string" && (path === prefix || path.indexOf(prefix + "/") === 0)
+        ? "/idbfs/" + to + path.substring(prefix.length) : path;
+    }
+
+    window.__unityIDBFSKeyToDatabase = function(path) {
+      if (typeof path !== "string") return path;
+      for (var i = 0; i < knownHashes.length; i++) {
+        var mapped = mapPath(path, knownHashes[i], saveAlias);
+        if (mapped !== path) return mapped;
+      }
+      return path;
+    };
+    window.__unityIDBFSKeyFromDatabase = function(path) {
+      if (typeof path !== "string") return path;
+      var fromAlias = mapPath(path, saveAlias, saveHash);
+      if (fromAlias !== path) return fromAlias;
+      for (var i = 1; i < knownHashes.length; i++) {
+        var fromLegacy = mapPath(path, knownHashes[i], saveHash);
+        if (fromLegacy !== path) return fromLegacy;
+      }
+      return path;
+    };
+    window.__unityIDBFSDirectoryAlias = { alias: saveAlias, hash: saveHash, knownHashes: knownHashes };
+
+    function patchFrameworkSource(source) {
+      if (source.indexOf("__unityIDBFSKeyToDatabase(path)") !== -1 &&
+          source.indexOf("__unityIDBFSKeyFromDatabase(cursor.primaryKey)") !== -1) return source;
+
+      var modernUnityStyle = source.indexOf("var IDBFS={") !== -1 &&
+        source.indexOf('entries[cursor.primaryKey]={"timestamp":cursor.key};cursor.continue()') !== -1 &&
+        source.indexOf("loadRemoteEntry:(store,path,callback)=>{var req=store.get(path);") !== -1 &&
+        source.indexOf("storeRemoteEntry:(store,path,entry,callback)=>{try{var req=store.put(entry,path)}") !== -1 &&
+        source.indexOf("removeRemoteEntry:(store,path,callback)=>{var req=store.delete(path);") !== -1;
+
+      if (modernUnityStyle) {
+        source = source.replace(
+          'entries[cursor.primaryKey]={"timestamp":cursor.key};cursor.continue()',
+          'entries[window.__unityIDBFSKeyFromDatabase(cursor.primaryKey)]={"timestamp":cursor.key};cursor.continue()'
+        );
+        source = source.replace(
+          'loadRemoteEntry:(store,path,callback)=>{var req=store.get(path);req.onsuccess=event=>{callback(null,event.target.result)};req.onerror=e=>{callback(this.error);e.preventDefault()}},',
+          'loadRemoteEntry:(store,path,callback)=>{var key=window.__unityIDBFSKeyToDatabase(path);var req=store.get(key);req.onsuccess=event=>{if(event.target.result!==undefined||key===path){callback(null,event.target.result);return}var legacy=store.get(path);legacy.onsuccess=fallback=>{callback(null,fallback.target.result)};legacy.onerror=e=>{callback(this.error);e.preventDefault()}};req.onerror=e=>{callback(this.error);e.preventDefault()}},'
+        );
+        source = source.replace(
+          'storeRemoteEntry:(store,path,entry,callback)=>{try{var req=store.put(entry,path)}catch(e){callback(e);return}req.onsuccess=()=>{callback(null)};req.onerror=e=>{callback(this.error);e.preventDefault()}},',
+          'storeRemoteEntry:(store,path,entry,callback)=>{try{var req=store.put(entry,window.__unityIDBFSKeyToDatabase(path))}catch(e){callback(e);return}req.onsuccess=()=>{callback(null)};req.onerror=e=>{callback(this.error);e.preventDefault()}},'
+        );
+        source = source.replace(
+          'removeRemoteEntry:(store,path,callback)=>{var req=store.delete(path);req.onsuccess=()=>{callback(null)};req.onerror=e=>{callback(this.error);e.preventDefault()}},',
+          'removeRemoteEntry:(store,path,callback)=>{var key=window.__unityIDBFSKeyToDatabase(path);var req=store.delete(key);req.onsuccess=()=>{if(key===path){callback(null);return}var legacy=store.delete(path);legacy.onsuccess=()=>{callback(null)};legacy.onerror=e=>{callback(this.error);e.preventDefault()}};req.onerror=e=>{callback(this.error);e.preventDefault()}},'
+        );
+        if (source.indexOf('loadRemoteEntry:(store,path,callback)=>{var req=store.get(path);') !== -1 ||
+            source.indexOf('storeRemoteEntry:(store,path,entry,callback)=>{try{var req=store.put(entry,path)}') !== -1 ||
+            source.indexOf('removeRemoteEntry:(store,path,callback)=>{var req=store.delete(path);') !== -1) {
+          throw new Error("Unity 6 IDBFS methods were not fully rewritten.");
+        }
+        return source;
+      }
+
+      var roundsStyle = source.indexOf("var IDBFS={") !== -1 &&
+        source.indexOf("__unityIDBFSKeyToDatabase(path)") === -1 &&
+        source.indexOf("__unityIDBFSKeyFromDatabase(cursor.primaryKey)") === -1 &&
+        source.indexOf('entries[cursor.primaryKey]={"timestamp":cursor.key};cursor.continue()') !== -1 &&
+        source.indexOf("loadRemoteEntry:(store,path,callback)=>{") !== -1 &&
+        source.indexOf("storeRemoteEntry:(store,path,entry,callback)=>{") !== -1 &&
+        source.indexOf("removeRemoteEntry:(store,path,callback)=>{") !== -1;
+
+      var spiderheckStyle = source.indexOf("var IDBFS={") !== -1 &&
+        source.indexOf("__unityIDBFSKeyToDatabase(path)") === -1 &&
+        source.indexOf("__unityIDBFSKeyFromDatabase(cursor.primaryKey)") === -1 &&
+        source.indexOf('entries[cursor.primaryKey]={timestamp:cursor.key};cursor.continue()') !== -1 &&
+        source.indexOf('loadRemoteEntry:(function(store,path,callback){var req=store.get(path);') !== -1 &&
+        source.indexOf('storeRemoteEntry:(function(store,path,entry,callback){var req=store.put(entry,path);') !== -1 &&
+        source.indexOf('removeRemoteEntry:(function(store,path,callback){var req=store.delete(path);') !== -1;
+
+      if (spiderheckStyle) {
+        var spiderheckExpected = [
+          'entries[cursor.primaryKey]={timestamp:cursor.key};cursor.continue()',
+          'loadRemoteEntry:(function(store,path,callback){var req=store.get(path);req.onsuccess=(function(event){callback(null,event.target.result)});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),',
+          'storeRemoteEntry:(function(store,path,entry,callback){var req=store.put(entry,path);req.onsuccess=(function(){callback(null)});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),',
+          'removeRemoteEntry:(function(store,path,callback){var req=store.delete(path);req.onsuccess=(function(){callback(null)});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),'
+        ];
+        if (!spiderheckExpected.every(function(fragment) { return source.indexOf(fragment) !== -1; })) {
+          throw new Error("Spiderheck framework IDBFS hooks did not match the supported pattern.");
+        }
+        source = source.replace(spiderheckExpected[0], 'entries[window.__unityIDBFSKeyFromDatabase(cursor.primaryKey)]={timestamp:cursor.key};cursor.continue()');
+        source = source.replace(spiderheckExpected[1], 'loadRemoteEntry:(function(store,path,callback){var key=window.__unityIDBFSKeyToDatabase(path);var req=store.get(key);req.onsuccess=(function(event){if(event.target.result!==undefined||key===path){callback(null,event.target.result);return}var legacy=store.get(path);legacy.onsuccess=(function(fallback){callback(null,fallback.target.result)});legacy.onerror=(function(e){callback(this.error);e.preventDefault()})});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),');
+        source = source.replace(spiderheckExpected[2], 'storeRemoteEntry:(function(store,path,entry,callback){var req=store.put(entry,window.__unityIDBFSKeyToDatabase(path));req.onsuccess=(function(){callback(null)});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),');
+        source = source.replace(spiderheckExpected[3], 'removeRemoteEntry:(function(store,path,callback){var key=window.__unityIDBFSKeyToDatabase(path);var req=store.delete(key);req.onsuccess=(function(){if(key===path){callback(null);return}var legacy=store.delete(path);legacy.onsuccess=(function(){callback(null)});legacy.onerror=(function(e){callback(this.error);e.preventDefault()})});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),');
+        return source;
+      }
+
+      if (roundsStyle) {
+        var remoteEntryEnd = 'entries[cursor.primaryKey]={"timestamp":cursor.key};cursor.continue()';
+        var loadEntry = 'loadRemoteEntry:(store,path,callback)=>{var req=store.get(path);req.onsuccess=(event=>{callback(null,event.target.result)});req.onerror=(e=>{callback(this.error);e.preventDefault()})},';
+        var storeEntry = 'storeRemoteEntry:(store,path,entry,callback)=>{try{var req=store.put(entry,path)}catch(e){callback(e);return}req.onsuccess=(()=>{callback(null)});req.onerror=(e=>{callback(this.error);e.preventDefault()})},';
+        var removeEntry = 'removeRemoteEntry:(store,path,callback)=>{var req=store.delete(path);req.onsuccess=(()=>{callback(null)});req.onerror=(e=>{callback(this.error);e.preventDefault()})},';
+        [remoteEntryEnd, loadEntry, storeEntry, removeEntry].forEach(function(fragment) {
+          if (source.indexOf(fragment) === -1) throw new Error("ROUNDS IDBFS hook changed; refusing partial patch.");
+        });
+        source = source.replace(remoteEntryEnd, 'entries[window.__unityIDBFSKeyFromDatabase(cursor.primaryKey)]={"timestamp":cursor.key};cursor.continue()');
+        source = source.replace(loadEntry, 'loadRemoteEntry:(store,path,callback)=>{var key=window.__unityIDBFSKeyToDatabase(path);var req=store.get(key);req.onsuccess=(event=>{if(event.target.result!==undefined||key===path){callback(null,event.target.result);return}var legacy=store.get(path);legacy.onsuccess=(fallback=>{callback(null,fallback.target.result)});legacy.onerror=(e=>{callback(this.error);e.preventDefault()})});req.onerror=(e=>{callback(this.error);e.preventDefault()})},');
+        source = source.replace(storeEntry, 'storeRemoteEntry:(store,path,entry,callback)=>{try{var req=store.put(entry,window.__unityIDBFSKeyToDatabase(path))}catch(e){callback(e);return}req.onsuccess=(()=>{callback(null)});req.onerror=(e=>{callback(this.error);e.preventDefault()})},');
+        source = source.replace(removeEntry, 'removeRemoteEntry:(store,path,callback)=>{var key=window.__unityIDBFSKeyToDatabase(path);var req=store.delete(key);req.onsuccess=(()=>{if(key===path){callback(null);return}var legacy=store.delete(path);legacy.onsuccess=(()=>{callback(null)});legacy.onerror=(e=>{callback(this.error);e.preventDefault()})});req.onerror=(e=>{callback(this.error);e.preventDefault()})},');
+        return source;
+      }
+
+      var functionSource = source;
+      var functionStyle = functionSource.indexOf("var IDBFS={") !== -1 &&
+        functionSource.indexOf("__unityIDBFSKeyToDatabase(path)") === -1 &&
+        functionSource.indexOf("__unityIDBFSKeyFromDatabase(cursor.primaryKey)") === -1 &&
+        functionSource.indexOf('entries[cursor.primaryKey]={"timestamp":cursor.key};cursor.continue()') !== -1 &&
+        functionSource.indexOf('loadRemoteEntry:function(store,path,callback){var req=store.get(path);') !== -1 &&
+        functionSource.indexOf('storeRemoteEntry:function(store,path,entry,callback){var req=store.put(entry,path);') !== -1 &&
+        functionSource.indexOf('removeRemoteEntry:function(store,path,callback){var req=store.delete(path);') !== -1;
+
+      if (functionStyle) {
+        var functionStyleExpected = [
+          'entries[cursor.primaryKey]={"timestamp":cursor.key};cursor.continue()',
+          'loadRemoteEntry:function(store,path,callback){var req=store.get(path);req.onsuccess=function(event){callback(null,event.target.result)};req.onerror=function(e){callback(this.error);e.preventDefault()}}',
+          'storeRemoteEntry:function(store,path,entry,callback){var req=store.put(entry,path);req.onsuccess=function(){callback(null)};req.onerror=function(e){callback(this.error);e.preventDefault()}}',
+          'removeRemoteEntry:function(store,path,callback){var req=store.delete(path);req.onsuccess=function(){callback(null)};req.onerror=function(e){callback(this.error);e.preventDefault()}}'
+        ];
+        if (!functionStyleExpected.every(function(fragment) { return functionSource.indexOf(fragment) !== -1; })) {
+          throw new Error("Function-style framework IDBFS hooks did not match the supported pattern.");
+        }
+        var patchedFunctionSource = functionSource.replace(functionStyleExpected[0], 'entries[window.__unityIDBFSKeyFromDatabase(cursor.primaryKey)]={"timestamp":cursor.key};cursor.continue()');
+        patchedFunctionSource = patchedFunctionSource.replace(functionStyleExpected[1], 'loadRemoteEntry:function(store,path,callback){var key=window.__unityIDBFSKeyToDatabase(path);var req=store.get(key);req.onsuccess=function(event){if(event.target.result!==undefined||key===path){callback(null,event.target.result);return}var legacy=store.get(path);legacy.onsuccess=function(fallback){callback(null,fallback.target.result)};legacy.onerror=function(e){callback(this.error);e.preventDefault()}};req.onerror=function(e){callback(this.error);e.preventDefault()}}');
+        patchedFunctionSource = patchedFunctionSource.replace(functionStyleExpected[2], 'storeRemoteEntry:function(store,path,entry,callback){var req=store.put(entry,window.__unityIDBFSKeyToDatabase(path));req.onsuccess=function(){callback(null)};req.onerror=function(e){callback(this.error);e.preventDefault()}}');
+        patchedFunctionSource = patchedFunctionSource.replace(functionStyleExpected[3], 'removeRemoteEntry:function(store,path,callback){var key=window.__unityIDBFSKeyToDatabase(path);var req=store.delete(key);req.onsuccess=function(){if(key===path){callback(null);return}var legacy=store.delete(path);legacy.onsuccess=function(){callback(null)};legacy.onerror=function(e){callback(this.error);e.preventDefault()}};req.onerror=function(e){callback(this.error);e.preventDefault()}}');
+        return patchedFunctionSource;
+      }
+
+      var expected = [
+        'entries[cursor.primaryKey]={timestamp:cursor.key};cursor.continue()',
+        'loadRemoteEntry:(function(store,path,callback){var req=store.get(path);req.onsuccess=(function(event){callback(null,event.target.result)});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),',
+        'storeRemoteEntry:(function(store,path,entry,callback){var req=store.put(entry,path);req.onsuccess=(function(){callback(null)});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),',
+        'removeRemoteEntry:(function(store,path,callback){var req=store.delete(path);req.onsuccess=(function(){callback(null)});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),'
+      ];
+      var timestampStyle = source.indexOf('entries[cursor.primaryKey]={"timestamp":cursor.key};cursor.continue()') !== -1;
+      if (source.indexOf("var IDBFS={") === -1 || source.indexOf("__unityIDBFSKeyToDatabase(path)") !== -1 || source.indexOf("__unityIDBFSKeyFromDatabase(cursor.primaryKey)") !== -1 || !expected.slice(1).every(function(fragment) { return source.indexOf(fragment) !== -1; }) || (!timestampStyle && source.indexOf(expected[0]) === -1)) {
+        throw new Error("Framework IDBFS hooks did not match the supported pattern.");
+      }
+
+      source = source.replace(timestampStyle ? 'entries[cursor.primaryKey]={"timestamp":cursor.key};cursor.continue()' : expected[0], 'entries[window.__unityIDBFSKeyFromDatabase(cursor.primaryKey)]={timestamp:cursor.key};cursor.continue()');
+      source = source.replace(expected[1], 'loadRemoteEntry:(function(store,path,callback){var key=window.__unityIDBFSKeyToDatabase(path);var req=store.get(key);req.onsuccess=(function(event){if(event.target.result!==undefined||key===path){callback(null,event.target.result);return}var legacy=store.get(path);legacy.onsuccess=(function(fallback){callback(null,fallback.target.result)});legacy.onerror=(function(e){callback(this.error);e.preventDefault()})});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),');
+      source = source.replace(expected[2], 'storeRemoteEntry:(function(store,path,entry,callback){var req=store.put(entry,window.__unityIDBFSKeyToDatabase(path));req.onsuccess=(function(){callback(null)});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),');
+      source = source.replace(expected[3], 'removeRemoteEntry:(function(store,path,callback){var key=window.__unityIDBFSKeyToDatabase(path);var req=store.delete(key);req.onsuccess=(function(){if(key===path){callback(null);return}var legacy=store.delete(path);legacy.onsuccess=(function(){callback(null)});legacy.onerror=(function(e){callback(this.error);e.preventDefault()})});req.onerror=(function(e){callback(this.error);e.preventDefault()})}),');
+      return source;
+    }
+
+    function installLegacyUnityLoaderHook() {
+      var loader = window.UnityLoader;
+      if (!loader || typeof loader.loadCode !== "function" || loader.loadCode.__idbfsAliasHooked) return false;
+      var originalLoadCode = loader.loadCode;
+      function wrappedLoadCode() {
+        var args = Array.prototype.slice.call(arguments);
+        var metadata = args.length >= 4 ? args[3] : args[2];
+        var frameworkUrl = metadata && metadata.url;
+        var isFramework = /\\.framework(?:\\.js)?(?:\\.unityweb)?(?:[?#].*)?$/i.test(frameworkUrl || "") || (args.length >= 2 && typeof args[0] !== "undefined");
+        if (isFramework) {
+          var codeIndex = args.length >= 4 ? 1 : 0;
+          try {
+            var code = args[codeIndex];
+            if (typeof code === "string" || code instanceof Uint8Array || code instanceof ArrayBuffer) {
+              var source = typeof code === "string" ? code : new TextDecoder("utf-8").decode(code);
+              if (source.indexOf("var IDBFS={") !== -1) {
+                var patched = patchFrameworkSource(source);
+                args[codeIndex] = typeof code === "string" ? patched : new TextEncoder().encode(patched);
+              }
+            }
+          } catch (error) {
+            console.warn("IDBFS alias hook: legacy Unity framework left unchanged.", error);
+          }
+        }
+        return originalLoadCode.apply(this, args);
+      }
+      wrappedLoadCode.__idbfsAliasHooked = true;
+      loader.loadCode = wrappedLoadCode;
+      return true;
+    }
+
+    function installFrameworkFetchHook() {
+      var originalFetch = window.fetch;
+      if (typeof originalFetch !== "function" || originalFetch.__idbfsAliasHooked) return false;
+
+      function isCandidateUrl(input) {
+        try {
+          var value = typeof input === "string" || input instanceof URL ? input : input && input.url;
+          var text = String(value || "");
+          if (text.startsWith("blob:")) return true;
+          var url = new URL(text, document.URL);
+          return /\\.framework(?:\\.js)?(?:\\.unityweb)?$/i.test(url.pathname);
+        } catch (error) {
+          return false;
+        }
+      }
+
+      function patchedFetch(input, init) {
+        var method = (init && init.method) || (input && input.method) || "GET";
+        if (!isCandidateUrl(input) || method.toUpperCase() !== "GET") {
+          return originalFetch.apply(this, arguments);
+        }
+
+        return originalFetch.apply(this, arguments).then(function(response) {
+          if (!response || !response.ok) return response;
+          return response.clone().arrayBuffer().then(function(buffer) {
+            var patched;
+            try {
+              var source = new TextDecoder("utf-8").decode(buffer);
+              if (source.indexOf("var IDBFS={") === -1) return response;
+              patched = new TextEncoder().encode(patchFrameworkSource(source));
+            } catch (error) {
+              console.warn("IDBFS alias hook: fetched Unity framework left unchanged.", error);
+              return response;
+            }
+
+            var headers = new Headers(response.headers);
+            headers.delete("content-encoding");
+            headers.delete("content-length");
+            headers.delete("transfer-encoding");
+            return new Response(patched, {
+              status: response.status,
+              statusText: response.statusText,
+              headers: headers
+            });
+          }).catch(function() {
+            return response;
+          });
+        });
+      }
+
+      patchedFetch.__idbfsAliasHooked = true;
+      window.fetch = patchedFetch;
+      return true;
+    }
+
+    function installCreateUnityInstanceHook() {
+      var patchTargetAppend = function(target) {
+        if (!target || typeof target.appendChild !== "function" || target.appendChild.__idbfsAliasHooked) return false;
+        var appendOriginal = target.appendChild;
+
+        function patchedAppendChild(element) {
+          var rawSrc = element && element.tagName === "SCRIPT" ? (element.getAttribute("src") || element.src || "") : "";
+          var originalURL;
+          try {
+            originalURL = rawSrc ? new URL(rawSrc, document.URL) : null;
+          } catch (error) {
+            originalURL = null;
+          }
+          if (!originalURL) return appendOriginal.call(this, element);
+
+          if (/\\.(?:loader\\.js|unityloader\\.js)$/i.test(originalURL.pathname)) {
+            var loaderOnload = element.onload;
+            element.onload = function(event) {
+              installLegacyUnityLoaderHook();
+              if (loaderOnload) loaderOnload.call(element, event);
+            };
+            return appendOriginal.call(this, element);
+          }
+
+          var isFrameworkPath = /\\.framework(?:\\.js)?(?:\\.unityweb)?$/i.test(originalURL.pathname);
+          var isBlobScript = originalURL.protocol === "blob:";
+          if (!isFrameworkPath && !isBlobScript) {
+            return appendOriginal.call(this, element);
+          }
+
+          var selfTarget = this;
+          var onload = element.onload, onerror = element.onerror;
+          function appendUnchanged(error) {
+            if (error && isFrameworkPath) console.warn("IDBFS alias hook: modern Unity framework left unchanged.", error);
+            element.onload = onload;
+            element.onerror = onerror;
+            element.src = originalURL.href;
+            appendOriginal.call(selfTarget, element);
+          }
+
+          function appendPatched(source) {
+            if (typeof source !== "string" || source.indexOf("var IDBFS={") === -1) {
+              appendUnchanged(null);
+              return;
+            }
+            source = patchFrameworkSource(source);
+            var blobURL = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));
+            element.onload = function(event) {
+              URL.revokeObjectURL(blobURL);
+              if (onload) onload.call(element, event);
+            };
+            element.onerror = function(event) {
+              URL.revokeObjectURL(blobURL);
+              appendUnchanged(new Error("Blob framework load failed; retrying original URL."));
+              if (onerror) onerror.call(element, event);
+            };
+            element.src = blobURL;
+            appendOriginal.call(selfTarget, element);
+          }
+
+          var fetchFramework = window.fetch;
+          if (typeof fetchFramework === "function") {
+            fetchFramework.call(window, originalURL.href).then(function(response) {
+              if (!response.ok) throw new Error("Framework fetch failed: " + response.status);
+              return response.text();
+            }).then(appendPatched).catch(appendUnchanged);
+          } else if (typeof window.XMLHttpRequest === "function") {
+            var request = new window.XMLHttpRequest();
+            request.open("GET", originalURL.href);
+            request.onload = function() {
+              if ((request.status < 200 || request.status >= 300) && !(request.status === 0 && request.responseText)) {
+                appendUnchanged(new Error("Framework fetch failed: " + request.status));
+                return;
+              }
+              try { appendPatched(request.responseText); }
+              catch (error) { appendUnchanged(error); }
+            };
+            request.onerror = function() { appendUnchanged(new Error("Framework fetch failed.")); };
+            request.send();
+          } else {
+            appendUnchanged(new Error("No fetch or XMLHttpRequest support."));
+          }
+          return element;
+        }
+
+        patchedAppendChild.__idbfsAliasHooked = true;
+        target.appendChild = patchedAppendChild;
+        return true;
+      };
+
+      patchTargetAppend(document.head);
+      if (document.body) {
+        patchTargetAppend(document.body);
+      } else {
+        document.addEventListener("DOMContentLoaded", function() {
+          patchTargetAppend(document.body);
+        }, { once: true });
+      }
+      return true;
+    }
+
+    window.__installUnityIDBFSRuntimeHooks = function() {
+      installLegacyUnityLoaderHook();
+      installCreateUnityInstanceHook();
+      installFrameworkFetchHook();
+    };
+    window.__installUnityIDBFSRuntimeHooks();
+  })();
   var __errorArgToString = function (value) {
     if (value == null) return String(value);
     if (value instanceof Error) {
@@ -2341,6 +2874,9 @@ function injectRuntimeBridge(documentNode, options = {}) {
     }
     return nativeFetch(input, init);
   };
+  if (typeof window.__installUnityIDBFSRuntimeHooks === "function") {
+    window.__installUnityIDBFSRuntimeHooks();
+  }
 
   if (window.Request) {
     var NativeRequest = window.Request;

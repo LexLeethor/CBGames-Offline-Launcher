@@ -18,14 +18,19 @@ function parseArgs() {
   const args = process.argv.slice(2);
   let minify = false;
   let out = join(ROOT, "dist", "index.html");
+  // GitHub API token to embed in the bundle (raises api.github.com rate limits).
+  // The flag wins over the environment variable.
+  let githubToken = String(process.env.GITHUB_API_TOKEN || "").trim();
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--minify") {
       minify = true;
     } else if (args[i] === "--out" && args[i + 1]) {
       out = args[++i];
+    } else if (args[i] === "--github-token" && args[i + 1]) {
+      githubToken = String(args[++i] || "").trim();
     }
   }
-  return { minify, out };
+  return { minify, out, githubToken };
 }
 
 function collectMatches(html, re) {
@@ -36,7 +41,15 @@ function collectMatches(html, re) {
 }
 
 function main() {
-  const { minify, out } = parseArgs();
+  const { minify, out, githubToken } = parseArgs();
+
+  if (githubToken && !/^[A-Za-z0-9_-]{8,255}$/.test(githubToken)) {
+    console.error(
+      "Error: GitHub token contains unexpected characters. " +
+      "Expected letters, digits, underscores and dashes only."
+    );
+    process.exit(1);
+  }
 
   if (!existsSync(DEV_HTML)) {
     console.error("Missing index.html");
@@ -101,6 +114,20 @@ function main() {
     return `// ---- ${src} ----\n${content.trimEnd()}\n`;
   });
   let js = jsChunks.join("\n").trimEnd() + "\n";
+
+  // --- Embed the GitHub API token placeholder replacement ---
+  const TOKEN_PLACEHOLDER = "\"__GITHUB_TOKEN__\"";
+  if (githubToken) {
+    if (js.indexOf(TOKEN_PLACEHOLDER) === -1) {
+      console.error("Warning: __GITHUB_TOKEN__ placeholder not found in bundle; token not embedded.");
+    }
+    js = js.split(TOKEN_PLACEHOLDER).join(JSON.stringify(githubToken));
+    console.log("Embedded GitHub API token into bundle (value not printed).");
+    console.log(
+      "Warning: the token is readable by anyone who has this HTML file. " +
+      "Use a dedicated minimal-scope token and rotate it if the file is shared."
+    );
+  }
 
   // Strip the script tags from the HTML text.
   html = html.replace(/<script\s+src="(\.\/(?:src|lib)\/[^"]+)"\s*>\s*<\/script>/g, "");

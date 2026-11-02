@@ -145,6 +145,35 @@ function toHttpUrl(value) {
     }
   }
 
+function normalizeFileShaMap(raw) {
+    const out = {};
+    const source = raw && typeof raw === "object" ? raw : null;
+    if (!source) {
+      return out;
+    }
+    const keys = Object.keys(source);
+    for (let i = 0; i < keys.length; i += 1) {
+      const path = normalizePath(keys[i]);
+      const sha = String(source[keys[i]] || "").trim().toLowerCase();
+      if (path && /^[0-9a-f]{7,64}$/.test(sha)) {
+        out[path] = sha;
+      }
+    }
+    return out;
+  }
+
+function buildFileShaMap(fileEntries) {
+    const out = {};
+    for (const entry of Array.isArray(fileEntries) ? fileEntries : []) {
+      const path = normalizePath(entry && entry.path || "");
+      const sha = String(entry && entry.sha || "").trim().toLowerCase();
+      if (path && /^[0-9a-f]{7,64}$/.test(sha)) {
+        out[path] = sha;
+      }
+    }
+    return out;
+  }
+
 function normalizeGithubSource(raw) {
     const source = raw && typeof raw === "object" ? raw : null;
     if (!source) {
@@ -200,6 +229,7 @@ function normalizeGithubSource(raw) {
         repo,
         branch,
         treeSha,
+        fileShas: normalizeFileShaMap(source.fileShas),
         lastCheckedAt: Number(source.lastCheckedAt) || 0
       };
     }
@@ -592,8 +622,11 @@ function checkGithubResponseRateLimit(response) {
         const mins = Math.ceil(diffSecs / 60);
         minsText = mins > 0 ? ` Rate limit resets in approx ${mins} minute(s).` : "";
       }
+      const tokenHint = typeof getGithubApiToken === "function" && getGithubApiToken()
+        ? ""
+        : " Building the launcher with a GitHub API token (GITHUB_API_TOKEN or --github-token) raises this limit.";
       return new Error(
-        `GitHub Rate Limit Exceeded (HTTP ${response.status}). You have reached GitHub's API request limit.${minsText} Please wait or download the ZIP manually from GitHub.`
+        `GitHub Rate Limit Exceeded (HTTP ${response.status}). You have reached GitHub's API request limit.${minsText}${tokenHint} Please wait or download the ZIP manually from GitHub.`
       );
     }
     return null;

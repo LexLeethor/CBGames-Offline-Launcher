@@ -22,19 +22,58 @@ function closeSaveImportModal() {
 function openSaveImportModal(parsed) {
   // Unity /idbfs games
   const unityRows = [];
+  const allGames = Array.from(state.gamesById.values());
   for (const [zipSlug, entry] of parsed.gameEntries) {
     const expectedHash = computeUnityHash(zipSlug);
+    const sourceHash = String(entry.hash || "").trim();
+    const saveAlias = String(entry.saveAlias || "").trim();
+    const entryGameName = String(entry.gameName || "").trim();
+    const normalizedCandidates = new Set(
+      [zipSlug, saveAlias, entryGameName, sourceHash]
+        .map((s) => normalizeGameIdentity(s.replace(/\s+#\d+$/i, "")))
+        .filter(Boolean)
+    );
+    const exactLowerCandidates = new Set(
+      [zipSlug, saveAlias, entryGameName, sourceHash]
+        .map((s) => String(s || "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+
     let autoGameId = null;
-    for (const game of state.gamesById.values()) {
-      if (!game.zipName) continue;
-      const slug = zipSlugFromZipName(game.zipName);
-      if (slug === zipSlug || computeUnityHash(slug) === expectedHash) {
+    // 1. Exact saveAlias / prefix / hash match
+    for (const game of allGames) {
+      const knownPrefixes = getKnownUnityPrefixesForGame(game, allGames);
+      const matchedExact = knownPrefixes.some((p) => {
+        const lower = String(p || "").toLowerCase();
+        return exactLowerCandidates.has(lower) || p === expectedHash;
+      });
+      if (matchedExact) {
         autoGameId = game.id;
         break;
       }
     }
+    // 2. Fallback: normalized game name or zipName match
+    if (!autoGameId) {
+      for (const game of allGames) {
+        const gameAliasNorm = normalizeGameIdentity(getGameSaveAlias(game, allGames).replace(/\s+#\d+$/i, ""));
+        const gameNameNorm = normalizeGameIdentity(game.name || "");
+        const gameZipNorm = normalizeGameIdentity(game.zipName || "");
+        if (
+          (gameAliasNorm && normalizedCandidates.has(gameAliasNorm)) ||
+          (gameNameNorm && normalizedCandidates.has(gameNameNorm)) ||
+          (gameZipNorm && normalizedCandidates.has(gameZipNorm))
+        ) {
+          autoGameId = game.id;
+          break;
+        }
+      }
+    }
+
+    const displayLabel = saveAlias || entryGameName || zipSlug;
     unityRows.push({
       zipSlug,
+      displayLabel,
+      saveAlias,
       sourceHash: entry.hash,
       fileCount: entry.fileCount,
       records: entry.records,
@@ -575,11 +614,35 @@ async function saveGameEditName(options = {}) {
 
     const previousName = String(game.name || "");
     const previousThumbnailDataUrl = game.thumbnailDataUrl;
+    const previousAliasMap = typeof computeGameSaveAliasesMap === "function"
+      ? computeGameSaveAliasesMap(state.gamesById.values())
+      : new Map();
+    const previousAlias = previousAliasMap.get(game.id) || (typeof game.saveAlias === "string" ? game.saveAlias.trim() : "");
     game.name = nextName;
     state.gamesById.set(game.id, game);
 
+    const nextAliasMap = typeof computeGameSaveAliasesMap === "function"
+      ? computeGameSaveAliasesMap(state.gamesById.values())
+      : new Map();
+    const nextAlias = nextAliasMap.get(game.id) || nextName;
+    game.saveAlias = nextAlias;
+
     try {
       await putGame(game);
+      if (typeof renameIdbfsKeyPrefix === "function") {
+        const slug = zipSlugFromZipName(game.zipName || previousName || game.id);
+        const candidateOldPrefixes = [];
+        if (previousAlias && previousAlias !== nextAlias) candidateOldPrefixes.push(previousAlias);
+        if (previousName && previousName !== nextAlias) candidateOldPrefixes.push(previousName);
+        if (slug) {
+          candidateOldPrefixes.push(computeUnityHash(slug));
+          candidateOldPrefixes.push( computeUnityEntryDirHash(game.entryPath, slug) );
+        }
+        await renameIdbfsKeyPrefix(candidateOldPrefixes, nextAlias);
+      }
+      if (typeof syncAllGameSaveAliases === "function") {
+        await syncAllGameSaveAliases({ migrateIdbfs: true, persistGames: true });
+      }
       if (!options.skipRecoveryFiles) {
         await persistEditedGameRecoveryFiles(game);
       }

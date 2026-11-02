@@ -68,7 +68,7 @@ function requestToObjectUrl(rawValue, baseHref) {
   // Expose the resolver for the player window bridge.
   window.__loaderResolve = requestToObjectUrl;
 
-const CURRENT_EXTRACTOR_VERSION = 8;
+const CURRENT_EXTRACTOR_VERSION = 9;
 
 function bytesEqual(a, b) {
     if (a === b) {
@@ -329,10 +329,17 @@ async function launchSelectedGame() {
 
       const htmlText = await entryRecord.blob.text();
       await buildStaticModuleImportMap();
+      if (typeof syncAllGameSaveAliases === "function") {
+        await syncAllGameSaveAliases({ migrateIdbfs: true, persistGames: true });
+      }
+      const saveAlias = typeof getGameSaveAlias === "function"
+        ? getGameSaveAlias(game)
+        : (game.name || game.zipName || game.id || "game");
       const rewrittenHtml = rewriteDocumentHtml(htmlText, entryPath, {
         gameId: game.id,
         gameName: game.name || "",
         zipName: game.zipName || "",
+        saveAlias,
         entryPath,
         thumbnailDataUrl: typeof game.thumbnailDataUrl === "string" ? game.thumbnailDataUrl : "",
         freeBlobAfterLoad: Boolean(game.blobFreeAfterLoad)

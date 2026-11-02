@@ -12,6 +12,20 @@ Minified single-file bundle:
 
 The GitHub Actions workflow `Build Launcher Bundles` runs the same script, uploads both the debug and minified bundles, and attaches them to releases.
 
+GitHub API token (higher rate limits)
+
+GitHub's API allows only 60 unauthenticated requests per hour per IP, which runs out quickly when importing repos or checking updates. Embed a personal access token to raise the limit to 5,000 requests per hour:
+
+`GITHUB_API_TOKEN=ghp_... node scripts/build_bundle.mjs`
+
+or pass it as a flag: `node scripts/build_bundle.mjs --github-token ghp_...`
+
+You can also hard-code one directly by editing `BUILD_GITHUB_TOKEN` in `src/network/github.js`.
+
+For CI-built release bundles, add a repository secret named `GH_API_TOKEN` — the build workflows pass it to the bundle automatically (builds without it stay unauthenticated).
+
+**Warning:** the token is embedded in plain text in the built HTML file, so anyone who has the file can use it. Use a dedicated token with minimal (ideally no) scopes, and rotate it if the file gets shared.
+
 Tested Games (Working)
 
 | Game | Status |

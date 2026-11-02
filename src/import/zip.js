@@ -549,6 +549,7 @@ async function handleDroppedZipFiles(fileList) {
         openWrongZipTypeModal(message, "Import Failed");
       } finally {
         setDragDropOverlay(false);
+        clearWorkProgress();
       }
     }
   }
