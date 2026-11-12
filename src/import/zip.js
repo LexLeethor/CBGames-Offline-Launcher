@@ -377,6 +377,7 @@ async function importZipFile(file, options) {
         thumbnailDataUrl: preservedThumbnail || launcherMetadata.thumbnailDataUrl || autoThumbnailDataUrl,
         githubSource: resolvedGithubSource,
         unityDetected: detectUnityByPaths(processedEntries.map((entry) => entry.path)),
+        godotDetected: detectGodotByPaths(processedEntries.map((entry) => entry.path)),
         flashDetected: detectFlashByPaths(processedEntries.map((entry) => entry.path))
       };
       if (importMode === "replace" && existingGame) {
@@ -408,11 +409,14 @@ async function importZipFile(file, options) {
           transformations
         });
 
-        if (!gameRecord.unityDetected && /\.html?$/i.test(entry.path)) {
+        if ((!gameRecord.unityDetected || !gameRecord.godotDetected) && /\.html?$/i.test(entry.path)) {
           try {
             const htmlText = decodeUtf8(entryBytes);
-            if (detectUnityByHtmlText(htmlText)) {
+            if (!gameRecord.unityDetected && detectUnityByHtmlText(htmlText)) {
               gameRecord.unityDetected = true;
+            }
+            if (!gameRecord.godotDetected && detectGodotByHtmlText(htmlText)) {
+              gameRecord.godotDetected = true;
             }
           } catch {
             // ignore decode errors
@@ -747,6 +751,7 @@ async function importEntriesDirectly(entries, options) {
         thumbnailDataUrl: preservedThumbnail || launcherMetadata.thumbnailDataUrl || autoThumbnailDataUrl,
         githubSource: resolvedGithubSource,
         unityDetected: detectUnityByPaths(processedEntries.map((entry) => entry.path)),
+        godotDetected: detectGodotByPaths(processedEntries.map((entry) => entry.path)),
         flashDetected: detectFlashByPaths(processedEntries.map((entry) => entry.path))
       };
 
@@ -779,11 +784,14 @@ async function importEntriesDirectly(entries, options) {
           transformations
         });
 
-        if (!gameRecord.unityDetected && /\.html?$/i.test(entry.path)) {
+        if ((!gameRecord.unityDetected || !gameRecord.godotDetected) && /\.html?$/i.test(entry.path)) {
           try {
             const htmlText = decodeUtf8(entryBytes);
-            if (detectUnityByHtmlText(htmlText)) {
+            if (!gameRecord.unityDetected && detectUnityByHtmlText(htmlText)) {
               gameRecord.unityDetected = true;
+            }
+            if (!gameRecord.godotDetected && detectGodotByHtmlText(htmlText)) {
+              gameRecord.godotDetected = true;
             }
           } catch {
             // ignore decode errors

@@ -508,6 +508,7 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
           oversizedImportConfirmed = await askLargeGameImportDecision(gameName, expectedGameBytes);
           if (!oversizedImportConfirmed) return;
         }
+
         if (fetchPathSet) {
           const unchangedCount = allEntries.length - downloadEntries.length;
           if (unchangedCount > 0) {
@@ -545,6 +546,7 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
           thumbnailDataUrl: "",
           githubSource: githubSource,
           unityDetected: false,
+          godotDetected: false,
           flashDetected: false,
           importInProgress: true
         };
@@ -639,8 +641,9 @@ async function importGithubTreeDirect(snapshot, gameName, options) {
             if (metadata.thumbnailDataUrl) {
               gameRecord.thumbnailDataUrl = metadata.thumbnailDataUrl;
             }
-            // detect Unity/Flash heuristics
+            // detect Unity/Godot/Flash heuristics
             gameRecord.unityDetected = detectUnityByPaths(paths);
+            gameRecord.godotDetected = detectGodotByPaths(paths);
             gameRecord.flashDetected = detectFlashByPaths(paths);
             gameRecord.importInProgress = false;
             gameRecord.importedAt = Date.now();

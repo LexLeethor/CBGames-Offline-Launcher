@@ -1320,6 +1320,7 @@ function injectRuntimeBridge(documentNode, options = {}) {
       entryPath: typeof options.entryPath === "string" ? normalizePath(options.entryPath) : "",
       zipSlug,
       saveAlias,
+      idbNamespace: typeof options.idbNamespace === "string" ? options.idbNamespace : "",
       freeBlobAfterLoad: Boolean(options.freeBlobAfterLoad)
     };
     const script = documentNode.createElement("script");
@@ -1335,6 +1336,50 @@ function injectRuntimeBridge(documentNode, options = {}) {
   // a game stored as "bad-piggies/..." would get a URL with "bad_piggies/..." causing
   // every StreamingAssets XHR to miss the objectUrl cache and hit the network.
   self.__unityDocUrl = __launcherVfsOrigin + (__launcherBridgeMeta.entryPath || __launcherBridgeMeta.zipSlug + "/index.html");
+
+  // Give this game its own IndexedDB namespace. Godot names its database "EM_FS_" + the page
+  // pathname, so without this every game launched here would share one save database. The prefix
+  // is applied to whatever name the engine asks for, and is stable across game renames because it
+  // is stored on the game record rather than derived from the current title.
+  (function installIndexedDbNamespace() {
+    var namespace = __launcherBridgeMeta.idbNamespace;
+    if (!namespace || typeof indexedDB === "undefined" || !window.IDBFactory) {
+      return;
+    }
+    var proto = window.IDBFactory.prototype;
+    var prefix = namespace + ":";
+    var mapName = function (name) {
+      if (typeof name !== "string" || !name) return name;
+      if (name.indexOf(prefix) === 0) return name;
+      return prefix + name;
+    };
+    var rawOpen = proto.open;
+    proto.open = function (name, version) {
+      var target = mapName(name);
+      return arguments.length > 1 ? rawOpen.call(this, target, version) : rawOpen.call(this, target);
+    };
+    var rawDelete = proto.deleteDatabase;
+    if (typeof rawDelete === "function") {
+      proto.deleteDatabase = function (name) {
+        return rawDelete.call(this, mapName(name));
+      };
+    }
+    // Keep indexedDB.databases() useful: a game should only ever see its own databases.
+    var rawDatabases = proto.databases;
+    if (typeof rawDatabases === "function") {
+      proto.databases = function () {
+        return rawDatabases.call(this).then(function (list) {
+          return (list || [])
+            .filter(function (entry) {
+              return entry && typeof entry.name === "string" && entry.name.indexOf(prefix) === 0;
+            })
+            .map(function (entry) {
+              return { name: entry.name.slice(prefix.length), version: entry.version };
+            });
+        });
+      };
+    }
+  })();
 
   (function installUnityIDBFSDirectoryAlias() {
     var currentScript = document.currentScript;

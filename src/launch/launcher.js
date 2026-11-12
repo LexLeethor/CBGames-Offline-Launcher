@@ -191,6 +191,7 @@ async function applyStoredGameMigrationPlan(game, fromVersion, analysis) {
     game.htmlEntries = htmlEntries;
     game.entryPath = chooseBestEntryPath(htmlEntries, game.entryPath || "");
     game.unityDetected = Boolean(game.unityDetected) || detectUnityByPaths(plan.paths);
+    game.godotDetected = Boolean(game.godotDetected) || detectGodotByPaths(plan.paths);
     game.flashDetected = typeof game.flashDetected === "boolean"
       ? game.flashDetected
       : detectFlashByPaths(plan.paths);
@@ -335,6 +336,32 @@ async function launchSelectedGame() {
       const saveAlias = typeof getGameSaveAlias === "function"
         ? getGameSaveAlias(game)
         : (game.name || game.zipName || game.id || "game");
+      // Godot and engines with no known save layout get a per-game IndexedDB namespace, so two
+      // games can never write into the same database. It is stored on the record on first launch:
+      // renaming the game later leaves the namespace alone, which keeps existing saves addressable.
+      let idbNamespace = "";
+      const hasKnownSaveLayout = Boolean(game.unityDetected) || Boolean(game.flashDetected);
+      if (!hasKnownSaveLayout && typeof ensureGameIdbNamespace === "function") {
+        try {
+          const hadNamespace = typeof game.idbNamespace === "string" && Boolean(game.idbNamespace);
+          idbNamespace = ensureGameIdbNamespace(game) || "";
+          if (idbNamespace) {
+            const migration = typeof migrateLegacyGodotIdbIntoGame === "function"
+              ? await migrateLegacyGodotIdbIntoGame(game)
+              : null;
+            if (migration && migration.migrated && migration.migrated.length) {
+              log("Carried existing browser storage into " + idbNamespace + ".");
+            }
+            if ((!hadNamespace || migration) && typeof putGame === "function") {
+              await putGame(game);
+              state.gamesById.set(game.id, game);
+            }
+          }
+        } catch (error) {
+          console.warn("Could not prepare an IndexedDB namespace for this game", error);
+          idbNamespace = "";
+        }
+      }
       const rewrittenHtml = rewriteDocumentHtml(htmlText, entryPath, {
         gameId: game.id,
         gameName: game.name || "",
@@ -342,7 +369,8 @@ async function launchSelectedGame() {
         saveAlias,
         entryPath,
         thumbnailDataUrl: typeof game.thumbnailDataUrl === "string" ? game.thumbnailDataUrl : "",
-        freeBlobAfterLoad: Boolean(game.blobFreeAfterLoad)
+        freeBlobAfterLoad: Boolean(game.blobFreeAfterLoad),
+        idbNamespace
       });
       setWorkProgress("Opening player window", 3, 4);
 

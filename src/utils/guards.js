@@ -93,7 +93,7 @@ function detectUnityByHtmlText(text) {
     return /createUnityInstance\s*\(|UnityLoader\.instantiate\s*\(|unityInstance/i.test(text);
   }
 
-function detectFlashByPaths(paths) {
+  function detectFlashByPaths(paths) {
     for (const rawPath of paths || []) {
       const path = normalizePath(rawPath).toLowerCase();
       if (/(^|\/)[^/]+\.swf$/.test(path)) {
@@ -103,16 +103,105 @@ function detectFlashByPaths(paths) {
     return false;
   }
 
+  function detectGodotByPaths(paths) {
+    for (const rawPath of paths || []) {
+      const path = normalizePath(rawPath).toLowerCase();
+      if (!path) {
+        continue;
+      }
+      if (
+        // Every Godot web export ships a .pck data pack, whatever the project is named.
+        /(^|\/)[^/]+\.pck$/.test(path) ||
+        // Godot 3 exports use godot.js / godot.wasm / godot.html.
+        /(^|\/)[^/]*godot[^/]*$/.test(path) ||
+        // Godot 4 audio worklet and its threads side module.
+        /(^|\/)[^/]*\.audio\.worklet\.js$/.test(path) ||
+        /(^|\/)[^/]*\.side\.wasm$/.test(path)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function detectGodotByHtmlText(text) {
+    if (typeof text !== "string" || !text) {
+      return false;
+    }
+    return /\bGODOT_CONFIG\b|\bcanvasResizePolicy\b|new\s+Engine\s*\(\s*GODOT_CONFIG|godot\.js/i.test(text);
+  }
+
+// Scripts a page actually loads. Godot exports can carry leftovers from an earlier threaded build
+// (index.worker.js, index.side.wasm) that the current index.html never references, so filenames are
+// not evidence of threading — only code that the page pulls in is.
+function collectReferencedScriptPaths(htmlTexts) {
+    const referenced = new Set();
+    for (const text of htmlTexts || []) {
+      const pattern = /<script\b[^>]*\bsrc\s*=\s*(['"])([^'"]+)\1/gi;
+      let match;
+      while ((match = pattern.exec(text))) {
+        const src = String(match[2] || "").split(/[?#]/)[0].replace(/^\.\//, "").trim();
+        if (src) {
+          referenced.add(src.toLowerCase());
+        }
+      }
+    }
+    return referenced;
+  }
+
 function detectSharedArrayBufferUsage(processedEntries) {
+    const entries = processedEntries || [];
+    const paths = entries.map((entry) => entry.path);
+
     // Skip SharedArrayBuffer detection for Unity games, which may still use
     // this token in build artifacts but work with the offline launcher.
-    if (detectUnityByPaths((processedEntries || []).map((entry) => entry.path))) {
+    if (detectUnityByPaths(paths)) {
+      return false;
+    }
+
+    // Godot only needs SharedArrayBuffer when the export was built with thread support, and those
+    // builds reference it from the engine script the page loads. Unreferenced leftovers from an
+    // earlier threaded export must not trigger the warning.
+    let godotReferences = null;
+    if (detectGodotByPaths(paths)) {
+      const htmlEntries = entries.filter((entry) => /\.html?$/i.test(entry.path));
+      const htmlTexts = [];
+      for (const entry of htmlEntries) {
+        try {
+          htmlTexts.push(decodeUtf8(entry.bytes));
+        } catch {
+          // ignore undecodable html
+        }
+      }
+      godotReferences = collectReferencedScriptPaths(htmlTexts);
+      for (const entry of entries) {
+        if (!/\.(?:js|mjs|cjs)$/i.test(entry.path)) {
+          continue;
+        }
+        const path = normalizePath(entry.path).toLowerCase();
+        const loaded = [...godotReferences].some((src) => path === src || path.endsWith("/" + src));
+        if (!loaded) {
+          continue;
+        }
+        try {
+          if (/\bSharedArrayBuffer\b/.test(decodeUtf8(entry.bytes))) {
+            return true;
+          }
+        } catch {
+          // ignore decode errors
+        }
+      }
+      for (const text of htmlTexts) {
+        if (/\bSharedArrayBuffer\b/.test(text)) {
+          return true;
+        }
+      }
       return false;
     }
 
     // Scan JavaScript and HTML files for SharedArrayBuffer usage
     const sharedArrayBufferPattern = /\bSharedArrayBuffer\b/;
-    for (const entry of processedEntries || []) {
+    for (const entry of entries) {
       // Only check files that may contain executable script content
       if (!/\.(?:js|mjs|cjs|html?)$/i.test(entry.path)) {
         continue;

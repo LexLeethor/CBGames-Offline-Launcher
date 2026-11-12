@@ -27,6 +27,9 @@ function normalizeBundleGameRecord(record) {
       unityDetected: Boolean(source.unityDetected) || detectUnityByPaths(
         Array.isArray(source.files) ? source.files.map((item) => normalizePath(item && item.path ? item.path : "")) : []
       ),
+      godotDetected: Boolean(source.godotDetected) || detectGodotByPaths(
+        Array.isArray(source.files) ? source.files.map((item) => normalizePath(item && item.path ? item.path : "")) : []
+      ),
       flashDetected: Boolean(source.flashDetected) || detectFlashByPaths(
         Array.isArray(source.files) ? source.files.map((item) => normalizePath(item && item.path ? item.path : "")) : []
       )
@@ -64,6 +67,7 @@ async function exportGamesBundle(games, progressCallback) {
         entryPath: game.entryPath || "",
         githubSource: normalizeGithubSource(game.githubSource),
         unityDetected: Boolean(game.unityDetected),
+        godotDetected: Boolean(game.godotDetected),
         flashDetected: Boolean(game.flashDetected),
         files: []
       };

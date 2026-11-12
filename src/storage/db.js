@@ -341,3 +341,29 @@ async function detectUnityFromStoredFiles(gameId) {
     }
     return false;
   }
+
+async function detectGodotFromStoredFiles(gameId) {
+    const files = await getAllFilesForGame(gameId);
+    const paths = files.map((file) => normalizePath(file.path || ""));
+    if (detectGodotByPaths(paths)) {
+      return true;
+    }
+    for (const file of files) {
+      const path = normalizePath(file.path || "");
+      if (!/\.html?$/i.test(path)) {
+        continue;
+      }
+      try {
+        const htmlText = await file.blob.text();
+        if (detectGodotByHtmlText(htmlText)) {
+          return true;
+        }
+      } catch {
+        // ignore parse errors
+      } finally {
+        // Release blob reference after processing
+        file.blob = null;
+      }
+    }
+    return false;
+  }

@@ -82,12 +82,31 @@ function openSaveImportModal(parsed) {
     });
   }
 
-  // Other IDBs
-  const otherDbRows = (parsed.otherDbs || []).map((db) => ({
-    dbName: db.dbName,
-    stores: db.stores,
-    action: "import"
-  }));
+  // Other IDBs — engine databases such as Godot's. A namespaced export is mapped onto the game it
+  // came from when that game still exists, and onto a same-named game otherwise (rename / re-import),
+  // so the records land under the target game's namespace rather than a stale one.
+  const mappableGames = allGames.filter((game) => !game.unityDetected && !game.flashDetected);
+  const otherDbRows = (parsed.otherDbs || []).map((db) => {
+    const logicalDbName = String(db.logicalDbName || "").trim() || db.dbName;
+    let autoGameId = null;
+    if (db.gameId && state.gamesById.has(db.gameId)) {
+      autoGameId = db.gameId;
+    } else if (db.gameName) {
+      const wanted = normalizeGameIdentity(db.gameName);
+      const match = mappableGames.find((game) => normalizeGameIdentity(game.name || "") === wanted);
+      if (match) autoGameId = match.id;
+    }
+    const autoGame = autoGameId ? state.gamesById.get(autoGameId) : null;
+    const autoUsable = Boolean(autoGame && !autoGame.unityDetected && !autoGame.flashDetected);
+    return {
+      dbName: db.dbName,
+      logicalDbName,
+      gameId: db.gameId || "",
+      stores: db.stores,
+      autoGameId: autoUsable ? autoGameId : null,
+      action: autoUsable ? ("auto:" + autoGameId) : "import"
+    };
+  });
 
   const lsCount = parsed.localStorageData ? Object.keys(parsed.localStorageData).length : 0;
   state.saveImportDraft = {

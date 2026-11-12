@@ -68,17 +68,37 @@ function renderSaveImportList() {
     const row = draft.otherDbRows[i];
     const action = row.action;
     const totalRecords = row.stores.reduce((sum, s) => sum + (s.records ? s.records.length : 0), 0);
+    const targetGames = games.filter((game) => !game.unityDetected && !game.flashDetected);
+    let options = "<optgroup label=\"Actions\">";
+    options += "<option value=\"import\"" + (action === "import" ? " selected" : "") + ">Import as-is</option>";
+    options += "<option value=\"ignore\"" + (action === "ignore" ? " selected" : "") + ">Ignore</option>";
+    options += "</optgroup>";
+    if (row.autoGameId) {
+      const g = state.gamesById.get(row.autoGameId);
+      const gName = g ? escapeHtml(String(g.name || row.autoGameId)) : escapeHtml(row.autoGameId);
+      const val = "auto:" + row.autoGameId;
+      options += "<optgroup label=\"Auto-detected\">";
+      options += "<option value=\"" + escapeHtml(val) + "\"" + (action === val ? " selected" : "") + ">" + gName + "</option>";
+      options += "</optgroup>";
+    }
+    if (targetGames.length) {
+      options += "<optgroup label=\"Map to game\">";
+      for (const g of targetGames) {
+        const val = "map:" + g.id;
+        options += "<option value=\"" + escapeHtml(val) + "\"" + (action === val ? " selected" : "") + ">" + escapeHtml(String(g.name || g.id)) + "</option>";
+      }
+      options += "</optgroup>";
+    }
+    const labelText = row.logicalDbName || row.dbName;
+    const fullName = row.dbName && row.dbName !== labelText ? " title=\"" + escapeHtml(row.dbName) + "\"" : "";
     rows.push(
       "<div class=\"save-import-row\">" +
         "<div class=\"save-import-row-info\">" +
-          "<p class=\"save-import-row-slug\"><span class=\"save-import-badge\">IDB</span> " + escapeHtml(row.dbName) + "</p>" +
+          "<p class=\"save-import-row-slug\"" + fullName + "><span class=\"save-import-badge\">IDB</span> " + escapeHtml(labelText) + "</p>" +
           "<p class=\"save-import-row-meta\">" + row.stores.length + " store(s) · " + totalRecords + " record(s)</p>" +
         "</div>" +
         "<div class=\"save-import-row-action\">" +
-          "<select data-save-import-type=\"db\" data-save-import-index=\"" + i + "\">" +
-            "<option value=\"import\"" + (action === "import" ? " selected" : "") + ">Import</option>" +
-            "<option value=\"ignore\"" + (action === "ignore" ? " selected" : "") + ">Ignore</option>" +
-          "</select>" +
+          "<select data-save-import-type=\"db\" data-save-import-index=\"" + i + "\">" + options + "</select>" +
         "</div>" +
       "</div>"
     );
@@ -345,10 +365,13 @@ function buildGameBadgeItemsMarkup(game, withTitles) {
     const unityBadge = game && game.unityDetected
       ? "<span class=\"game-unity-badge\" aria-hidden=\"true\"" + titleAttr("Unity game") + "></span>"
       : "";
+    const godotBadge = game && game.godotDetected
+      ? "<span class=\"game-godot-badge\" aria-hidden=\"true\"" + titleAttr("Godot game") + "></span>"
+      : "";
     const flashBadge = game && game.flashDetected
       ? "<span class=\"game-flash-badge\" aria-hidden=\"true\"" + titleAttr("Adobe Flash game") + "></span>"
       : "";
-    return githubBadge + unityBadge + flashBadge;
+    return githubBadge + unityBadge + godotBadge + flashBadge;
   }
 
 function updateGameEditPreviewThumbFromSource() {

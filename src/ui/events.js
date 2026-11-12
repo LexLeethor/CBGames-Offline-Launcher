@@ -882,6 +882,7 @@ openOpsModalButton.addEventListener("click", showOpsModal);
       })),
       otherDbs: (draft.otherDbRows || []).map((row) => ({
         dbName: row.dbName,
+        logicalDbName: row.logicalDbName,
         stores: row.stores,
         action: row.action
       }))

@@ -604,9 +604,12 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
       let lastError = null;
       for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
-          // Prefer raw blob bytes from the GitHub API; this avoids decoding a whole base64 payload
-          // for every normal file, while still letting us detect LFS pointer content immediately.
-          if (fileMeta && fileMeta.sha) {
+          // raw.githubusercontent.com first: it does not spend the anonymous API quota, so a repo
+          // import costs one tree request instead of one request per file. The blob API stays as the
+          // retry path, which also covers files raw declines to serve. Repo archives are not an
+          // option: codeload only allows https://render.githubusercontent.com to read them, so a
+          // zipball download always fails from this page.
+          if (fileMeta && fileMeta.sha && attempt > 1) {
             try {
               const blobApi =
                 "https://api.github.com/repos/" + encodeURIComponent(owner) +

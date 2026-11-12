@@ -80,6 +80,7 @@ async function loadLibrary(preferredGameId) {
       ...game,
       githubSource: normalizeGithubSource(game.githubSource),
       unityDetected: Boolean(game.unityDetected),
+      godotDetected: Boolean(game.godotDetected),
       flashDetected: typeof game.flashDetected === "boolean" ? game.flashDetected : false,
       blobFreeAfterLoad: typeof game.blobFreeAfterLoad === "boolean"
         ? game.blobFreeAfterLoad
@@ -137,6 +138,24 @@ async function loadLibrary(preferredGameId) {
       }
     }
 
+    // One-time backfill for older saves that predate godotDetected.
+    for (let i = 0; i < games.length; i += 1) {
+      const raw = storedGames[i];
+      const normalized = games[i];
+      if (typeof raw.godotDetected === "boolean") {
+        continue;
+      }
+      try {
+        const hasGodot = await detectGodotFromStoredFiles(normalized.id);
+        normalized.godotDetected = hasGodot;
+        raw.godotDetected = hasGodot;
+        await putGame(raw);
+      } catch (error) {
+        console.error(error);
+        log("Could not detect Godot files for " + (normalized.name || normalized.id) + ".", "error");
+      }
+    }
+
     const forceBadgeRescan = shouldRunSecretBadgeRescan() && !state.badgeRescanCompleted;
     if (forceBadgeRescan) {
       log("Secret badge rescan enabled. Re-checking all saved games...");
@@ -144,16 +163,20 @@ async function loadLibrary(preferredGameId) {
         const raw = storedGames[i];
         const normalized = games[i];
         try {
-          const [hasUnity, hasFlash] = await Promise.all([
+          const [hasUnity, hasGodot, hasFlash] = await Promise.all([
             detectUnityFromStoredFiles(normalized.id),
+            detectGodotFromStoredFiles(normalized.id),
             detectFlashFromStoredFiles(normalized.id)
           ]);
           const unityChanged = Boolean(raw.unityDetected) !== hasUnity;
+          const godotChanged = Boolean(raw.godotDetected) !== hasGodot;
           const flashChanged = Boolean(raw.flashDetected) !== hasFlash;
-          if (unityChanged || flashChanged) {
+          if (unityChanged || godotChanged || flashChanged) {
             raw.unityDetected = hasUnity;
+            raw.godotDetected = hasGodot;
             raw.flashDetected = hasFlash;
             normalized.unityDetected = hasUnity;
+            normalized.godotDetected = hasGodot;
             normalized.flashDetected = hasFlash;
             await putGame(raw);
           }

@@ -283,6 +283,163 @@ async function syncAllGameSaveAliases(options = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Per-game IndexedDB namespaces
+//
+// Godot (and engines we do not know) name their databases after the page URL, so every game
+// launched from the same player page would share one database. Each game gets a namespace that
+// is written to the game record the first time it launches: renaming a game afterwards does
+// nothing to the namespace, so the data stays reachable.
+// ---------------------------------------------------------------------------
+const IDB_NAMESPACE_SEPARATOR = ":";
+
+function sanitizeIdbNamespaceBase(value) {
+  return String(value || "")
+    .replace(/[\\/:*?"<>|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 48);
+}
+
+function ensureGameIdbNamespace(game) {
+  if (!game || !game.id) return "";
+  if (typeof game.idbNamespace === "string" && game.idbNamespace.trim()) {
+    return game.idbNamespace.trim();
+  }
+  const alias = (typeof getGameSaveAlias === "function" ? getGameSaveAlias(game) : "")
+    || game.name
+    || game.zipName
+    || game.id;
+  const base = sanitizeIdbNamespaceBase(alias) || "game";
+  // The id tag keeps two games with the same name apart, and survives renames.
+  const idTag = String(game.id).replace(/[^A-Za-z0-9]/g, "").slice(-8) || "0";
+  const taken = new Set();
+  if (state && state.gamesById && typeof state.gamesById.values === "function") {
+    for (const other of state.gamesById.values()) {
+      if (other && other.id !== game.id && typeof other.idbNamespace === "string" && other.idbNamespace) {
+        taken.add(other.idbNamespace.toLowerCase());
+      }
+    }
+  }
+  let candidate = base + " [" + idTag + "]";
+  let bump = 2;
+  while (taken.has(candidate.toLowerCase())) {
+    candidate = base + " [" + idTag + "-" + bump + "]";
+    bump += 1;
+  }
+  game.idbNamespace = candidate;
+  return candidate;
+}
+
+// Which game, if any, owns a namespaced database name such as "Same Game [idone]:EM_FS_/x.html".
+function findGameByIndexedDbNamespace(dbName) {
+  const name = String(dbName || "");
+  if (!name || !state || !state.gamesById || typeof state.gamesById.values !== "function") return null;
+  for (const game of state.gamesById.values()) {
+    const namespace = game && typeof game.idbNamespace === "string" ? game.idbNamespace.trim() : "";
+    if (namespace && name.indexOf(namespace + IDB_NAMESPACE_SEPARATOR) === 0) {
+      return { game, namespace, logicalName: name.slice(namespace.length + 1) };
+    }
+  }
+  return null;
+}
+
+// The database name a game will actually read at launch: namespaced games see every name prefixed.
+function resolveGameIdbTargetName(game, logicalName) {
+  const logical = String(logicalName || "");
+  if (!logical) return "";
+  const namespace = game && typeof ensureGameIdbNamespace === "function" ? ensureGameIdbNamespace(game) : "";
+  return namespace ? namespace + IDB_NAMESPACE_SEPARATOR + logical : logical;
+}
+
+function openIdbForCopy(name, storeDescriptors) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(name, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      for (const descriptor of storeDescriptors) {
+        if (!db.objectStoreNames.contains(descriptor.name)) {
+          db.createObjectStore(descriptor.name, descriptor.keyPath ? { keyPath: descriptor.keyPath } : undefined);
+        }
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => reject(new Error("IndexedDB blocked while preparing " + name));
+  });
+}
+
+async function copyIdbDatabaseRecords(sourceName, targetName) {
+  const source = await openAnyIdb(sourceName);
+  const storeNames = Array.from(source.objectStoreNames);
+  if (!storeNames.length) {
+    source.close();
+    return { copied: 0, stores: 0 };
+  }
+  const descriptors = storeNames.map((storeName) => ({
+    name: storeName,
+    keyPath: source.transaction(storeName, "readonly").objectStore(storeName).keyPath
+  }));
+  const snapshot = new Map();
+  for (const storeName of storeNames) {
+    snapshot.set(storeName, await readAllRecordsFromStore(source, storeName));
+  }
+  source.close();
+
+  const target = await openIdbForCopy(targetName, descriptors);
+  let copied = 0;
+  await new Promise((resolve, reject) => {
+    const tx = target.transaction(storeNames, "readwrite");
+    for (const descriptor of descriptors) {
+      const store = tx.objectStore(descriptor.name);
+      for (const record of snapshot.get(descriptor.name) || []) {
+        if (descriptor.keyPath) {
+          store.put(record.value);
+        } else {
+          store.put(record.value, record.key);
+        }
+        copied += 1;
+      }
+    }
+    tx.oncomplete = resolve;
+    tx.onabort = () => reject(tx.error || new Error("IndexedDB copy aborted"));
+    tx.onerror = () => reject(tx.error || new Error("IndexedDB copy failed"));
+  });
+  target.close();
+  return { copied, stores: storeNames.length };
+}
+
+// One-time carry-over of Emscripten/Godot databases written before namespacing existed.
+// Records are copied, never moved, so a failed or partial copy cannot destroy anything.
+async function migrateLegacyGodotIdbIntoGame(game) {
+  if (!game || !game.idbNamespace) return { migrated: [] };
+  if (game.idbNamespaceMigrated) return { migrated: [], skipped: true };
+  let names = [];
+  try {
+    names = (await indexedDB.databases()).map((entry) => entry && entry.name).filter(Boolean);
+  } catch (_) {
+    names = [];
+  }
+  // Only engine-native names: namespaced databases already carry the separator prefix.
+  const legacyNames = names.filter((name) => /^EM_FS_/i.test(name) && name.indexOf(IDB_NAMESPACE_SEPARATOR) !== 0);
+  const migrated = [];
+  for (const name of legacyNames) {
+    const targetName = game.idbNamespace + IDB_NAMESPACE_SEPARATOR + name;
+    if (names.includes(targetName)) {
+      continue;
+    }
+    try {
+      const result = await copyIdbDatabaseRecords(name, targetName);
+      if (result && result.copied) migrated.push(name);
+    } catch (error) {
+      console.warn("Could not carry over IndexedDB " + name, error);
+      return { migrated };
+    }
+  }
+  game.idbNamespaceMigrated = true;
+  return { migrated };
+}
+
+// ---------------------------------------------------------------------------
 // IDB constants and exclusion list
 // ---------------------------------------------------------------------------
 const IDBFS_DB_NAME = "/idbfs";
@@ -507,9 +664,18 @@ async function exportSaveData() {
           });
         }
       } else {
-        // Any other database — export every store
+        // Any other database — export every store. Games with an IndexedDB namespace are recorded
+        // with their logical (unprefixed) name plus the owning game, so an import can put the
+        // records back under the target game's namespace instead of a stale one.
         const storeNames = [...db.objectStoreNames];
-        const dbMeta = { dbName, stores: [] };
+        const owner = findGameByIndexedDbNamespace(dbName);
+        const dbMeta = {
+          dbName,
+          logicalDbName: owner ? owner.logicalName : dbName,
+          gameId: owner ? String(owner.game.id || "") : "",
+          gameName: owner ? String(owner.game.name || "") : "",
+          stores: []
+        };
 
         for (const storeName of storeNames) {
           try {
@@ -617,7 +783,13 @@ async function parseSaveZip(file) {
   // Other IDBs (v2)
   const otherDbs = [];
   for (const dbMeta of (manifest.databases || [])) {
-    const dbEntry = { dbName: dbMeta.dbName, stores: [] };
+    const dbEntry = {
+      dbName: dbMeta.dbName,
+      logicalDbName: typeof dbMeta.logicalDbName === "string" ? dbMeta.logicalDbName : "",
+      gameId: typeof dbMeta.gameId === "string" ? dbMeta.gameId : "",
+      gameName: typeof dbMeta.gameName === "string" ? dbMeta.gameName : "",
+      stores: []
+    };
     for (const storeMeta of (dbMeta.stores || [])) {
       const jsonEntry = entryByPath.get(
         "idb/" + encodeURIComponent(dbMeta.dbName) + "/" + encodeURIComponent(storeMeta.storeName) + ".json"
@@ -743,10 +915,35 @@ async function applySaveImport(plan) {
   // Restore other IDBs
   for (const dbEntry of (plan.otherDbs || [])) {
     if (dbEntry.action === "ignore") continue;
+    // Map the exported database onto the target game's namespace when a game was chosen, so a save
+    // still lands where the game reads after a rename or a re-import under a new game id.
+    let targetDbName = String(dbEntry.dbName || "");
+    const action = String(dbEntry.action || "");
+    if (action.startsWith("auto:") || action.startsWith("map:")) {
+      const targetGame = state.gamesById.get(action.split(":")[1]);
+      if (targetGame) {
+        const logicalName = dbEntry.logicalDbName || dbEntry.dbName;
+        const previousNamespace = targetGame.idbNamespace;
+        const mappedName = resolveGameIdbTargetName(targetGame, logicalName);
+        if (mappedName) {
+          targetDbName = mappedName;
+        }
+        if (targetGame.idbNamespace && targetGame.idbNamespace !== previousNamespace && typeof putGame === "function") {
+          try {
+            await putGame(targetGame);
+          } catch (error) {
+            console.warn("Could not persist the IndexedDB namespace for", targetGame.name || targetGame.id, error);
+          }
+        }
+        if (targetDbName !== dbEntry.dbName) {
+          log("Saved browser storage into " + targetDbName + ".");
+        }
+      }
+    }
     let db;
     try {
       db = await new Promise((resolve, reject) => {
-        const req = indexedDB.open(dbEntry.dbName);
+        const req = indexedDB.open(targetDbName);
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
         req.onupgradeneeded = (e) => {
@@ -758,7 +955,7 @@ async function applySaveImport(plan) {
         };
       });
     } catch (e) {
-      console.error("Could not open IDB for restore:", dbEntry.dbName, e);
+      console.error("Could not open IDB for restore:", targetDbName, e);
       continue;
     }
     for (const storeEntry of dbEntry.stores) {
