@@ -149,6 +149,24 @@ function collectReferencedScriptPaths(htmlTexts) {
     return referenced;
   }
 
+// Godot 4 exports declare the build's thread support in one line of their HTML. The engine script
+// mentions SharedArrayBuffer in its generic feature probe whether or not threads were compiled in,
+// so that token alone says nothing: a non-threaded build runs without cross-origin isolation.
+function readGodotThreadsDeclaration(htmlTexts) {
+    let sawFalse = false;
+    for (const text of htmlTexts || []) {
+      const match = String(text || "").match(/\bGODOT_THREADS_ENABLED\s*=\s*(true|false)\b/);
+      if (!match) {
+        continue;
+      }
+      if (match[1] === "true") {
+        return true;
+      }
+      sawFalse = true;
+    }
+    return sawFalse ? false : null;
+  }
+
 function detectSharedArrayBufferUsage(processedEntries) {
     const entries = processedEntries || [];
     const paths = entries.map((entry) => entry.path);
@@ -173,6 +191,14 @@ function detectSharedArrayBufferUsage(processedEntries) {
           // ignore undecodable html
         }
       }
+      // When the export states its thread support, believe that over any token in the scripts.
+      // Only an export with no declaration at all (Godot 3, hand-rolled loaders) falls through to
+      // the token scan below.
+      const threadsDeclared = readGodotThreadsDeclaration(htmlTexts);
+      if (threadsDeclared !== null) {
+        return threadsDeclared;
+      }
+
       godotReferences = collectReferencedScriptPaths(htmlTexts);
       for (const entry of entries) {
         if (!/\.(?:js|mjs|cjs)$/i.test(entry.path)) {

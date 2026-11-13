@@ -453,6 +453,13 @@ const EXCLUDED_IDB_NAMES = new Set([
   "/UnityCache"
 ]);
 
+// Launcher-owned localStorage keys we never export or restore. The game metadata
+// backup mirrors the library, so restoring it resurrects games whose records are
+// gone from IndexedDB — ghost entries that cannot be launched.
+const EXCLUDED_LOCAL_STORAGE_KEYS = new Set([
+  GAME_METADATA_BACKUP_KEY
+]);
+
 // ---------------------------------------------------------------------------
 // IDB helpers
 // ---------------------------------------------------------------------------
@@ -572,6 +579,7 @@ async function exportSaveData() {
     const lsData = {};
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
+      if (EXCLUDED_LOCAL_STORAGE_KEYS.has(k)) continue;
       lsData[k] = localStorage.getItem(k);
     }
     if (Object.keys(lsData).length > 0) {
@@ -776,7 +784,16 @@ async function parseSaveZip(file) {
     const lsEntry = entryByPath.get("localstorage.json");
     if (lsEntry) {
       const lsBytes = await extractEntryBytes(zip, lsEntry);
-      localStorageData = JSON.parse(new TextDecoder().decode(lsBytes));
+      const parsedLocalStorage = JSON.parse(new TextDecoder().decode(lsBytes));
+      if (parsedLocalStorage && typeof parsedLocalStorage === "object") {
+        localStorageData = {};
+        for (const [key, value] of Object.entries(parsedLocalStorage)) {
+          if (EXCLUDED_LOCAL_STORAGE_KEYS.has(key)) continue;
+          localStorageData[key] = value;
+        }
+        // Nothing left worth offering as a localStorage row.
+        if (!Object.keys(localStorageData).length) localStorageData = null;
+      }
     }
   }
 
@@ -813,6 +830,8 @@ async function applySaveImport(plan) {
   // Restore localStorage
   if (plan.localStorageAction === "import" && plan.localStorageData) {
     for (const [key, value] of Object.entries(plan.localStorageData)) {
+      // Never let an old backup restore the game library metadata over IndexedDB.
+      if (EXCLUDED_LOCAL_STORAGE_KEYS.has(key)) continue;
       try { localStorage.setItem(key, String(value)); } catch (_) { /* quota */ }
     }
   }

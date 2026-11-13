@@ -696,7 +696,16 @@ async function downloadGithubTreeEntries(snapshot, labelPrefix) {
               try {
                 const probeBytes = firstRead.value;
                 const contentType = String(res.headers.get("content-type") || "").toLowerCase();
-                if (contentType.includes("text") || contentType.includes("application/octet-stream") || contentType.includes("application/x-git-lfs")) {
+                // GitHub types a raw response from the file extension, so an LFS pointer for a .zip
+                // comes back as application/zip while a .pck pointer comes back as text/plain. A
+                // type-only gate therefore stored whole classes of LFS-tracked files as their ~130
+                // byte pointer. Pointers are tiny, so probe any small first chunk whatever the type.
+                const mayBePointer =
+                  probeBytes.byteLength <= 1024 ||
+                  contentType.includes("text") ||
+                  contentType.includes("application/octet-stream") ||
+                  contentType.includes("application/x-git-lfs");
+                if (mayBePointer) {
                   const probeText = (() => {
                     try { return new TextDecoder().decode(probeBytes); } catch { return ""; }
                   })();
