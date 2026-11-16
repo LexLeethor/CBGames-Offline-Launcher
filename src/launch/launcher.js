@@ -381,6 +381,9 @@ async function launchSelectedGame() {
         throw new Error("Could not access the player window. Reopen and launch again.");
       }
 
+      // The player tab is about:blank, so keep the exact document here: a refresh has to rewrite
+      // it rather than reload the frame (see installPlayerReloadShortcut in the player bridge).
+      state.playerWindow.__cbgamesPlayerHtml = rewrittenHtml;
       state.playerWindow.document.open();
       state.playerWindow.document.write(rewrittenHtml);
       state.playerWindow.document.close();

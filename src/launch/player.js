@@ -1337,6 +1337,206 @@ function injectRuntimeBridge(documentNode, options = {}) {
   // every StreamingAssets XHR to miss the objectUrl cache and hit the network.
   self.__unityDocUrl = __launcherVfsOrigin + (__launcherBridgeMeta.entryPath || __launcherBridgeMeta.zipSlug + "/index.html");
 
+  // Rewriting the document restarts the game, but the window survives the rewrite: anything the
+  // previous instance scheduled keeps running next to the new one (a second game loop, duplicate key
+  // handlers, workers, audio). Track those from the first game script so a reload can stop them.
+  (function installPlayerReloadShortcut() {
+    var tracker = window.__cbgamesPlayerRuntime;
+    if (!tracker) {
+      tracker = (function createRuntimeTracker() {
+        var pendingTimeouts = new Set();
+        var pendingIntervals = new Set();
+        var pendingFrames = new Set();
+        var liveWorkers = new Set();
+        var liveAudioContexts = new Set();
+        var liveSockets = new Set();
+        var windowListeners = [];
+
+        var nativeSetTimeout = window.setTimeout;
+        var nativeSetInterval = window.setInterval;
+        var nativeClearTimeout = window.clearTimeout;
+        var nativeClearInterval = window.clearInterval;
+        var nativeRequestFrame = window.requestAnimationFrame;
+        var nativeCancelFrame = window.cancelAnimationFrame;
+        var nativeAddListener = window.addEventListener;
+        var nativeRemoveListener = window.removeEventListener;
+        var NativeWorker = window.Worker;
+        var NativeAudioContext = window.AudioContext || window.webkitAudioContext;
+
+        window.setTimeout = function (handler, delay) {
+          if (typeof handler !== "function") {
+            return nativeSetTimeout.apply(window, arguments);
+          }
+          var extraArguments = Array.prototype.slice.call(arguments, 2);
+          var id = nativeSetTimeout.call(window, function () {
+            pendingTimeouts.delete(id);
+            handler.apply(window, extraArguments);
+          }, delay);
+          pendingTimeouts.add(id);
+          return id;
+        };
+        window.setInterval = function (handler, delay) {
+          if (typeof handler !== "function") {
+            return nativeSetInterval.apply(window, arguments);
+          }
+          var extraArguments = Array.prototype.slice.call(arguments, 2);
+          var id = nativeSetInterval.call(window, function () {
+            handler.apply(window, extraArguments);
+          }, delay);
+          pendingIntervals.add(id);
+          return id;
+        };
+        window.clearTimeout = function (id) {
+          pendingTimeouts.delete(id);
+          return nativeClearTimeout.call(window, id);
+        };
+        window.clearInterval = function (id) {
+          pendingIntervals.delete(id);
+          return nativeClearInterval.call(window, id);
+        };
+        if (typeof nativeRequestFrame === "function") {
+          window.requestAnimationFrame = function (callback) {
+            var id = nativeRequestFrame.call(window, function (timestamp) {
+              pendingFrames.delete(id);
+              if (typeof callback === "function") {
+                callback(timestamp);
+              }
+            });
+            pendingFrames.add(id);
+            return id;
+          };
+        }
+        if (typeof NativeWorker === "function") {
+          window.Worker = function (url, options) {
+            var worker = options === undefined ? new NativeWorker(url) : new NativeWorker(url, options);
+            liveWorkers.add(worker);
+            return worker;
+          };
+          window.Worker.prototype = NativeWorker.prototype;
+        }
+        if (typeof NativeAudioContext === "function") {
+          window.AudioContext = function () {
+            var context = Reflect.construct(NativeAudioContext, arguments, NativeAudioContext);
+            liveAudioContexts.add(context);
+            return context;
+          };
+          window.AudioContext.prototype = NativeAudioContext.prototype;
+          if (window.webkitAudioContext) {
+            window.webkitAudioContext = window.AudioContext;
+          }
+        }
+        var trackConnection = function (NativeConnection, registry) {
+          if (typeof NativeConnection !== "function") {
+            return null;
+          }
+          var Tracked = function (url, options) {
+            var connection = arguments.length > 1
+              ? new NativeConnection(url, options)
+              : new NativeConnection(url);
+            registry.add(connection);
+            return connection;
+          };
+          Tracked.prototype = NativeConnection.prototype;
+          return Tracked;
+        };
+        var TrackedWebSocket = trackConnection(window.WebSocket, liveSockets);
+        if (TrackedWebSocket) {
+          window.WebSocket = TrackedWebSocket;
+        }
+        var TrackedEventSource = trackConnection(window.EventSource, liveSockets);
+        if (TrackedEventSource) {
+          window.EventSource = TrackedEventSource;
+        }
+        window.addEventListener = function (type, listener, options) {
+          windowListeners.push({ type: type, listener: listener, options: options });
+          return nativeAddListener.call(window, type, listener, options);
+        };
+
+        var stopEverything = function () {
+          pendingTimeouts.forEach(function (id) { nativeClearTimeout.call(window, id); });
+          pendingTimeouts.clear();
+          pendingIntervals.forEach(function (id) { nativeClearInterval.call(window, id); });
+          pendingIntervals.clear();
+          if (typeof nativeCancelFrame === "function") {
+            pendingFrames.forEach(function (id) { nativeCancelFrame.call(window, id); });
+          }
+          pendingFrames.clear();
+          liveWorkers.forEach(function (worker) {
+            try { worker.terminate(); } catch (error) { /* already stopped */ }
+          });
+          liveWorkers.clear();
+          liveAudioContexts.forEach(function (context) {
+            try {
+              if (context.state !== "closed") {
+                context.close();
+              }
+            } catch (error) { /* already stopped */ }
+          });
+          liveAudioContexts.clear();
+          liveSockets.forEach(function (connection) {
+            try { connection.close(); } catch (error) { /* already stopped */ }
+          });
+          liveSockets.clear();
+          for (var index = 0; index < windowListeners.length; index += 1) {
+            var entry = windowListeners[index];
+            try {
+              nativeRemoveListener.call(window, entry.type, entry.listener, entry.options);
+            } catch (error) { /* already removed */ }
+          }
+          windowListeners.length = 0;
+          try {
+            if (document.exitPointerLock) {
+              document.exitPointerLock();
+            }
+          } catch (error) { /* not locked */ }
+          try {
+            if (document.fullscreenElement && document.exitFullscreen) {
+              document.exitFullscreen();
+            }
+          } catch (error) { /* not fullscreen */ }
+        };
+
+        return { stopEverything: stopEverything };
+      })();
+      window.__cbgamesPlayerRuntime = tracker;
+    }
+
+    var reloadPlayerDocument = function () {
+      tracker.stopEverything();
+      var html = window.__cbgamesPlayerHtml;
+      if (typeof html !== "string" || !html) {
+        var opener = window.opener;
+        if (opener && !opener.closed && typeof opener.launchSelectedGame === "function") {
+          opener.launchSelectedGame();
+        }
+        return;
+      }
+      // document.write() runs the browser's parser, so write on the next task instead of inside
+      // this key event's dispatch.
+      window.setTimeout(function () {
+        document.open();
+        document.write(html);
+        document.close();
+      }, 0);
+    };
+
+    window.addEventListener("keydown", function (event) {
+      if (!event || event.altKey) {
+        return;
+      }
+      var key = String(event.key || "");
+      var isReloadShortcut =
+        key === "F5" || ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "r");
+      if (!isReloadShortcut) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      reloadPlayerDocument();
+    }, true);
+  })();
+
+
   // Give this game its own IndexedDB namespace. Godot names its database "EM_FS_" + the page
   // pathname, so without this every game launched here would share one save database. The prefix
   // is applied to whatever name the engine asks for, and is stable across game renames because it
@@ -3419,6 +3619,10 @@ function injectRuntimeBridge(documentNode, options = {}) {
     }
   }
 
+  // Ctrl+R / F5 in this tab reloads about:blank, which comes back empty because the game lives in
+  // a written document rather than at a URL. Rewrite the document the launcher handed us instead,
+  // so a refresh restarts the game in place; fall back to the opener's launch path for documents
+  // written by an older launcher build.
   // Suppress popups that mention file:// from bundled games.
   (function () {
     var originalAlert = window.alert;
